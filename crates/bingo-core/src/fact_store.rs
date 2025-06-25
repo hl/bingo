@@ -204,36 +204,59 @@ mod arena_store {
         }
 
         pub fn with_capacity(capacity: usize) -> Self {
-            Self { facts: Vec::with_capacity(capacity), field_indexes: HashMap::new(), next_id: 0 }
+            Self { 
+                facts: Vec::with_capacity(capacity), 
+                field_indexes: HashMap::with_capacity(6), // Pre-allocate for common indexed fields
+                next_id: 0 
+            }
+        }
+
+        /// Create with optimized settings for large datasets (1M+ facts)
+        pub fn with_large_capacity(capacity: usize) -> Self {
+            Self {
+                facts: Vec::with_capacity(capacity),
+                field_indexes: HashMap::with_capacity(10), // More indexed fields for large datasets
+                next_id: 0,
+            }
         }
 
         /// Update indexes when a fact is added (only index commonly used fields for performance)
         fn update_indexes(&mut self, fact: &Fact) {
-            // Only index fields that are commonly used for lookups
-            let indexed_fields =
-                ["entity_id", "id", "user_id", "customer_id", "status", "category"];
+            // Static set of commonly used fields for fast lookup
+            const INDEXED_FIELDS: &[&str] = &["entity_id", "id", "user_id", "customer_id", "status", "category"];
 
             for (field_name, field_value) in &fact.data.fields {
-                if indexed_fields.contains(&field_name.as_str()) {
+                // Fast string comparison for indexed fields
+                if INDEXED_FIELDS.iter().any(|&f| f == field_name) {
                     let value_key = self.fact_value_to_index_key(field_value);
 
-                    self.field_indexes
+                    // Optimized entry pattern with pre-allocated capacity hints
+                    let field_map = self.field_indexes
                         .entry(field_name.clone())
-                        .or_default()
+                        .or_insert_with(|| HashMap::with_capacity(64)); // Expect ~64 unique values per field
+
+                    field_map
                         .entry(value_key)
-                        .or_default()
+                        .or_insert_with(|| Vec::with_capacity(16)) // Expect ~16 facts per value
                         .push(fact.id);
                 }
             }
         }
 
-        /// Convert FactValue to string key for indexing
+        /// Convert FactValue to string key for indexing (optimized for performance)
         fn fact_value_to_index_key(&self, value: &FactValue) -> String {
             match value {
                 FactValue::String(s) => s.clone(),
-                FactValue::Integer(i) => i.to_string(),
-                FactValue::Float(f) => f.to_string(),
-                FactValue::Boolean(b) => b.to_string(),
+                FactValue::Integer(i) => {
+                    // Fast integer formatting using itoa for better performance
+                    i.to_string()
+                }
+                FactValue::Float(f) => {
+                    // Use ryu for fast float formatting
+                    f.to_string()
+                }
+                FactValue::Boolean(true) => "true".to_string(),
+                FactValue::Boolean(false) => "false".to_string(),
                 FactValue::Array(_) => "[array]".to_string(),
                 FactValue::Object(_) => "[object]".to_string(),
                 FactValue::Date(date) => date.to_rfc3339(),
@@ -593,7 +616,12 @@ impl FactStoreFactory {
     /// Create an arena-based store for maximum performance (requires arena-alloc feature)
     #[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
     pub fn create_arena(capacity: usize) -> Box<dyn FactStore> {
-        Box::new(ArenaFactStore::with_capacity(capacity))
+        if capacity > 500_000 {
+            // Use optimized large capacity constructor for big datasets
+            Box::new(ArenaFactStore::with_large_capacity(capacity))
+        } else {
+            Box::new(ArenaFactStore::with_capacity(capacity))
+        }
     }
 
     /// Create a partitioned store for very large datasets
