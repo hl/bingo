@@ -164,7 +164,7 @@ fn test_500k_fact_scaling() {
     );
 }
 
-#[test] 
+#[test]
 #[ignore] // Skip in CI - too resource intensive for limited CI runners
 fn test_1m_fact_scaling() {
     let memory_tracker = MemoryTracker::start().unwrap();
