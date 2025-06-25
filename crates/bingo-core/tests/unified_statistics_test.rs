@@ -83,11 +83,13 @@ fn test_unified_statistics_consolidation() {
     consolidated_stats.register_calculator(700, 300, 850, 150, 1000);
 
     // Add custom component statistics
-    let mut custom_component = ComponentStats::default();
-    custom_component.operations = 1000;
-    custom_component.successes = 950;
-    custom_component.failures = 50;
-    custom_component.avg_time_us = 25.5;
+    let mut custom_component = ComponentStats {
+        operations: 1000,
+        successes: 950,
+        failures: 50,
+        avg_time_us: 25.5,
+        ..Default::default()
+    };
     custom_component.custom_metrics.insert("throughput".to_string(), 95.0);
     consolidated_stats.register_component("ReteNetwork", custom_component);
 

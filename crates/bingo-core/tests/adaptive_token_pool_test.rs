@@ -244,7 +244,7 @@ fn test_rete_network_with_optimal_token_pool() {
         token_stats.max_multi_pool_size, 2500,
         "Should use optimal multi pool size"
     );
-    assert!(results.len() > 0, "Should generate results");
+    assert!(!results.is_empty(), "Should generate results");
 
     println!("\n✅ RETE network integration test completed successfully!");
 }

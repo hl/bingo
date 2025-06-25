@@ -3,11 +3,11 @@
 //! This module provides comprehensive performance tracking for rule execution,
 //! including timing, memory usage, and rule firing statistics.
 
-use crate::types::{Fact, RuleId};
+use crate::types::RuleId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Comprehensive performance tracking for rule execution
 #[derive(Debug, Default)]
@@ -63,7 +63,7 @@ pub struct RuleExecutionProfile {
 }
 
 /// Timing statistics for rule execution
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TimingStatistics {
     /// Total execution time across all evaluations
     pub total_time: Duration,
@@ -641,20 +641,6 @@ impl Default for PerformanceConfig {
             min_execution_time_us: 100,
             max_execution_records: 100,
             enable_trend_analysis: true,
-        }
-    }
-}
-
-impl Default for TimingStatistics {
-    fn default() -> Self {
-        Self {
-            total_time: Duration::default(),
-            average_time: Duration::default(),
-            min_time: Duration::default(),
-            max_time: Duration::default(),
-            std_deviation: Duration::default(),
-            p95_time: Duration::default(),
-            p99_time: Duration::default(),
         }
     }
 }

@@ -91,7 +91,7 @@ fn analyze_performance(
     workload_size: usize,
     stats: &TokenPoolStats,
     allocation_time: std::time::Duration,
-    return_time: std::time::Duration,
+    _return_time: std::time::Duration,
     reuse_time: std::time::Duration,
 ) {
     let efficiency_ratio = pool_size as f64 / workload_size as f64;
@@ -373,8 +373,5 @@ fn evaluate_pool_configuration(pool_size: usize, workload_size: usize) -> f64 {
     };
 
     // Weighted score: 40% hit rate, 40% throughput, 20% memory efficiency
-    let score =
-        (hit_rate / 100.0) * 0.4 + (throughput / 100000.0).min(1.0) * 0.4 + memory_efficiency * 0.2;
-
-    score
+    (hit_rate / 100.0) * 0.4 + (throughput / 100000.0).min(1.0) * 0.4 + memory_efficiency * 0.2
 }

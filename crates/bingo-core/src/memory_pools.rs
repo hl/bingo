@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_object_pool_basic_operations() {
-        let mut pool = ObjectPool::new(|| Vec::<i32>::new(), 5);
+        let mut pool = ObjectPool::new(Vec::<i32>::new, 5);
 
         // Get object from empty pool (should create new)
         let mut vec1 = pool.get();
@@ -433,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_object_pool_max_size() {
-        let mut pool = ObjectPool::new(|| String::new(), 2);
+        let mut pool = ObjectPool::new(String::new, 2);
 
         // Fill pool to capacity
         pool.return_object(String::from("test1"));
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn test_thread_safe_pool() {
-        let pool = ThreadSafePool::new(|| Vec::<String>::new(), 10);
+        let pool = ThreadSafePool::new(Vec::<String>::new, 10);
 
         // Get and return objects
         let mut vec = pool.get();
@@ -495,7 +495,7 @@ mod tests {
 
         // Check overall efficiency
         let efficiency = pools.overall_efficiency();
-        assert!(efficiency >= 0.0 && efficiency <= 100.0);
+        assert!((0.0..=100.0).contains(&efficiency));
     }
 
     #[test]
@@ -566,7 +566,8 @@ mod tests {
 
     #[test]
     fn test_memory_efficiency_calculation() {
-        let mut pool = ObjectPool::new(|| Vec::<i32>::new(), 5);
+        use tracing::debug;
+        let mut pool = ObjectPool::new(Vec::<i32>::new, 5);
 
         // All gets should be misses initially
         for _ in 0..3 {
@@ -592,12 +593,12 @@ mod tests {
             peak_size: pool.peak_size,
         };
 
-        println!(
-            "Debug: allocated={}, hits={}, misses={}, efficiency={}",
-            stats.allocated_count,
-            stats.pool_hits,
-            stats.pool_misses,
-            stats.memory_efficiency()
+        debug!(
+            allocated = stats.allocated_count,
+            hits = stats.pool_hits,
+            misses = stats.pool_misses,
+            efficiency = %stats.memory_efficiency(),
+            "Memory pool statistics"
         );
 
         // The actual efficiency is: 4 hits / 5 allocated = 80%

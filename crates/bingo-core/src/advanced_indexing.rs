@@ -36,7 +36,7 @@ impl Eq for OrderedFloat {}
 
 impl PartialOrd for OrderedFloat {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
@@ -56,7 +56,7 @@ pub struct BitSet {
 impl BitSet {
     /// Create a new bit set with capacity for the given maximum fact ID
     pub fn new(max_fact_id: FactId) -> Self {
-        let word_count = ((max_fact_id as usize + 63) / 64).max(1);
+        let word_count = (max_fact_id as usize).div_ceil(64).max(1);
         Self { bits: vec![0u64; word_count], max_fact_id }
     }
 
@@ -565,6 +565,7 @@ impl AdvancedFieldIndexer {
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn lookup_in_index(&self, index: &IndexStrategy, value: &FactValue) -> Vec<FactId> {
         match index {
             IndexStrategy::HighCardinality(map) => {
@@ -702,6 +703,7 @@ impl AdvancedFieldIndexer {
         total
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn calculate_strategy_memory_usage(&self, strategy: &IndexStrategy) -> usize {
         match strategy {
             IndexStrategy::HighCardinality(map) => {

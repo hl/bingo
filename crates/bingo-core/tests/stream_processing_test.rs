@@ -288,7 +288,7 @@ fn test_stream_rule_integration() {
     println!("🔗 Stream Rule Integration Test");
     println!("==============================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let _engine = ReteNetwork::new().unwrap();
 
     // Create a rule with stream condition
     let stream_rule = Rule {

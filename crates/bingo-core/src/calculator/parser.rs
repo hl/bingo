@@ -122,7 +122,7 @@ pub struct Lexer {
 impl Lexer {
     pub fn new(input: &str) -> Self {
         let chars: Vec<char> = input.chars().collect();
-        let current_char = chars.get(0).copied();
+        let current_char = chars.first().copied();
 
         Self { input: chars, position: 0, current_char }
     }
@@ -869,39 +869,37 @@ mod tests {
                 assert_eq!(conditions.len(), 2);
 
                 // Check first condition
-                match &conditions[0] {
-                    (condition, value) => {
-                        match condition {
-                            Expression::BinaryOp {
-                                left,
-                                operator: BinaryOperator::GreaterThanOrEqual,
-                                right,
-                            } => {
-                                assert_eq!(left.as_ref(), &Expression::var("rating"));
-                                assert_eq!(right.as_ref(), &Expression::float(4.5));
-                            }
-                            _ => panic!("Expected rating >= 4.5 condition"),
+                let (condition, value) = &conditions[0];
+                {
+                    match condition {
+                        Expression::BinaryOp {
+                            left,
+                            operator: BinaryOperator::GreaterThanOrEqual,
+                            right,
+                        } => {
+                            assert_eq!(left.as_ref(), &Expression::var("rating"));
+                            assert_eq!(right.as_ref(), &Expression::float(4.5));
                         }
-                        assert_eq!(value, &Expression::float(0.15));
+                        _ => panic!("Expected rating >= 4.5 condition"),
                     }
+                    assert_eq!(value, &Expression::float(0.15));
                 }
 
                 // Check second condition
-                match &conditions[1] {
-                    (condition, value) => {
-                        match condition {
-                            Expression::BinaryOp {
-                                left,
-                                operator: BinaryOperator::GreaterThanOrEqual,
-                                right,
-                            } => {
-                                assert_eq!(left.as_ref(), &Expression::var("rating"));
-                                assert_eq!(right.as_ref(), &Expression::float(4.0));
-                            }
-                            _ => panic!("Expected rating >= 4.0 condition"),
+                let (condition, value) = &conditions[1];
+                {
+                    match condition {
+                        Expression::BinaryOp {
+                            left,
+                            operator: BinaryOperator::GreaterThanOrEqual,
+                            right,
+                        } => {
+                            assert_eq!(left.as_ref(), &Expression::var("rating"));
+                            assert_eq!(right.as_ref(), &Expression::float(4.0));
                         }
-                        assert_eq!(value, &Expression::float(0.10));
+                        _ => panic!("Expected rating >= 4.0 condition"),
                     }
+                    assert_eq!(value, &Expression::float(0.10));
                 }
 
                 // Check default value

@@ -486,7 +486,13 @@ async fn delete_rule_handler(
         Some(_) => {
             // Also remove from engine (requires write lock)
             let mut engine = state.engine.write().await;
-            let rule_id_numeric = rule_id.parse::<u64>().unwrap_or(0);
+            // Hash the string ID to get the numeric ID used in the engine
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            rule_id.hash(&mut hasher);
+            let rule_id_numeric = hasher.finish();
+
             engine.remove_rule(rule_id_numeric).map_err(|e| {
                 error!(rule_id = %rule_id, error = %e, "Failed to remove rule from engine");
                 // Re-insert the rule in memory since engine removal failed
@@ -552,7 +558,7 @@ async fn list_rules_handler(
                 || rule
                     .description
                     .as_ref()
-                    .map_or(false, |desc| desc.to_lowercase().contains(&search_lower))
+                    .is_some_and(|desc| desc.to_lowercase().contains(&search_lower))
         });
     }
 
@@ -745,12 +751,15 @@ fn convert_api_rule_to_core(api_rule: &ApiRule) -> anyhow::Result<bingo_core::Ru
         actions.push(action);
     }
 
-    Ok(Rule {
-        id: api_rule.id.parse::<u64>().unwrap_or(0),
-        name: api_rule.name.clone(),
-        conditions,
-        actions,
-    })
+    // Hash the string ID to create a consistent numeric ID for the core engine
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    api_rule.id.hash(&mut hasher);
+    let numeric_id = hasher.finish();
+
+    Ok(Rule { id: numeric_id, name: api_rule.name.clone(), conditions, actions })
 }
 
 fn convert_api_fact_to_core(api_fact: &ApiFact, next_id: &mut u64) -> CoreFact {
@@ -797,7 +806,7 @@ fn convert_fact_value_to_json(value: &CoreFactValue) -> serde_json::Value {
         CoreFactValue::Boolean(b) => serde_json::Value::Bool(*b),
         CoreFactValue::Array(arr) => {
             let values: Vec<serde_json::Value> =
-                arr.iter().map(|v| convert_fact_value_to_json(v)).collect();
+                arr.iter().map(convert_fact_value_to_json).collect();
             serde_json::Value::Array(values)
         }
         CoreFactValue::Object(obj) => {

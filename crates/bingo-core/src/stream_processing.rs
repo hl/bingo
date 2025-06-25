@@ -424,28 +424,6 @@ impl StreamProcessor {
         Ok(())
     }
 
-    /// Assign a fact to appropriate windows based on window specification
-    fn assign_fact_to_windows(
-        &mut self,
-        fact: Fact,
-        timestamp: Timestamp,
-        window_spec: &WindowSpec,
-        windows: &mut Vec<WindowInstance>,
-    ) -> anyhow::Result<()> {
-        match window_spec {
-            WindowSpec::Tumbling { size } => {
-                self.assign_to_tumbling_window(fact, timestamp, *size, windows)?;
-            }
-            WindowSpec::Sliding { size, advance } => {
-                self.assign_to_sliding_windows(fact, timestamp, *size, *advance, windows)?;
-            }
-            WindowSpec::Session { gap_timeout } => {
-                self.assign_to_session_window(fact, timestamp, *gap_timeout, windows)?;
-            }
-        }
-        Ok(())
-    }
-
     /// Assign fact to tumbling window (static version)
     fn assign_to_tumbling_window_static(
         fact: Fact,
@@ -476,23 +454,6 @@ impl StreamProcessor {
         }
 
         Ok(())
-    }
-
-    /// Assign fact to tumbling window
-    fn assign_to_tumbling_window(
-        &mut self,
-        fact: Fact,
-        timestamp: Timestamp,
-        window_size: Duration,
-        windows: &mut Vec<WindowInstance>,
-    ) -> anyhow::Result<()> {
-        Self::assign_to_tumbling_window_static(
-            fact,
-            timestamp,
-            window_size,
-            windows,
-            &mut self.stats,
-        )
     }
 
     /// Assign fact to sliding windows (static version)
@@ -538,25 +499,6 @@ impl StreamProcessor {
         }
 
         Ok(())
-    }
-
-    /// Assign fact to sliding windows
-    fn assign_to_sliding_windows(
-        &mut self,
-        fact: Fact,
-        timestamp: Timestamp,
-        window_size: Duration,
-        advance: Duration,
-        windows: &mut Vec<WindowInstance>,
-    ) -> anyhow::Result<()> {
-        Self::assign_to_sliding_windows_static(
-            fact,
-            timestamp,
-            window_size,
-            advance,
-            windows,
-            &mut self.stats,
-        )
     }
 
     /// Assign fact to session window (static version)
@@ -614,23 +556,6 @@ impl StreamProcessor {
         }
 
         Ok(())
-    }
-
-    /// Assign fact to session window
-    fn assign_to_session_window(
-        &mut self,
-        fact: Fact,
-        timestamp: Timestamp,
-        gap_timeout: Duration,
-        windows: &mut Vec<WindowInstance>,
-    ) -> anyhow::Result<()> {
-        Self::assign_to_session_window_static(
-            fact,
-            timestamp,
-            gap_timeout,
-            windows,
-            &mut self.stats,
-        )
     }
 
     /// Extract timestamp from fact data

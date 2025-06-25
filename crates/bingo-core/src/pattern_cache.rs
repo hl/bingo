@@ -3,10 +3,10 @@
 //! This module implements caching for compiled RETE network patterns to avoid
 //! redundant compilation work when similar rule structures are encountered.
 
-use crate::rete_nodes::{JoinCondition, NodeId};
+use crate::rete_nodes::JoinCondition;
 use crate::types::{Condition, Rule};
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 /// A signature representing a cacheable pattern for compilation
@@ -390,15 +390,11 @@ impl PatternCache {
         for &field in &join_fields {
             let field_conditions: Vec<_> = conditions
                 .iter()
-                .filter_map(|cond| {
+                .filter(|cond| {
                     if let Condition::Simple { field: cond_field, .. } = cond {
-                        if cond_field == field {
-                            Some(cond)
-                        } else {
-                            None
-                        }
+                        cond_field == field
                     } else {
-                        None
+                        false
                     }
                 })
                 .collect();

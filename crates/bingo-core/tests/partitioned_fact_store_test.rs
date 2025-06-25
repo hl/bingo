@@ -4,7 +4,7 @@
 //! large datasets efficiently across multiple memory partitions.
 
 use bingo_core::{
-    Fact, FactData, FactValue, PartitionedFactStore, FactStore, FactStoreFactory,
+    Fact, FactData, FactStore, FactStoreFactory, FactValue, PartitionedFactStore,
     memory::MemoryStats,
 };
 use std::collections::HashMap;

@@ -48,11 +48,7 @@ impl<'a> EvaluationContext<'a> {
             LazyLock::new(|| Fact { id: 0, data: FactData { fields: HashMap::new() } });
         static EMPTY_FACTS: &[Fact] = &[];
 
-        EvaluationContext {
-            current_fact: &*EMPTY_FACT,
-            facts: EMPTY_FACTS,
-            globals: HashMap::new(),
-        }
+        EvaluationContext { current_fact: &EMPTY_FACT, facts: EMPTY_FACTS, globals: HashMap::new() }
     }
 }
 
@@ -65,6 +61,16 @@ pub enum CalculatorResult {
     FieldUpdates(HashMap<String, FactValue>),
     /// New fact to be created
     NewFact(FactData),
+}
+
+impl CalculatorResult {
+    /// Extract the inner FactValue for single value results
+    pub fn value(&self) -> &FactValue {
+        match self {
+            CalculatorResult::Value(value) => value,
+            _ => panic!("Called value() on non-Value CalculatorResult variant"),
+        }
+    }
 }
 
 /// Main calculator engine for parsing and evaluating expressions

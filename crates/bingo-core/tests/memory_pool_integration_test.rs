@@ -308,16 +308,13 @@ fn test_memory_pool_thread_safety() {
 
                     // Fact data operations
                     let mut fact_data = pools_clone.get_fact_data();
-                    fact_data.fields.insert(
-                        format!("thread_{}", thread_id),
-                        FactValue::Integer(i as i64),
-                    );
+                    fact_data.fields.insert(format!("thread_{}", thread_id), FactValue::Integer(i));
                     pools_clone.return_fact_data(fact_data);
 
                     // Field map operations
                     let mut field_map = pools_clone.get_field_map();
                     field_map.insert("thread_id".to_string(), FactValue::Integer(thread_id));
-                    field_map.insert("iteration".to_string(), FactValue::Integer(i as i64));
+                    field_map.insert("iteration".to_string(), FactValue::Integer(i));
                     pools_clone.return_field_map(field_map);
                 }
             })

@@ -81,7 +81,7 @@ async fn test_health_check_performance() {
         // Verify the response contains expected fields
         let health_response: HealthResponse = response.json();
         assert_eq!(health_response.status, "healthy");
-        assert!(health_response.uptime_seconds >= 0);
+        // uptime_seconds is always >= 0 by type definition
     }
 
     let total_duration = start.elapsed();
@@ -197,7 +197,7 @@ async fn test_rule_crud_operations() {
 
     // Get individual rules
     let get_start = Instant::now();
-    for (i, rule_id) in created_rule_ids.iter().enumerate() {
+    for rule_id in created_rule_ids.iter() {
         let response = server.get(&format!("/rules/{}", rule_id)).await;
         assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -233,8 +233,7 @@ async fn test_engine_stats_performance() {
         );
 
         let stats: EngineStats = response.json();
-        assert!(stats.total_facts >= 0);
-        assert!(stats.total_rules >= 0);
+        // total_facts and total_rules are always >= 0 by type definition
         assert!(stats.memory_usage_bytes > 0);
     }
 

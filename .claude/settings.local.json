@@ -43,7 +43,24 @@
       "Bash(test_adaptive_token_pool_performance:*)",
       "Bash(test_rete_network_with_optimal_token_pool --nocapture)",
       "Bash(/dev/null)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(ls:*)",
+      "Bash(git checkout:*)",
+      "mcp__filesystem__search_files",
+      "Bash(touch:*)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --all-targets --all-features)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --all-targets --no-default-features)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --all-targets --no-default-features 2 >& 1)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo test --no-default-features)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo check --all-targets --all-features)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo check --all-targets --no-default-features)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo test test_500k_fact_scaling --release --no-default-features)",
+      "Bash(echo:*)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo check --release)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo check --release --quiet)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --release --quiet)"
     ],
     "deny": []
   }

@@ -32,12 +32,12 @@ impl BloomFilter {
     /// * `size` - Number of bits in the filter (will be rounded up to nearest multiple of 64)
     /// * `hash_functions` - Number of hash functions to use (typically 2-8)
     pub fn new(size: usize, hash_functions: usize) -> Self {
-        let word_count = (size + 63) / 64; // Round up to nearest multiple of 64
+        let word_count = size.div_ceil(64); // Round up to nearest multiple of 64
         let actual_size = word_count * 64;
 
         Self {
             bits: vec![0u64; word_count],
-            hash_functions: hash_functions.max(1).min(16), // Clamp to reasonable range
+            hash_functions: hash_functions.clamp(1, 16), // Clamp to reasonable range
             size: actual_size,
             element_count: 0,
         }
@@ -65,7 +65,7 @@ impl BloomFilter {
     fn optimal_hash_functions(expected_elements: usize, size: usize) -> usize {
         let ln2 = std::f64::consts::LN_2;
         let k = (size as f64 / expected_elements as f64) * ln2;
-        k.round().max(1.0).min(16.0) as usize
+        k.round().clamp(1.0, 16.0) as usize
     }
 
     /// Add a fact ID to the bloom filter
@@ -195,13 +195,10 @@ impl BloomFilter {
 
     /// Create a new larger bloom filter and migrate existing data
     pub fn resize(&self, new_expected_elements: usize, target_false_positive_rate: f64) -> Self {
-        let new_filter = Self::with_capacity(new_expected_elements, target_false_positive_rate);
-
         // Note: We can't migrate existing elements since we don't store them
         // This is a limitation of bloom filters - they can't be resized while preserving data
         // The caller would need to re-add all elements to the new filter
-
-        new_filter
+        Self::with_capacity(new_expected_elements, target_false_positive_rate)
     }
 }
 
@@ -237,7 +234,7 @@ impl BloomFilterStats {
         let fpr = self.estimated_false_positive_rate;
 
         // Good tuning: 30-70% utilization with <5% false positive rate
-        util >= 30.0 && util <= 70.0 && fpr < 0.05
+        (30.0..=70.0).contains(&util) && fpr < 0.05
     }
 }
 
@@ -521,7 +518,7 @@ mod tests {
         assert!(filter.might_contain_fact(2));
 
         // Check non-existent fact
-        let might_exist = filter.might_contain_fact(999);
+        let _might_exist = filter.might_contain_fact(999);
         // Could be false positive, but likely false
 
         let stats = filter.stats();

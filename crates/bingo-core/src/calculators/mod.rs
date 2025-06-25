@@ -193,8 +193,8 @@ static CALCULATORS: LazyLock<HashMap<String, Box<dyn Calculator>>> = LazyLock::n
     map
 });
 
-pub fn get_calculator(name: &str) -> Option<&'static Box<dyn Calculator>> {
-    CALCULATORS.get(name)
+pub fn get_calculator(name: &str) -> Option<&'static dyn Calculator> {
+    CALCULATORS.get(name).map(|v| &**v)
 }
 
 #[cfg(test)]
@@ -206,7 +206,10 @@ mod tests {
     fn test_calculator_inputs() {
         let mut data = HashMap::new();
         data.insert("test_int".to_string(), FactValue::Integer(42));
-        data.insert("test_float".to_string(), FactValue::Float(3.14));
+        data.insert(
+            "test_float".to_string(),
+            FactValue::Float(std::f64::consts::PI),
+        );
         data.insert(
             "test_string".to_string(),
             FactValue::String("hello".to_string()),
@@ -216,9 +219,12 @@ mod tests {
         let inputs = CalculatorInputs::new(&data);
 
         assert_eq!(inputs.get_integer("test_int").unwrap(), 42);
-        assert_eq!(inputs.get_float("test_float").unwrap(), 3.14);
+        assert_eq!(
+            inputs.get_float("test_float").unwrap(),
+            std::f64::consts::PI
+        );
         assert_eq!(inputs.get_string("test_string").unwrap(), "hello");
-        assert_eq!(inputs.get_boolean("test_bool").unwrap(), true);
+        assert!(inputs.get_boolean("test_bool").unwrap());
 
         // Test type coercion
         assert_eq!(inputs.get_float("test_int").unwrap(), 42.0);

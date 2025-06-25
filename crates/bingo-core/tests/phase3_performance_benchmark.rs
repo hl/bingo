@@ -45,7 +45,7 @@ fn test_phase3_combined_performance_benchmark() {
         },
     ];
 
-    let formula_expressions = vec![
+    let formula_expressions = [
         "account_balance * 0.05",                      // 5% bonus calculation
         "activity_score + 10",                         // Activity bonus
         "account_balance / 100",                       // Points calculation

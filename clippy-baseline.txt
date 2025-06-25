@@ -1,0 +1,992 @@
+    Checking bingo-core v0.1.0 (/Users/hl/Projects/private/bingo/crates/bingo-core)
+error: methods `assign_fact_to_windows`, `assign_to_tumbling_window`, `assign_to_sliding_windows`, and `assign_to_session_window` are never used
+   --> crates/bingo-core/src/stream_processing.rs:428:8
+    |
+278 | impl StreamProcessor {
+    | -------------------- methods in this implementation
+...
+428 |     fn assign_fact_to_windows(
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+482 |     fn assign_to_tumbling_window(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+544 |     fn assign_to_sliding_windows(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+620 |     fn assign_to_session_window(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `-D dead-code` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(dead_code)]`
+
+error: field `original_capacity` is never read
+   --> crates/bingo-core/src/unified_memory_coordinator.rs:467:5
+    |
+464 | pub struct CacheMemoryConsumer<K, V> {
+    |            ------------------- field in this struct
+...
+467 |     original_capacity: usize,
+    |     ^^^^^^^^^^^^^^^^^
+
+error: clamp-like pattern without using clamp function
+   --> crates/bingo-core/src/adaptive_backends.rs:304:31
+    |
+304 |         let partition_count = (characteristics.fact_count / 100_000).min(16).max(4);
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `(characteristics.fact_count / 100_000).clamp(4, 16)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+    = note: `-D clippy::manual-clamp` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_clamp)]`
+
+error: clamp-like pattern without using clamp function
+   --> crates/bingo-core/src/adaptive_backends.rs:333:26
+    |
+333 |             buffer_size: (characteristics.growth_rate as usize * 10).min(10000).max(100),
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `(characteristics.growth_rate as usize * 10).clamp(100, 10000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: clamp-like pattern without using clamp function
+   --> crates/bingo-core/src/adaptive_backends.rs:334:30
+    |
+334 |             batch_threshold: (characteristics.growth_rate as usize / 10).min(1000).max(10),
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `(characteristics.growth_rate as usize / 10).clamp(10, 1000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: clamp-like pattern without using clamp function
+   --> crates/bingo-core/src/adaptive_backends.rs:350:9
+    |
+350 |         ((base_size as f64 * pattern_multiplier) as usize).min(100000).max(100)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `((base_size as f64 * pattern_multiplier) as usize).clamp(100, 100000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: non-canonical implementation of `partial_cmp` on an `Ord` type
+  --> crates/bingo-core/src/advanced_indexing.rs:37:1
+   |
+37 | /  impl PartialOrd for OrderedFloat {
+38 | |      fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+   | | _______________________________________________________________________-
+39 | ||         self.0.partial_cmp(&other.0)
+40 | ||     }
+   | ||_____- help: change this to: `{ Some(self.cmp(other)) }`
+41 | |  }
+   | |__^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#non_canonical_partial_ord_impl
+   = note: `-D clippy::non-canonical-partial-ord-impl` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::non_canonical_partial_ord_impl)]`
+
+error: manually reimplementing `div_ceil`
+  --> crates/bingo-core/src/advanced_indexing.rs:59:26
+   |
+59 |         let word_count = ((max_fact_id as usize + 63) / 64).max(1);
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using `.div_ceil()`: `(max_fact_id as usize).div_ceil(64)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_div_ceil
+   = note: `-D clippy::manual-div-ceil` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::manual_div_ceil)]`
+
+error: parameter is only used in recursion
+   --> crates/bingo-core/src/advanced_indexing.rs:568:25
+    |
+568 |     fn lookup_in_index(&self, index: &IndexStrategy, value: &FactValue) -> Vec<FactId> {
+    |                         ^^^^
+    |
+note: parameter used here
+   --> crates/bingo-core/src/advanced_indexing.rs:586:54
+    |
+586 |             IndexStrategy::Hybrid { primary, .. } => self.lookup_in_index(primary, value),
+    |                                                      ^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#only_used_in_recursion
+    = note: `-D clippy::only-used-in-recursion` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::only_used_in_recursion)]`
+
+error: parameter is only used in recursion
+   --> crates/bingo-core/src/advanced_indexing.rs:705:41
+    |
+705 |     fn calculate_strategy_memory_usage(&self, strategy: &IndexStrategy) -> usize {
+    |                                         ^^^^
+    |
+note: parameter used here
+   --> crates/bingo-core/src/advanced_indexing.rs:720:17
+    |
+720 |                 self.calculate_strategy_memory_usage(primary)
+    |                 ^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#only_used_in_recursion
+
+error: manually reimplementing `div_ceil`
+  --> crates/bingo-core/src/bloom_filter.rs:35:26
+   |
+35 |         let word_count = (size + 63) / 64; // Round up to nearest multiple of 64
+   |                          ^^^^^^^^^^^^^^^^ help: consider using `.div_ceil()`: `size.div_ceil(64)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_div_ceil
+
+error: clamp-like pattern without using clamp function
+  --> crates/bingo-core/src/bloom_filter.rs:40:29
+   |
+40 |             hash_functions: hash_functions.max(1).min(16), // Clamp to reasonable range
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `hash_functions.clamp(1, 16)`
+   |
+   = note: clamp will panic if max < min
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: clamp-like pattern without using clamp function
+  --> crates/bingo-core/src/bloom_filter.rs:68:9
+   |
+68 |         k.round().max(1.0).min(16.0) as usize
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `k.round().clamp(1.0, 16.0)`
+   |
+   = note: clamp will panic if max < min, min.is_nan(), or max.is_nan()
+   = note: clamp returns NaN if the input is NaN
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: returning the result of a `let` binding from a block
+   --> crates/bingo-core/src/bloom_filter.rs:204:9
+    |
+198 |         let new_filter = Self::with_capacity(new_expected_elements, target_false_positive_rate);
+    |         ---------------------------------------------------------------------------------------- unnecessary `let` binding
+...
+204 |         new_filter
+    |         ^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#let_and_return
+    = note: `-D clippy::let-and-return` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::let_and_return)]`
+help: return the expression directly
+    |
+198 ~         
+199 |
+...
+203 |
+204 ~         Self::with_capacity(new_expected_elements, target_false_positive_rate)
+    |
+
+error: manual `RangeInclusive::contains` implementation
+   --> crates/bingo-core/src/bloom_filter.rs:240:9
+    |
+240 |         util >= 30.0 && util <= 70.0 && fpr < 0.05
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use: `(30.0..=70.0).contains(&util)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_range_contains
+    = note: `-D clippy::manual-range-contains` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_range_contains)]`
+
+error: accessing first element with `chars.get(0)`
+   --> crates/bingo-core/src/calculator/parser.rs:125:28
+    |
+125 |         let current_char = chars.get(0).copied();
+    |                            ^^^^^^^^^^^^ help: try: `chars.first()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#get_first
+    = note: `-D clippy::get-first` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::get_first)]`
+
+error: deref which would be done by auto-deref
+  --> crates/bingo-core/src/calculator/mod.rs:52:27
+   |
+52 |             current_fact: &*EMPTY_FACT,
+   |                           ^^^^^^^^^^^^ help: try: `&EMPTY_FACT`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#explicit_auto_deref
+   = note: `-D clippy::explicit-auto-deref` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::explicit_auto_deref)]`
+
+error: you seem to be trying to use `&Box<T>`. Consider using just `&T`
+   --> crates/bingo-core/src/calculators/mod.rs:196:45
+    |
+196 | pub fn get_calculator(name: &str) -> Option<&'static Box<dyn Calculator>> {
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `&'static dyn Calculator`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#borrowed_box
+    = note: `-D clippy::borrowed-box` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::borrowed_box)]`
+
+error: you should consider adding a `Default` implementation for `DebugHookManager`
+   --> crates/bingo-core/src/debug_hooks.rs:445:5
+    |
+445 | /     pub fn new() -> Self {
+446 | |         Self {
+447 | |             sessions: HashMap::new(),
+448 | |             event_hooks: Vec::new(),
+...   |
+455 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+    = note: `-D clippy::new-without-default` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::new_without_default)]`
+help: try adding this
+    |
+443 + impl Default for DebugHookManager {
+444 +     fn default() -> Self {
+445 +         Self::new()
+446 +     }
+447 + }
+    |
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/debug_hooks.rs:513:40
+    |
+513 |         self.rule_hooks.entry(rule_id).or_insert_with(Vec::new).push(hook);
+    |                                        ^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+    = note: `-D clippy::unwrap-or-default` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unwrap_or_default)]`
+
+error: this `impl` can be derived
+   --> crates/bingo-core/src/debug_hooks.rs:879:1
+    |
+879 | / impl Default for StepData {
+880 | |     fn default() -> Self {
+881 | |         Self {
+882 | |             condition_evaluated: None,
+...   |
+891 | | }
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#derivable_impls
+    = note: `-D clippy::derivable-impls` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::derivable_impls)]`
+help: replace the manual implementation with a derive attribute
+    |
+184 + #[derive(Default)]
+185 ~ pub struct StepData {
+    |
+
+error: you should consider adding a `Default` implementation for `ConsoleEventHook`
+   --> crates/bingo-core/src/debug_hooks.rs:902:5
+    |
+902 | /     pub fn new() -> Self {
+903 | |         Self { name: "ConsoleEventHook".to_string() }
+904 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+    |
+901 + impl Default for ConsoleEventHook {
+902 +     fn default() -> Self {
+903 +         Self::new()
+904 +     }
+905 + }
+    |
+
+error: `format!` in `println!` args
+   --> crates/bingo-core/src/debug_hooks.rs:909:9
+    |
+909 | /         println!(
+910 | |             "[DEBUG] {} - {} - {}",
+911 | |             event
+912 | |                 .timestamp
+...   |
+917 | |             event.description
+918 | |         );
+    | |_________^
+    |
+    = help: combine the `format!(..)` arguments with the outer `println!(..)` call
+    = help: or consider changing `format!` to `format_args!`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#format_in_format_args
+    = note: `-D clippy::format-in-format-args` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::format_in_format_args)]`
+
+error: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bingo-core/src/distributed_rete.rs:493:12
+    |
+493 |     Custom(Box<dyn Fn(&[ClusterNode], &StateType) -> ClusterNodeId + Send + Sync>),
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#type_complexity
+    = note: `-D clippy::type-complexity` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1101:43
+     |
+1101 |         match self.process_incoming_state(state_type.clone(), data).await {
+     |                                           ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+     = note: `-D clippy::clone-on-copy` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::clone_on_copy)]`
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1105:65
+     |
+1105 |                     self.state_coordinator.state_versions.entry(state_type.clone()).or_insert(0);
+     |                                                                 ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: length comparison to one
+    --> crates/bingo-core/src/distributed_rete.rs:1460:16
+     |
+1460 |             if token.fact_ids.len() >= 1 {
+     |                ^^^^^^^^^^^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!token.fact_ids.is_empty()`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#len_zero
+     = note: `-D clippy::len-zero` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::len_zero)]`
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1771:25
+     |
+1771 |             state_type: state_type.clone(),
+     |                         ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1780:52
+     |
+1780 |         self.state_coordinator.pending_sync.insert(state_type.clone(), sync_op);
+     |                                                    ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1784:37
+     |
+1784 |             self.send_state_to_node(state_type.clone(), state_data.clone(), target_node)
+     |                                     ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1892:54
+     |
+1892 |                 match self.perform_consistency_check(state_type.clone()).await {
+     |                                                      ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:1942:29
+     |
+1942 |                 state_type: state_type.clone(),
+     |                             ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: method `default` can be confused for the standard trait method `std::default::Default::default`
+    --> crates/bingo-core/src/distributed_rete.rs:2154:5
+     |
+2154 | /     pub fn default() -> Self {
+2155 | |         let mut supported_types = HashSet::new();
+2156 | |         supported_types.insert("alpha".to_string());
+2157 | |         supported_types.insert("beta".to_string());
+...    |
+2167 | |     }
+     | |_____^
+     |
+     = help: consider implementing the trait `std::default::Default` or choosing a less ambiguous method name
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#should_implement_trait
+     = note: `-D clippy::should-implement-trait` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::should_implement_trait)]`
+
+error: method `default` can be confused for the standard trait method `std::default::Default::default`
+    --> crates/bingo-core/src/distributed_rete.rs:2172:5
+     |
+2172 | /     pub fn default() -> Self {
+2173 | |         Self {
+2174 | |             cpu_utilization: 0.0,
+2175 | |             memory_usage: 0,
+...    |
+2181 | |     }
+     | |_____^
+     |
+     = help: consider implementing the trait `std::default::Default` or choosing a less ambiguous method name
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#should_implement_trait
+
+error: you should consider adding a `Default` implementation for `NodePartitioner`
+    --> crates/bingo-core/src/distributed_rete.rs:2199:5
+     |
+2199 | /     pub fn new() -> Self {
+2200 | |         Self {
+2201 | |             strategy: PartitioningStrategy::LoadAware,
+2202 | |             node_assignments: HashMap::new(),
+...    |
+2206 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2197 + impl Default for NodePartitioner {
+2198 +     fn default() -> Self {
+2199 +         Self::new()
+2200 +     }
+2201 + }
+     |
+
+error: you should consider adding a `Default` implementation for `MessageTracker`
+    --> crates/bingo-core/src/distributed_rete.rs:2224:5
+     |
+2224 | /     pub fn new() -> Self {
+2225 | |         Self {
+2226 | |             pending_acks: HashMap::new(),
+2227 | |             delivery_stats: HashMap::new(),
+...    |
+2230 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2222 + impl Default for MessageTracker {
+2223 +     fn default() -> Self {
+2224 +         Self::new()
+2225 +     }
+2226 + }
+     |
+
+error: you should consider adding a `Default` implementation for `StateCoordinator`
+    --> crates/bingo-core/src/distributed_rete.rs:2235:5
+     |
+2235 | /     pub fn new() -> Self {
+2236 | |         Self {
+2237 | |             state_versions: HashMap::new(),
+2238 | |             pending_sync: HashMap::new(),
+...    |
+2242 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2233 + impl Default for StateCoordinator {
+2234 +     fn default() -> Self {
+2235 +         Self::new()
+2236 +     }
+2237 + }
+     |
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:2262:33
+     |
+2262 |                     state_type: state_type.clone(),
+     |                                 ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: using `clone` on type `StateType` which implements the `Copy` trait
+    --> crates/bingo-core/src/distributed_rete.rs:2270:42
+     |
+2270 |                 self.pending_sync.insert(state_type.clone(), sync_op);
+     |                                          ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `state_type`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy
+
+error: you should consider adding a `Default` implementation for `ConsistencyChecker`
+    --> crates/bingo-core/src/distributed_rete.rs:2356:5
+     |
+2356 | /     pub fn new() -> Self {
+2357 | |         Self {
+2358 | |             check_intervals: HashMap::new(),
+2359 | |             last_checks: HashMap::new(),
+...    |
+2362 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2354 + impl Default for ConsistencyChecker {
+2355 +     fn default() -> Self {
+2356 +         Self::new()
+2357 +     }
+2358 + }
+     |
+
+error: you should consider adding a `Default` implementation for `FaultToleranceManager`
+    --> crates/bingo-core/src/distributed_rete.rs:2367:5
+     |
+2367 | /     pub fn new() -> Self {
+2368 | |         let mut recovery_strategies = HashMap::new();
+...    |
+2388 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2365 + impl Default for FaultToleranceManager {
+2366 +     fn default() -> Self {
+2367 +         Self::new()
+2368 +     }
+2369 + }
+     |
+
+error: you should consider adding a `Default` implementation for `FailureDetector`
+    --> crates/bingo-core/src/distributed_rete.rs:2648:5
+     |
+2648 | /     pub fn new() -> Self {
+2649 | |         Self {
+2650 | |             heartbeat_tracker: HashMap::new(),
+2651 | |             detection_config: FailureDetectionConfig::default(),
+...    |
+2654 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2646 + impl Default for FailureDetector {
+2647 +     fn default() -> Self {
+2648 +         Self::new()
+2649 +     }
+2650 + }
+     |
+
+error: method `default` can be confused for the standard trait method `std::default::Default::default`
+    --> crates/bingo-core/src/distributed_rete.rs:2674:5
+     |
+2674 | /     pub fn default() -> Self {
+2675 | |         Self {
+2676 | |             max_missed_heartbeats: 3,
+2677 | |             confirmation_timeout_ms: 10_000,
+...    |
+2680 | |     }
+     | |_____^
+     |
+     = help: consider implementing the trait `std::default::Default` or choosing a less ambiguous method name
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#should_implement_trait
+
+error: you should consider adding a `Default` implementation for `ReplicationManager`
+    --> crates/bingo-core/src/distributed_rete.rs:2685:5
+     |
+2685 | /     pub fn new() -> Self {
+2686 | |         Self {
+2687 | |             config: ReplicationConfig::default(),
+2688 | |             replica_assignments: HashMap::new(),
+...    |
+2691 | |     }
+     | |_____^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+     |
+2683 + impl Default for ReplicationManager {
+2684 +     fn default() -> Self {
+2685 +         Self::new()
+2686 +     }
+2687 + }
+     |
+
+error: method `default` can be confused for the standard trait method `std::default::Default::default`
+    --> crates/bingo-core/src/distributed_rete.rs:2696:5
+     |
+2696 | /     pub fn default() -> Self {
+2697 | |         Self {
+2698 | |             replica_count: 2,
+2699 | |             sync_mode: SynchronizationMode::SemiSynchronous,
+...    |
+2702 | |     }
+     | |_____^
+     |
+     = help: consider implementing the trait `std::default::Default` or choosing a less ambiguous method name
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#should_implement_trait
+
+error: this `impl` can be derived
+    --> crates/bingo-core/src/distributed_rete.rs:2835:1
+     |
+2835 | / impl Default for DistributedReteStats {
+2836 | |     fn default() -> Self {
+2837 | |         Self {
+2838 | |             cluster_stats: ClusterStats::default(),
+...    |
+2844 | | }
+     | |_^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#derivable_impls
+help: replace the manual implementation with a derive attribute
+     |
+713  + #[derive(Default)]
+714  ~ pub struct DistributedReteStats {
+     |
+
+error: use of `or_insert_with` to construct default value
+  --> crates/bingo-core/src/fact_store.rs:76:22
+   |
+76 |                     .or_insert_with(Vec::new)
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: use of `or_insert_with` to construct default value
+  --> crates/bingo-core/src/fact_store.rs:74:22
+   |
+74 |                     .or_insert_with(HashMap::new)
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: clamp-like pattern without using clamp function
+   --> crates/bingo-core/src/fact_store.rs:624:35
+    |
+624 |             let partition_count = (estimated_facts / 100_000).min(16).max(4); // 4-16 partitions
+    |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `(estimated_facts / 100_000).clamp(4, 16)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: clamp-like pattern without using clamp function
+   --> crates/bingo-core/src/fact_store.rs:629:30
+    |
+629 |             let cache_size = (estimated_facts / 10).min(1000).max(100);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `(estimated_facts / 10).clamp(100, 1000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_clamp
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/incremental_construction.rs:124:47
+    |
+124 |             self.fact_to_nodes.entry(fact_id).or_insert_with(HashSet::new).insert(node_id);
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: this `map_or` can be simplified
+   --> crates/bingo-core/src/incremental_construction.rs:288:13
+    |
+288 | /             stats.last_used.map_or(false, |last_used| {
+289 | |                 now.duration_since(last_used) < age_threshold
+290 | |             })
+    | |______________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_map_or
+    = note: `-D clippy::unnecessary-map-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_map_or)]`
+help: use is_some_and instead
+    |
+288 -             stats.last_used.map_or(false, |last_used| {
+288 +             stats.last_used.is_some_and(|last_used| {
+    |
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/incremental_construction.rs:311:39
+    |
+311 |         self.adjacency.entry(node_id).or_insert_with(HashSet::new);
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/incremental_construction.rs:312:47
+    |
+312 |         self.reverse_adjacency.entry(node_id).or_insert_with(HashSet::new);
+    |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/incremental_construction.rs:318:36
+    |
+318 |         self.adjacency.entry(from).or_insert_with(HashSet::new).insert(to);
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/incremental_construction.rs:319:42
+    |
+319 |         self.reverse_adjacency.entry(to).or_insert_with(HashSet::new).insert(from);
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: you should consider adding a `Default` implementation for `ReteMemoryProfiler`
+   --> crates/bingo-core/src/memory_profiler.rs:139:5
+    |
+139 | /     pub fn new() -> Self {
+140 | |         Self::with_config(MemoryProfilerConfig::default())
+141 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+    |
+137 + impl Default for ReteMemoryProfiler {
+138 +     fn default() -> Self {
+139 +         Self::new()
+140 +     }
+141 + }
+    |
+
+error: returning the result of a `let` binding from a block
+   --> crates/bingo-core/src/memory_profiler.rs:402:9
+    |
+399 | /         let fragmentation =
+400 | |             (allocation_churn / 1000.0 * utilization_factor * alloc_dealloc_ratio).min(100.0);
+    | |______________________________________________________________________________________________- unnecessary `let` binding
+401 |
+402 |           fragmentation
+    |           ^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#let_and_return
+help: return the expression directly
+    |
+399 ~         
+400 |
+401 ~         (allocation_churn / 1000.0 * utilization_factor * alloc_dealloc_ratio).min(100.0)
+    |
+
+error: implementation of inherent method `to_string(&self) -> String` for type `memory_profiler::MemoryUsageReport`
+   --> crates/bingo-core/src/memory_profiler.rs:571:5
+    |
+571 | /     pub fn to_string(&self) -> String {
+572 | |         format!(
+573 | |             "Memory Usage Report\n\
+574 | |              ==================\n\
+...   |
+594 | |     }
+    | |_____^
+    |
+    = help: implement trait `Display` for type `memory_profiler::MemoryUsageReport` instead
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#inherent_to_string
+    = note: `-D clippy::inherent-to-string` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::inherent_to_string)]`
+
+error: this `.filter_map` can be written more simply
+   --> crates/bingo-core/src/pattern_cache.rs:391:44
+    |
+391 |               let field_conditions: Vec<_> = conditions
+    |  ____________________________________________^
+392 | |                 .iter()
+393 | |                 .filter_map(|cond| {
+394 | |                     if let Condition::Simple { field: cond_field, .. } = cond {
+...   |
+403 | |                 })
+    | |__________________^ help: try instead: `filter`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_filter_map
+    = note: `-D clippy::unnecessary-filter-map` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_filter_map)]`
+
+error: you should consider adding a `Default` implementation for `PerformanceBenchmarkSuite`
+   --> crates/bingo-core/src/performance_regression_testing.rs:269:5
+    |
+269 | /     pub fn new() -> Self {
+270 | |         let scenarios = Self::create_default_scenarios();
+271 | |
+272 | |         Self {
+...   |
+278 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+    |
+267 + impl Default for PerformanceBenchmarkSuite {
+268 +     fn default() -> Self {
+269 +         Self::new()
+270 +     }
+271 + }
+    |
+
+error: calling `push_str()` using a single-character string literal
+   --> crates/bingo-core/src/performance_regression_testing.rs:802:13
+    |
+802 |             report.push_str("\n");
+    |             ^^^^^^^^^^^^^^^^^^^^^ help: consider using `push` with a character literal: `report.push('\n')`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#single_char_add_str
+    = note: `-D clippy::single-char-add-str` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::single_char_add_str)]`
+
+error: this `impl` can be derived
+   --> crates/bingo-core/src/performance_tracking.rs:648:1
+    |
+648 | / impl Default for TimingStatistics {
+649 | |     fn default() -> Self {
+650 | |         Self {
+651 | |             total_time: Duration::default(),
+...   |
+660 | | }
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#derivable_impls
+help: replace the manual implementation with a derive attribute
+    |
+67  + #[derive(Default)]
+68  ~ pub struct TimingStatistics {
+    |
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1185:75
+     |
+1185 | ...                   self.debug_hook_manager.trigger_token_created(&token, *node_id);
+     |                                                                     ^^^^^^ help: change this to: `token`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+     = note: `-D clippy::needless-borrow` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::needless_borrow)]`
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1235:37
+     |
+1235 | ...                   &token,
+     |                       ^^^^^^ help: change this to: `token`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1266:45
+     |
+1266 | ...                   &token,
+     |                       ^^^^^^ help: change this to: `token`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1301:33
+     |
+1301 | ...                   &token,
+     |                       ^^^^^^ help: change this to: `token`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1514:70
+     |
+1514 |                         if let Some(beta_node) = self.beta_nodes.get(&beta_id) {
+     |                                                                      ^^^^^^^^ help: change this to: `beta_id`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+
+error: this `.into_iter()` call is equivalent to `.iter()` and will not consume the `Vec`
+    --> crates/bingo-core/src/rete_network.rs:1526:53
+     |
+1526 | ...                   for token in tokens.into_iter() {
+     |                                           ^^^^^^^^^ help: call directly: `iter`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#into_iter_on_ref
+     = note: `-D clippy::into-iter-on-ref` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::into_iter_on_ref)]`
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1529:41
+     |
+1529 | ...                   &token,
+     |                       ^^^^^^ help: change this to: `token`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> crates/bingo-core/src/rete_network.rs:1797:45
+     |
+1797 | ...                   &token,
+     |                       ^^^^^^ help: change this to: `token`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_borrow
+
+error: this `.filter_map` can be written more simply
+    --> crates/bingo-core/src/rete_network.rs:2165:44
+     |
+2165 |               let field_conditions: Vec<_> = conditions
+     |  ____________________________________________^
+2166 | |                 .iter()
+2167 | |                 .filter_map(|cond| {
+2168 | |                     if let Condition::Simple { field: cond_field, .. } = cond {
+...    |
+2177 | |                 })
+     | |__________________^ help: try instead: `filter`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unnecessary_filter_map
+
+error: you should consider adding a `Default` implementation for `RuleDependencyAnalyzer`
+   --> crates/bingo-core/src/rule_visualization.rs:209:5
+    |
+209 | /     pub fn new() -> Self {
+210 | |         Self {
+211 | |             rules: Vec::new(),
+212 | |             dependency_graph: RuleDependencyGraph::new(),
+...   |
+217 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+    |
+207 + impl Default for RuleDependencyAnalyzer {
+208 +     fn default() -> Self {
+209 +         Self::new()
+210 +     }
+211 + }
+    |
+
+error: use of `or_insert_with` to construct default value
+   --> crates/bingo-core/src/rule_visualization.rs:290:22
+    |
+290 |                     .or_insert_with(Vec::new)
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `or_default()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#unwrap_or_default
+
+error: parameter is only used in recursion
+   --> crates/bingo-core/src/rule_visualization.rs:310:39
+    |
+310 |     fn extract_fields_from_condition(&self, condition: &Condition, fields: &mut HashSet<String>) {
+    |                                       ^^^^
+    |
+note: parameter used here
+   --> crates/bingo-core/src/rule_visualization.rs:317:21
+    |
+317 |                     self.extract_fields_from_condition(sub_condition, fields);
+    |                     ^^^^
+...
+326 |                     self.extract_fields_from_condition(having, fields);
+    |                     ^^^^
+...
+331 |                     self.extract_fields_from_condition(filter, fields);
+    |                     ^^^^
+...
+334 |                     self.extract_fields_from_condition(having, fields);
+    |                     ^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#only_used_in_recursion
+
+error: manual implementation of `Option::map`
+   --> crates/bingo-core/src/unified_fact_store.rs:276:17
+    |
+276 | /                 if let Some(pos) = vec.iter().position(|f| f.id == fact_id) {
+277 | |                     Some(vec.remove(pos))
+278 | |                 } else {
+279 | |                     None
+280 | |                 }
+    | |_________________^ help: try: `vec.iter().position(|f| f.id == fact_id).map(|pos| vec.remove(pos))`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#manual_map
+    = note: `-D clippy::manual-map` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_map)]`
+
+error: you should consider adding a `Default` implementation for `MemoryMonitor`
+   --> crates/bingo-core/src/unified_memory_coordinator.rs:115:5
+    |
+115 | /     pub fn new() -> Self {
+116 | |         Self {
+117 | |             current_stats: None,
+118 | |             usage_history: Vec::with_capacity(1000), // Keep 1000 measurements
+...   |
+124 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+    |
+113 + impl Default for MemoryMonitor {
+114 +     fn default() -> Self {
+115 +         Self::new()
+116 +     }
+117 + }
+    |
+
+error: could not compile `bingo-core` (lib) due to 77 previous errors

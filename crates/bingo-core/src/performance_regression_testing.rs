@@ -264,6 +264,12 @@ pub struct BaselineComparison {
     pub confidence_level: f64,
 }
 
+impl Default for PerformanceBenchmarkSuite {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerformanceBenchmarkSuite {
     /// Create a new benchmark suite with default scenarios
     pub fn new() -> Self {
@@ -799,7 +805,7 @@ impl BenchmarkSummary {
                 ));
             }
 
-            report.push_str("\n");
+            report.push('\n');
         }
 
         report
@@ -814,7 +820,6 @@ impl BenchmarkSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::optimization_coordinator::OptimizationCoordinator;
 
     #[test]
     fn test_benchmark_suite_creation() {

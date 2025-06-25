@@ -5,18 +5,16 @@ use crate::incremental_processing::{
     ChangeTrackingStats, FactChangeTracker, IncrementalProcessingPlan, ProcessingMode,
 };
 use crate::memory_pools::{ReteMemoryPools, RetePoolStats};
-use crate::memory_profiler::{
-    ComponentMemoryStats, MemoryPressureLevel, MemoryProfilerConfig, ReteMemoryProfiler,
-};
+use crate::memory_profiler::{MemoryPressureLevel, MemoryProfilerConfig, ReteMemoryProfiler};
 use crate::node_sharing::{MemorySavings, NodeSharingRegistry, NodeSharingStats};
 use crate::pattern_cache::{CompilationPlan, PatternCache, PatternCacheStats};
-use crate::performance_tracking::{ExecutionContext, PerformanceConfig, RulePerformanceTracker};
+use crate::performance_tracking::{PerformanceConfig, RulePerformanceTracker};
 use crate::rete_nodes::*;
 use crate::types::{ActionType, Condition, EngineStats, Fact, FactId, FactValue, Operator, Rule};
 use crate::unified_fact_store::{OptimizedFactStore, OptimizedStoreStats};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use tracing::{debug, error, field, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 /// The RETE network implementation
 pub struct ReteNetwork {
@@ -147,6 +145,7 @@ impl ReteNetwork {
     }
 
     /// Clean up dangling successor references after rule removal
+    #[allow(dead_code)]
     fn cleanup_successor_references(&mut self, _rule_id: u64) {
         // For now, we'll implement a simple cleanup that removes references to non-existent nodes
         // This is a simplified approach - in a production system you'd want more sophisticated cleanup
@@ -322,7 +321,7 @@ impl ReteNetwork {
     fn cleanup_pattern_cache_for_rule(&mut self, rule: &Rule) {
         // Remove the specific pattern for this rule from the cache
         // This improves cache efficiency by removing unused patterns
-        let mut pattern_cache = &mut self.pattern_cache;
+        let pattern_cache = &mut self.pattern_cache;
 
         // Try to remove the rule's pattern from cache
         // Note: This uses the same signature generation as compilation
@@ -1183,7 +1182,7 @@ impl ReteNetwork {
                     if !tokens.is_empty() {
                         // Trigger token created hooks for each token
                         for token in &tokens {
-                            self.debug_hook_manager.trigger_token_created(&token, *node_id);
+                            self.debug_hook_manager.trigger_token_created(token, *node_id);
                         }
                         alpha_tokens.insert(*node_id, tokens);
                     }
@@ -1233,7 +1232,7 @@ impl ReteNetwork {
                             // Trigger token propagation hooks
                             for token in &tokens {
                                 self.debug_hook_manager.trigger_token_propagated(
-                                    &token,
+                                    token,
                                     alpha_id,
                                     successor_id,
                                 );
@@ -1259,12 +1258,12 @@ impl ReteNetwork {
                                     beta_node.left_memory.push(token.clone());
 
                                     // Try to join with existing right memory using optimized fact lookup
-                                    let join_attempts = right_memory.len();
+                                    let _join_attempts = right_memory.len();
                                     let mut successful_joins = 0;
 
                                     for right_token in right_memory {
                                         if Self::tokens_match_optimized_static(
-                                            &token,
+                                            token,
                                             right_token,
                                             join_conditions,
                                             &mut self.fact_lookup,
@@ -1299,7 +1298,7 @@ impl ReteNetwork {
                         // Trigger token propagation hooks from alpha to terminal
                         for token in &tokens {
                             self.debug_hook_manager.trigger_token_propagated(
-                                &token,
+                                token,
                                 alpha_id,
                                 successor_id,
                             );
@@ -1479,8 +1478,8 @@ impl ReteNetwork {
                                         }
                                         ActionType::CallCalculator {
                                             calculator_name,
-                                            input_mapping,
-                                            output_field,
+                                            input_mapping: _,
+                                            output_field: _,
                                         } => {
                                             // TODO: Implement CallCalculator action
                                             tracing::warn!(
@@ -1512,7 +1511,7 @@ impl ReteNetwork {
                 // Process beta node outputs to terminals
                 for (beta_id, tokens) in &beta_tokens {
                     let successor_ids: Vec<NodeId> =
-                        if let Some(beta_node) = self.beta_nodes.get(&beta_id) {
+                        if let Some(beta_node) = self.beta_nodes.get(beta_id) {
                             beta_node.successors.iter().copied().collect()
                         } else {
                             continue;
@@ -1524,10 +1523,10 @@ impl ReteNetwork {
                                 let mut terminal_output = Vec::new();
 
                                 // Process tokens with move semantics to avoid cloning
-                                for token in tokens.into_iter() {
+                                for token in tokens.iter() {
                                     // Trigger token propagation hooks from beta to terminal
                                     self.debug_hook_manager.trigger_token_propagated(
-                                        &token,
+                                        token,
                                         *beta_id,
                                         successor_id,
                                     );
@@ -1694,8 +1693,8 @@ impl ReteNetwork {
                                             }
                                             ActionType::CallCalculator {
                                                 calculator_name,
-                                                input_mapping,
-                                                output_field,
+                                                input_mapping: _,
+                                                output_field: _,
                                             } => {
                                                 // TODO: Implement CallCalculator action
                                                 tracing::warn!(
@@ -1795,7 +1794,7 @@ impl ReteNetwork {
                                     // Try to join with existing right memory using optimized fact lookup
                                     for right_token in right_memory {
                                         if Self::tokens_match_optimized_static(
-                                            &token,
+                                            token,
                                             right_token,
                                             join_conditions,
                                             &mut self.fact_lookup,
@@ -1936,8 +1935,8 @@ impl ReteNetwork {
                                             }
                                             ActionType::CallCalculator {
                                                 calculator_name,
-                                                input_mapping,
-                                                output_field,
+                                                input_mapping: _,
+                                                output_field: _,
                                             } => {
                                                 // TODO: Implement CallCalculator action
                                                 tracing::warn!(
@@ -1948,8 +1947,9 @@ impl ReteNetwork {
                                             }
                                         }
                                     }
-                                    results.extend(terminal_output.clone());
                                 }
+                                // Add all terminal output facts to results after processing all tokens
+                                results.extend(terminal_output);
                             }
                         }
                     }
@@ -2164,15 +2164,11 @@ impl ReteNetwork {
         for &field in &join_fields {
             let field_conditions: Vec<_> = conditions
                 .iter()
-                .filter_map(|cond| {
+                .filter(|cond| {
                     if let Condition::Simple { field: cond_field, .. } = cond {
-                        if cond_field == field {
-                            Some(cond)
-                        } else {
-                            None
-                        }
+                        cond_field == field
                     } else {
-                        None
+                        false
                     }
                 })
                 .collect();
@@ -2687,6 +2683,7 @@ impl ReteNetwork {
     // === SAFE NODE ACCESS HELPER METHODS ===
 
     /// Safely get mutable reference to beta node with descriptive error
+    #[allow(dead_code)]
     fn get_beta_node_mut(
         &mut self,
         node_id: NodeId,
@@ -2698,6 +2695,7 @@ impl ReteNetwork {
     }
 
     /// Safely get mutable reference to terminal node with descriptive error
+    #[allow(dead_code)]
     fn get_terminal_node_mut(
         &mut self,
         node_id: NodeId,
@@ -2709,6 +2707,7 @@ impl ReteNetwork {
     }
 
     /// Safely get immutable reference to alpha node with descriptive error
+    #[allow(dead_code)]
     fn get_alpha_node(&self, node_id: NodeId, context: &str) -> anyhow::Result<&AlphaNode> {
         self.alpha_nodes
             .get(&node_id)
@@ -2716,6 +2715,7 @@ impl ReteNetwork {
     }
 
     /// Safely get mutable reference to alpha node with descriptive error
+    #[allow(dead_code)]
     fn get_alpha_node_mut(
         &mut self,
         node_id: NodeId,

@@ -110,6 +110,12 @@ impl Default for MemoryCoordinatorConfig {
     }
 }
 
+impl Default for MemoryMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MemoryMonitor {
     /// Create a new memory monitor
     pub fn new() -> Self {
@@ -464,7 +470,6 @@ impl MemoryInfo {
 pub struct CacheMemoryConsumer<K, V> {
     name: String,
     cache: Arc<Mutex<LruCache<K, V>>>,
-    original_capacity: usize,
 }
 
 impl<K, V> CacheMemoryConsumer<K, V>
@@ -473,8 +478,7 @@ where
     V: Clone + Send + Sync + 'static,
 {
     pub fn new(name: String, cache: Arc<Mutex<LruCache<K, V>>>) -> Self {
-        let original_capacity = cache.lock().unwrap().len();
-        Self { name, cache, original_capacity }
+        Self { name, cache }
     }
 }
 

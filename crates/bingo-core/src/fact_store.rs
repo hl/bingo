@@ -71,9 +71,9 @@ impl VecFactStore {
 
                 self.field_indexes
                     .entry(field_name.clone())
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .entry(value_key)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(fact.id);
             }
         }
@@ -184,7 +184,7 @@ impl VecFactStore {
     }
 }
 
-#[cfg(feature = "arena-alloc")]
+#[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
 mod arena_store {
     use super::*;
     use bumpalo::Bump;
@@ -229,9 +229,9 @@ mod arena_store {
 
                     self.field_indexes
                         .entry(field_name.clone())
-                        .or_insert_with(HashMap::new)
+                        .or_default()
                         .entry(value_key)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(fact.id);
                 }
             }
@@ -244,6 +244,10 @@ mod arena_store {
                 FactValue::Integer(i) => i.to_string(),
                 FactValue::Float(f) => f.to_string(),
                 FactValue::Boolean(b) => b.to_string(),
+                FactValue::Array(_) => "[array]".to_string(),
+                FactValue::Object(_) => "[object]".to_string(),
+                FactValue::Date(date) => date.to_rfc3339(),
+                FactValue::Null => "[null]".to_string(),
             }
         }
     }
@@ -326,7 +330,7 @@ mod arena_store {
     }
 }
 
-#[cfg(feature = "arena-alloc")]
+#[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
 pub use arena_store::ArenaFactStore;
 
 /// Cached fact store that wraps another store with LRU caching
@@ -478,6 +482,7 @@ impl PartitionedFactStore {
     }
 
     /// Get partition for a field value (for efficient querying)
+    #[allow(dead_code)]
     fn partition_for_field_value(&self, field_value: &FactValue) -> Option<usize> {
         // Hash the field value to determine partition
         use std::collections::hash_map::DefaultHasher;
@@ -500,6 +505,7 @@ impl PartitionedFactStore {
     }
 
     /// Get the least loaded partition index
+    #[allow(dead_code)]
     fn least_loaded_partition(&self) -> usize {
         self.partitions
             .iter()
@@ -579,9 +585,8 @@ pub struct FactStoreFactory;
 impl FactStoreFactory {
     /// Create the best fact store for the given capacity and performance requirements
     pub fn create_optimized(capacity_hint: usize) -> Box<dyn FactStore> {
-        // For now, always use Vec-based store for thread safety
-        // Arena allocator would need thread-safe implementation
-        Box::new(VecFactStore::with_capacity(capacity_hint))
+        // Use the large dataset optimization logic for proper memory efficiency
+        Self::create_for_large_dataset(capacity_hint)
     }
 
     /// Create a simple Vec-based store for development and testing
@@ -595,7 +600,7 @@ impl FactStoreFactory {
     }
 
     /// Create an arena-based store for maximum performance (requires arena-alloc feature)
-    #[cfg(feature = "arena-alloc")]
+    #[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
     pub fn create_arena(capacity: usize) -> Box<dyn FactStore> {
         Box::new(ArenaFactStore::with_capacity(capacity))
     }
@@ -615,12 +620,12 @@ impl FactStoreFactory {
     pub fn create_for_large_dataset(estimated_facts: usize) -> Box<dyn FactStore> {
         if estimated_facts > 1_000_000 {
             // Use partitioned store for very large datasets
-            let partition_count = (estimated_facts / 100_000).min(16).max(4); // 4-16 partitions
+            let partition_count = (estimated_facts / 100_000).clamp(4, 16); // 4-16 partitions
             let capacity_per_partition = estimated_facts / partition_count + 1000;
             Self::create_partitioned(partition_count, capacity_per_partition)
         } else if estimated_facts > 10_000 {
             // Use cached store for medium datasets
-            let cache_size = (estimated_facts / 10).min(1000).max(100);
+            let cache_size = (estimated_facts / 10).clamp(100, 1000);
             Self::create_cached(estimated_facts, cache_size)
         } else {
             // Use simple store for small datasets

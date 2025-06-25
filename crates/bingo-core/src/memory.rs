@@ -133,7 +133,7 @@ mod tests {
         assert!(start.rss_bytes > 0);
         assert!(end.rss_bytes > 0);
 
-        println!(
+        eprintln!(
             "Memory tracking test: start={}, end={}, delta={}",
             start.format_rss(),
             end.format_rss(),

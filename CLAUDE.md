@@ -147,6 +147,8 @@ Custom clippy.toml with performance-focused lints:
 - Integration tests for end-to-end workflows
 - Performance benchmarks with Criterion
 - Property-based testing with proptest for edge cases
+- **BSSN Principle**: You MUST NOT implement any placeholder or future code, ONLY implement and suggest code that is needed for now
+- **Testing Non-Negotiables**: When it comes to tests, linters, code style checks, there is ZERO compromises, everything MUST pass
 
 ### Performance Considerations
 - All hot paths are instrumented with tracing

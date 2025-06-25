@@ -75,12 +75,12 @@ fn test_extended_fact_value_display() {
     // Test Date display
     if let Some(FactValue::Date(_)) = fact.data.fields.get("hire_date") {
         // Date exists and can be displayed
-        assert!(true);
+        // Test passes if we reach this point
     }
 
     // Test Null display
     if let Some(FactValue::Null) = fact.data.fields.get("bonus") {
-        assert!(true);
+        // Test passes if we reach this point
     }
 }
 

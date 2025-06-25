@@ -344,7 +344,7 @@ mod tests {
 
         // Verify that a placeholder alpha node was created
         assert!(
-            network.alpha_nodes.len() >= 1,
+            !network.alpha_nodes.is_empty(),
             "Should have created at least one alpha node for aggregation"
         );
 

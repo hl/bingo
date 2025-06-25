@@ -301,7 +301,7 @@ impl AdaptiveBackendSelector {
     fn recommend_large_dataset_strategy(
         characteristics: &DatasetCharacteristics,
     ) -> BackendStrategy {
-        let partition_count = (characteristics.fact_count / 100_000).min(16).max(4);
+        let partition_count = (characteristics.fact_count / 100_000).clamp(4, 16);
         let cache_per_partition = characteristics.memory_budget / (partition_count * 8); // Reserve memory for partitions
 
         BackendStrategy::Partitioned {
@@ -330,8 +330,8 @@ impl AdaptiveBackendSelector {
         characteristics: &DatasetCharacteristics,
     ) -> BackendStrategy {
         BackendStrategy::WriteOptimized {
-            buffer_size: (characteristics.growth_rate as usize * 10).min(10000).max(100),
-            batch_threshold: (characteristics.growth_rate as usize / 10).min(1000).max(10),
+            buffer_size: (characteristics.growth_rate as usize * 10).clamp(100, 10000),
+            batch_threshold: (characteristics.growth_rate as usize / 10).clamp(10, 1000),
             bloom_filter: characteristics.miss_rate > 0.2,
         }
     }
@@ -347,7 +347,7 @@ impl AdaptiveBackendSelector {
             AccessPattern::Sequential => 0.6,
         };
 
-        ((base_size as f64 * pattern_multiplier) as usize).min(100000).max(100)
+        ((base_size as f64 * pattern_multiplier) as usize).clamp(100, 100000)
     }
 }
 
@@ -752,7 +752,8 @@ mod tests {
         assert_eq!(characteristics.access_patterns, AccessPattern::Sequential);
 
         // Recent access pattern (high IDs, not sequential)
-        let recent_accesses: Vec<FactId> = vec![950, 952, 965, 967, 970, 980, 990, 995, 998, 999, 1000, 1005];
+        let recent_accesses: Vec<FactId> =
+            vec![950, 952, 965, 967, 970, 980, 990, 995, 998, 999, 1000, 1005];
         characteristics.analyze_access_patterns(&recent_accesses);
         assert_eq!(characteristics.access_patterns, AccessPattern::Recency);
     }

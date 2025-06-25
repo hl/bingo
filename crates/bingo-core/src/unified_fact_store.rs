@@ -273,11 +273,7 @@ impl OptimizedFactStore {
         match &mut self.storage {
             FactStorageBackend::HashMap(map) => map.remove(&fact_id),
             FactStorageBackend::Vector(vec) => {
-                if let Some(pos) = vec.iter().position(|f| f.id == fact_id) {
-                    Some(vec.remove(pos))
-                } else {
-                    None
-                }
+                vec.iter().position(|f| f.id == fact_id).map(|pos| vec.remove(pos))
             }
         }
     }

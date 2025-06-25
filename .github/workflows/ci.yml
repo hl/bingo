@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   test:
@@ -41,7 +42,7 @@ jobs:
     - name: Check formatting
       run: cargo fmt -- --check
 
-    - name: Run clippy
+    - name: Run clippy (ZERO warnings tolerance)
       run: cargo clippy --all-targets --all-features -- -D warnings
 
     - name: Build
@@ -52,6 +53,9 @@ jobs:
 
     - name: Run tests with all features
       run: cargo test --all-features --verbose
+
+    - name: Run scaling validation tests
+      run: cargo test --test scaling_validation_test --release --verbose
 
     - name: Build documentation
       run: cargo doc --no-deps --document-private-items

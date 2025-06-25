@@ -9,7 +9,6 @@ use crate::adaptive_backends::{
 use crate::advanced_indexing::{AdvancedFieldIndexer, IndexStrategyType};
 use crate::bloom_filter::{FactBloomConfig, FactBloomFilter};
 use crate::optimization_coordinator::{OptimizationConfig, OptimizationCoordinator};
-use crate::performance_regression_testing::TemporalPattern;
 use crate::performance_regression_testing::{BenchmarkConfig, PerformanceBenchmarkSuite};
 use crate::rete_network::ReteNetwork;
 use crate::types::{Fact, FactData, FactId, FactValue};
@@ -303,7 +302,7 @@ impl OptimizationDemo {
         // Get stats from optimization components
         let adaptive_stats = self.adaptive_store.stats();
         let indexer_stats = self.field_indexer.get_stats();
-        let bloom_stats = self.bloom_filter.stats();
+        let _bloom_stats = self.bloom_filter.stats();
 
         Ok(PerformanceMetrics {
             avg_processing_time: processing_time,

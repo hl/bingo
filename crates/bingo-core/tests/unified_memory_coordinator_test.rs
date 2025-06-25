@@ -381,7 +381,7 @@ fn test_memory_coordination_with_unified_statistics() {
     // Verify comprehensive integration
     assert!(comprehensive_stats.fact_storage.total_facts > 0);
     assert!(comprehensive_stats.caching.total_hits > 0);
-    assert!(comprehensive_stats.memory.pool_hits >= 0); // Pools may not be used in this test
+    // pool_hits is always >= 0 by type definition - pools may not be used in this test
     assert!(comprehensive_stats.optimization_efficiency_score() > 0.0);
 
     // Test memory coordination

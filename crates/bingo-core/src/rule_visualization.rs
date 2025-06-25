@@ -204,6 +204,12 @@ pub struct VisualizationOptions {
     pub show_field_deps: bool,
 }
 
+impl Default for RuleDependencyAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RuleDependencyAnalyzer {
     /// Create new dependency analyzer
     pub fn new() -> Self {
@@ -287,7 +293,7 @@ impl RuleDependencyAnalyzer {
                 self.dependency_graph
                     .reverse_dependencies
                     .entry(dep_rule_id)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(*rule_id);
             }
         }
@@ -307,6 +313,7 @@ impl RuleDependencyAnalyzer {
     }
 
     /// Recursively extract fields from a condition
+    #[allow(clippy::only_used_in_recursion)]
     fn extract_fields_from_condition(&self, condition: &Condition, fields: &mut HashSet<String>) {
         match condition {
             Condition::Simple { field, .. } => {

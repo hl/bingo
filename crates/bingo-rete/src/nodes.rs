@@ -187,7 +187,7 @@ impl TerminalNode {
     pub fn process_tokens(
         &mut self,
         tokens: Vec<Token>,
-        facts: &mut Vec<Fact>,
+        facts: &mut [Fact],
     ) -> anyhow::Result<Vec<Fact>> {
         let mut results = Vec::new();
 
@@ -256,7 +256,11 @@ impl TerminalNode {
                             "Alert triggered: {}", message
                         );
                     }
-                    ActionType::CallCalculator { input_mapping, output_field, calculator_name } => {
+                    ActionType::CallCalculator {
+                        input_mapping: _,
+                        output_field,
+                        calculator_name,
+                    } => {
                         tracing::warn!(
                             rule_id = self.rule_id,
                             calculator_name = %calculator_name,

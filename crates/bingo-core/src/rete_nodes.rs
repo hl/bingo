@@ -895,7 +895,11 @@ impl TerminalNode {
                             "Alert triggered: {}", message
                         );
                     }
-                    ActionType::CallCalculator { calculator_name, input_mapping, output_field } => {
+                    ActionType::CallCalculator {
+                        calculator_name,
+                        input_mapping: _,
+                        output_field: _,
+                    } => {
                         // TODO: Implement CallCalculator action
                         tracing::warn!(
                             "CallCalculator action not yet implemented in rete_nodes: {}",

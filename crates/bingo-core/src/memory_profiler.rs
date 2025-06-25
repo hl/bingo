@@ -88,7 +88,7 @@ impl Default for MemoryProfilerConfig {
             },
             enable_auto_optimization: true,
             max_growth_rate: 10.0 * 1024.0 * 1024.0, // 10MB/sec
-            history_retention: Duration::from_mins(30),
+            history_retention: <Duration as DurationExt>::from_mins(30),
         }
     }
 }
@@ -132,6 +132,12 @@ pub enum OptimizationEventType {
     CacheEviction,
     /// Pool consolidation to reduce fragmentation
     PoolConsolidation,
+}
+
+impl Default for ReteMemoryProfiler {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReteMemoryProfiler {
@@ -374,6 +380,7 @@ impl ReteMemoryProfiler {
         }
     }
 
+    #[allow(dead_code)]
     fn calculate_fragmentation_score(&self, stats: &ComponentMemoryStats) -> f64 {
         Self::calculate_fragmentation_score_static(stats)
     }
@@ -395,10 +402,7 @@ impl ReteMemoryProfiler {
         let allocation_churn = (stats.allocation_count + stats.deallocation_count) as f64;
         let utilization_factor = (100.0 - stats.utilization_percent) / 100.0;
 
-        let fragmentation =
-            (allocation_churn / 1000.0 * utilization_factor * alloc_dealloc_ratio).min(100.0);
-
-        fragmentation
+        (allocation_churn / 1000.0 * utilization_factor * alloc_dealloc_ratio).min(100.0)
     }
 
     fn trigger_auto_optimization(&mut self) {
@@ -565,10 +569,10 @@ pub struct MemoryUsageReport {
     pub recommendations: Vec<String>,
 }
 
-impl MemoryUsageReport {
-    /// Format the report as a human-readable string
-    pub fn to_string(&self) -> String {
-        format!(
+impl std::fmt::Display for MemoryUsageReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
             "Memory Usage Report\n\
              ==================\n\
              Timestamp: {:?}\n\

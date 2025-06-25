@@ -1398,6 +1398,7 @@ impl CalculatorFunction for FormatFunction {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 
@@ -1429,9 +1430,16 @@ mod tests {
 
         // Test round
         let result = registry
-            .call("round", &[FactValue::Float(3.14159), FactValue::Integer(2)])
+            .call(
+                "round",
+                &[FactValue::Float(std::f64::consts::PI), FactValue::Integer(2)],
+            )
             .unwrap();
-        assert_eq!(result, FactValue::Float(3.14));
+        // PI rounded to 2 decimal places is 3.14
+        assert_eq!(
+            result,
+            FactValue::Float((std::f64::consts::PI * 100.0).round() / 100.0)
+        );
     }
 
     #[test]

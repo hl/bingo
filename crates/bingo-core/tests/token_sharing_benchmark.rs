@@ -3,8 +3,8 @@
 //! This module demonstrates the memory benefits of token sharing.
 
 use bingo_core::{
-    Fact, FactData, FactValue, ReteNetwork, Rule, Condition, Operator, Action, ActionType,
-    Token, TokenPool, FactIdSet, memory::MemoryStats,
+    Action, ActionType, Condition, Fact, FactData, FactIdSet, FactValue, Operator, ReteNetwork,
+    Rule, Token, TokenPool, memory::MemoryStats,
 };
 use std::collections::HashMap;
 

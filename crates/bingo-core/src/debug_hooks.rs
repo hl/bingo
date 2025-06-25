@@ -180,7 +180,7 @@ pub enum StepType {
 }
 
 /// Additional data for execution steps
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StepData {
     /// Condition that was evaluated (if applicable)
     pub condition_evaluated: Option<String>,
@@ -375,7 +375,7 @@ pub trait EventHook: Send + Sync + std::fmt::Debug {
     fn name(&self) -> &str;
 
     /// Check if hook should process this event
-    fn should_process(&self, event: &DebugEvent) -> bool {
+    fn should_process(&self, _event: &DebugEvent) -> bool {
         true // Default: process all events
     }
 }
@@ -438,6 +438,12 @@ pub struct DebugContext {
     pub timestamp: SystemTime,
     /// Additional context data
     pub context_data: HashMap<String, String>,
+}
+
+impl Default for DebugHookManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DebugHookManager {
@@ -510,7 +516,7 @@ impl DebugHookManager {
             hook_name = hook.name(),
             "Adding rule firing hook"
         );
-        self.rule_hooks.entry(rule_id).or_insert_with(Vec::new).push(hook);
+        self.rule_hooks.entry(rule_id).or_default().push(hook);
     }
 
     /// Add token propagation hook
@@ -741,10 +747,10 @@ impl DebugHookManager {
     /// Emit debug event
     fn emit_event(&mut self, event: DebugEvent) {
         // Sample events if configured
-        if self.config.event_sample_rate < 1.0 {
-            if rand::random::<f64>() > self.config.event_sample_rate {
-                return;
-            }
+        if self.config.event_sample_rate < 1.0
+            && rand::random::<f64>() > self.config.event_sample_rate
+        {
+            return;
         }
 
         // Trigger event hooks
@@ -876,26 +882,18 @@ impl Default for DebugConfig {
     }
 }
 
-impl Default for StepData {
-    fn default() -> Self {
-        Self {
-            condition_evaluated: None,
-            condition_result: None,
-            action_executed: None,
-            action_result: None,
-            memory_before: None,
-            memory_after: None,
-            custom_data: HashMap::new(),
-        }
-    }
-}
-
 // Built-in hook implementations
 
 /// Console logging hook for events
 #[derive(Debug)]
 pub struct ConsoleEventHook {
     name: String,
+}
+
+impl Default for ConsoleEventHook {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConsoleEventHook {
@@ -906,15 +904,15 @@ impl ConsoleEventHook {
 
 impl EventHook for ConsoleEventHook {
     fn on_event(&self, event: &DebugEvent, _context: &DebugContext) {
-        println!(
-            "[DEBUG] {} - {} - {}",
-            event
+        debug!(
+            timestamp = %event
                 .timestamp
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis(),
-            format!("{:?}", event.event_type),
-            event.description
+            event_type = ?event.event_type,
+            description = %event.description,
+            "Debug event"
         );
     }
 
@@ -957,6 +955,7 @@ impl EventHook for FileEventHook {
 #[derive(Debug)]
 pub struct PerformanceRuleHook {
     name: String,
+    #[allow(dead_code)]
     threshold_ms: u64,
 }
 

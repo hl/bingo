@@ -5,7 +5,7 @@
 //! and facts are processed, improving performance for large rule sets.
 
 use crate::rete_nodes::NodeId;
-use crate::types::{FactId, Rule};
+use crate::types::FactId;
 use std::collections::{HashMap, HashSet};
 
 /// Tracks the activation state of nodes in the network
@@ -121,7 +121,7 @@ impl IncrementalConstructionManager {
 
         // Track fact-to-node relationship for optimization
         if let Some(fact_id) = triggered_by_fact {
-            self.fact_to_nodes.entry(fact_id).or_insert_with(HashSet::new).insert(node_id);
+            self.fact_to_nodes.entry(fact_id).or_default().insert(node_id);
         }
 
         activated
@@ -285,9 +285,9 @@ impl IncrementalConstructionManager {
 
         // Remove old join path statistics
         self.join_path_stats.retain(|_, stats| {
-            stats.last_used.map_or(false, |last_used| {
-                now.duration_since(last_used) < age_threshold
-            })
+            stats
+                .last_used
+                .is_some_and(|last_used| now.duration_since(last_used) < age_threshold)
         });
 
         // Clean up fact-to-node mappings for removed facts
@@ -308,15 +308,15 @@ impl NetworkTopology {
 
     /// Add a node to the topology
     pub fn add_node(&mut self, node_id: NodeId) {
-        self.adjacency.entry(node_id).or_insert_with(HashSet::new);
-        self.reverse_adjacency.entry(node_id).or_insert_with(HashSet::new);
+        self.adjacency.entry(node_id).or_default();
+        self.reverse_adjacency.entry(node_id).or_default();
         self.node_depths.insert(node_id, 0); // Will be updated when edges are added
     }
 
     /// Add an edge between nodes
     pub fn add_edge(&mut self, from: NodeId, to: NodeId) {
-        self.adjacency.entry(from).or_insert_with(HashSet::new).insert(to);
-        self.reverse_adjacency.entry(to).or_insert_with(HashSet::new).insert(from);
+        self.adjacency.entry(from).or_default().insert(to);
+        self.reverse_adjacency.entry(to).or_default().insert(from);
 
         // Update depths
         self.update_node_depths();
@@ -491,6 +491,6 @@ mod tests {
 
         let unregistered = manager.unregister_rule_nodes(100);
         assert!(unregistered.is_some());
-        assert!(manager.rule_to_nodes.get(&100).is_none());
+        assert!(!manager.rule_to_nodes.contains_key(&100));
     }
 }

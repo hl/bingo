@@ -294,7 +294,7 @@ mod tests {
         static EMPTY_FACTS: &[Fact] = &[];
 
         let context = EvaluationContext {
-            current_fact: &*TEST_FACT,
+            current_fact: &TEST_FACT,
             facts: EMPTY_FACTS,
             globals: HashMap::new(),
         };
@@ -342,7 +342,7 @@ mod tests {
         });
 
         let different_context = EvaluationContext {
-            current_fact: &*DIFFERENT_FACT,
+            current_fact: &DIFFERENT_FACT,
             facts: &[],
             globals: std::collections::HashMap::new(),
         };
@@ -425,7 +425,7 @@ mod tests {
 
         // Test overall efficiency
         let efficiency = stats.overall_efficiency();
-        assert!(efficiency >= 0.0 && efficiency <= 100.0);
+        assert!((0.0..=100.0).contains(&efficiency));
 
         // Test utilization
         let utilization = calc.cache_utilization();

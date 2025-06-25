@@ -1,5 +1,5 @@
 use crate::fact_store::{FactStore, FactStoreFactory};
-use crate::performance_tracking::{PerformanceConfig, SessionSummary};
+use crate::performance_tracking::PerformanceConfig;
 use crate::rete_network::ReteNetwork;
 use crate::types::*;
 use anyhow::{Context, Result};
@@ -214,7 +214,7 @@ impl BingoEngine {
         );
 
         // Start performance tracking session
-        let session_id = self.rete_network.start_performance_session(fact_count);
+        let _session_id = self.rete_network.start_performance_session(fact_count);
 
         let result = if fact_count > 10_000 {
             self.process_facts_parallel(facts)

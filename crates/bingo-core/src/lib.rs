@@ -8,7 +8,6 @@ pub mod calculator;
 pub mod calculator_cache;
 pub mod calculators;
 pub mod debug_hooks;
-pub mod distributed_rete;
 pub mod engine;
 pub mod fact_store;
 pub mod fast_lookup;
@@ -61,10 +60,6 @@ pub use debug_hooks::{
     EventHook, EventSeverity, ExecutionResult, ExecutionStep, ExecutionTrace, FactPattern,
     FileEventHook, PatternOperator, PerformanceRuleHook, RuleFireHook, SessionDebugStats, StepData,
     StepType, TokenPropagationHook,
-};
-pub use distributed_rete::{
-    ClusterConfig, ClusterHealth, ClusterNode, ClusterStatus, DistributedReteNetwork,
-    DistributedReteStats, LoadBalancingStrategy, NodeCapabilities, NodeMetrics, NodeStatus,
 };
 pub use engine::*;
 pub use fact_store::{

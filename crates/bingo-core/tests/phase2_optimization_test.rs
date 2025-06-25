@@ -131,6 +131,25 @@ fn test_memory_efficiency_comparison() {
     // Create optimized engine
     let mut engine = BingoEngine::with_capacity(25_000).unwrap();
 
+    // Add a rule to ensure facts are processed and stored
+    let rule = Rule {
+        id: 1,
+        name: "memory_test_rule".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "entity_id".to_string(),
+            operator: Operator::GreaterThanOrEqual,
+            value: FactValue::Integer(0),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::SetField {
+                field: "processed".to_string(),
+                value: FactValue::Boolean(true),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
     // Generate facts
     let facts: Vec<Fact> = (0..25_000)
         .map(|i| {

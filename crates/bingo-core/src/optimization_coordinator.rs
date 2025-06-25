@@ -17,6 +17,7 @@ pub struct OptimizationCoordinator {
     /// Memory profiler for system-wide memory monitoring
     memory_profiler: ReteMemoryProfiler,
     /// Unified memory coordinator for cross-component optimization
+    #[allow(dead_code)]
     memory_coordinator: UnifiedMemoryCoordinator,
     /// Configuration for optimization behavior
     config: OptimizationConfig,
@@ -535,7 +536,6 @@ pub enum PerformanceTrend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rete_network::ReteNetwork;
 
     #[test]
     fn test_optimization_config_creation() {

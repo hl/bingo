@@ -184,11 +184,11 @@ fn test_cache_statistics_accuracy() {
     assert_eq!(stats.facts_stored, 100);
     assert!(stats.total_lookups > 0);
     assert!(stats.cache_hits + stats.cache_misses == stats.total_lookups);
-    assert!(stats.hit_rate >= 0.0 && stats.hit_rate <= 100.0);
+    assert!((0.0..=100.0).contains(&stats.hit_rate));
 
     // Validate cache effectiveness metrics
     let efficiency = stats.efficiency();
-    assert!(efficiency >= 0.0 && efficiency <= 100.0);
+    assert!((0.0..=100.0).contains(&efficiency));
 
     let lookups_per_fact = stats.lookups_per_fact();
     assert!(lookups_per_fact >= 0.0);
