@@ -1,0 +1,16 @@
+# Clippy configuration for Bingo RETE Rules Engine
+# Only valid Clippy configuration options are included
+
+# Performance lints - critical for rules engine
+avoid-breaking-exported-api = false
+cognitive-complexity-threshold = 25
+too-many-arguments-threshold = 8
+type-complexity-threshold = 250
+trivial-copy-size-limit = 128
+
+# Memory management - important for performance optimization
+vec-box-size-threshold = 4096
+
+# Business rule patterns
+allow-mixed-uninlined-format-args = true
+allow-private-module-inception = true

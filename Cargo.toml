@@ -1,0 +1,50 @@
+[workspace]
+members = [
+    "crates/bingo-core", 
+    "crates/bingo-rete",
+    "crates/bingo-api"
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Core dependencies
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.21"
+opentelemetry = "0.21"
+opentelemetry_sdk = "0.21"
+
+# Web framework
+axum = { version = "0.7", features = ["json", "tracing"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["trace", "cors", "limit"] }
+
+# Performance and memory
+bumpalo = { version = "3.0", features = ["collections"] }
+ahash = "0.8"
+dashmap = "5.0"
+crossbeam = "0.8"
+roaring = "0.10"
+
+# CLI
+clap = { version = "4.0", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Testing and benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+inherits = "release"
+debug = true

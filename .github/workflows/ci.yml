@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Check formatting
+      run: cargo fmt -- --check
+
+    - name: Run clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+
+    - name: Run tests with all features
+      run: cargo test --all-features --verbose
+
+    - name: Build documentation
+      run: cargo doc --no-deps --document-private-items
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
+
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Generate code coverage
+      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: lcov.info
+        fail_ci_if_error: true
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Run security audit
+      run: cargo audit
+
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Run benchmarks
+      run: cargo bench
+
+    - name: Store benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: 'cargo'
+        output-file-path: target/criterion/*/base/benchmark.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+
+  release-check:
+    name: Release Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Check if ready for release
+      run: |
+        # Check that all crates have the same version
+        VERSIONS=$(cargo metadata --format-version=1 | jq -r '.workspace_members[] | split(" ")[1]' | sort -u)
+        if [ $(echo "$VERSIONS" | wc -l) -ne 1 ]; then
+          echo "Error: Workspace crates have different versions"
+          echo "$VERSIONS"
+          exit 1
+        fi
+
+    - name: Verify release build
+      run: cargo build --release --verbose
+
+    - name: Run explain command
+      run: cargo run --release --bin bingo explain
+
+  minimal-versions:
+    name: Minimal Versions
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@nightly
+
+    - name: Install cargo-minimal-versions
+      run: cargo install cargo-minimal-versions
+
+    - name: Check minimal versions
+      run: cargo minimal-versions check
+
+  build-targets:
+    name: Build Targets
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Build for target
+      run: cargo build --target ${{ matrix.target }} --verbose
+
+    - name: Test for target
+      run: cargo test --target ${{ matrix.target }} --verbose

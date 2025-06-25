@@ -1,0 +1,33 @@
+[package]
+name = "bingo-core"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+arena-alloc = ["bumpalo"]
+parallel = ["rayon"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand = { version = "0.8" }
+bumpalo = { version = "3.14", optional = true }
+rayon = { version = "1.10", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { version = "1.0", features = ["full"] }
+
+[[bench]]
+name = "engine_bench"
+harness = false
+
+[[bench]]
+name = "million_fact_bench"
+harness = false
