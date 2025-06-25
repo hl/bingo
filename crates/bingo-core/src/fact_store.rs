@@ -190,32 +190,21 @@ mod arena_store {
     use std::collections::HashMap;
 
     /// Arena-based fact store for high-performance allocation (Phase 2+)
-    /// Note: Using Vec-based storage for thread safety with Rust 1.87.0+
+    /// Note: Optimized with direct Vec indexing for maximum performance + thread safety
     #[derive(Default)]
     pub struct ArenaFactStore {
-        facts: Vec<Fact>,
-        fact_map: HashMap<FactId, usize>,
+        facts: Vec<Option<Fact>>, // Direct indexing: fact.id == Vec index
         field_indexes: HashMap<String, HashMap<String, Vec<FactId>>>,
         next_id: FactId,
     }
 
     impl ArenaFactStore {
         pub fn new() -> Self {
-            Self {
-                facts: Vec::new(),
-                fact_map: HashMap::new(),
-                field_indexes: HashMap::new(),
-                next_id: 0,
-            }
+            Self { facts: Vec::new(), field_indexes: HashMap::new(), next_id: 0 }
         }
 
         pub fn with_capacity(capacity: usize) -> Self {
-            Self {
-                facts: Vec::with_capacity(capacity),
-                fact_map: HashMap::with_capacity(capacity),
-                field_indexes: HashMap::new(),
-                next_id: 0,
-            }
+            Self { facts: Vec::with_capacity(capacity), field_indexes: HashMap::new(), next_id: 0 }
         }
 
         /// Update indexes when a fact is added (only index commonly used fields for performance)
@@ -255,23 +244,23 @@ mod arena_store {
 
     impl FactStore for ArenaFactStore {
         fn insert(&mut self, fact: Fact) -> FactId {
-            let id = self.next_id;
-            self.next_id += 1;
+            // Use Vec length as direct ID for O(1) access
+            let id = self.facts.len() as FactId;
 
             // Set the fact ID and update indexes
             let mut indexed_fact = fact;
             indexed_fact.id = id;
             self.update_indexes(&indexed_fact);
 
-            // Store fact in Vec and map ID to index
-            let index = self.facts.len();
-            self.facts.push(indexed_fact);
-            self.fact_map.insert(id, index);
+            // Direct Vec storage: fact.id == Vec index
+            self.facts.push(Some(indexed_fact));
+            self.next_id = id + 1;
             id
         }
 
         fn get(&self, id: FactId) -> Option<&Fact> {
-            self.fact_map.get(&id).and_then(|&index| self.facts.get(index))
+            // O(1) direct access - no HashMap lookup overhead
+            self.facts.get(id as usize)?.as_ref()
         }
 
         fn extend_from_vec(&mut self, facts: Vec<Fact>) {
@@ -281,16 +270,16 @@ mod arena_store {
         }
 
         fn len(&self) -> usize {
-            self.facts.len()
+            // Count actual facts (exclude None slots)
+            self.facts.iter().filter(|fact| fact.is_some()).count()
         }
 
         fn is_empty(&self) -> bool {
-            self.facts.is_empty()
+            self.facts.iter().all(|fact| fact.is_none())
         }
 
         fn clear(&mut self) {
             self.facts.clear();
-            self.fact_map.clear();
             self.field_indexes.clear();
             self.next_id = 0;
         }

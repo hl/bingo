@@ -1,4 +1,5 @@
 use bingo_core::*;
+
 use bingo_core::fact_store::ArenaFactStore;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::collections::HashMap;
