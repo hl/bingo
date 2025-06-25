@@ -1,4 +1,5 @@
 use bingo_core::*;
+use bingo_core::fact_store::ArenaFactStore;
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -95,7 +96,7 @@ fn bench_arena_vs_vec_performance(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let facts = generate_large_fact_set(fact_count);
-                let mut store = ArenaFactStore::with_capacity(fact_count);
+                let store = ArenaFactStore::with_capacity(fact_count);
                 (facts, store)
             },
             |(facts, mut store)| {

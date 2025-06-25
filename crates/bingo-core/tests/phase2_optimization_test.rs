@@ -1,4 +1,5 @@
 use bingo_core::*;
+use bingo_core::fact_store::ArenaFactStore;
 use std::collections::HashMap;
 
 #[test]

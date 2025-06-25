@@ -60,7 +60,20 @@
       "Bash(echo:*)",
       "Bash(RUSTFLAGS=\"-D warnings\" cargo check --release)",
       "Bash(RUSTFLAGS=\"-D warnings\" cargo check --release --quiet)",
-      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --release --quiet)"
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --release --quiet)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh api:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh run watch:*)",
+      "Bash(git rm:*)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --workspace --all-targets)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo test --lib --no-run)",
+      "Bash(rustup:*)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --workspace --all-targets -- -D warnings)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo test --lib)",
+      "Bash(CARGO_TERM_COLOR=always RUSTFLAGS=\"-D warnings\" CARGO_INCREMENTAL=0 cargo clippy --all-targets --all-features -- -D warnings)"
     ],
     "deny": []
   }

@@ -187,13 +187,14 @@ impl VecFactStore {
 #[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
 mod arena_store {
     use super::*;
-    use bumpalo::Bump;
     use std::collections::HashMap;
 
     /// Arena-based fact store for high-performance allocation (Phase 2+)
+    /// Note: Using Vec-based storage for thread safety with Rust 1.87.0+
+    #[derive(Default)]
     pub struct ArenaFactStore {
-        arena: Bump,
-        fact_map: HashMap<FactId, *const Fact>,
+        facts: Vec<Fact>,
+        fact_map: HashMap<FactId, usize>,
         field_indexes: HashMap<String, HashMap<String, Vec<FactId>>>,
         next_id: FactId,
     }
@@ -201,7 +202,7 @@ mod arena_store {
     impl ArenaFactStore {
         pub fn new() -> Self {
             Self {
-                arena: Bump::new(),
+                facts: Vec::new(),
                 fact_map: HashMap::new(),
                 field_indexes: HashMap::new(),
                 next_id: 0,
@@ -210,7 +211,7 @@ mod arena_store {
 
         pub fn with_capacity(capacity: usize) -> Self {
             Self {
-                arena: Bump::with_capacity(capacity * std::mem::size_of::<Fact>()),
+                facts: Vec::with_capacity(capacity),
                 fact_map: HashMap::with_capacity(capacity),
                 field_indexes: HashMap::new(),
                 next_id: 0,
@@ -262,14 +263,15 @@ mod arena_store {
             indexed_fact.id = id;
             self.update_indexes(&indexed_fact);
 
-            // Allocate in arena for better cache locality
-            let allocated_fact = self.arena.alloc(indexed_fact);
-            self.fact_map.insert(id, allocated_fact as *const Fact);
+            // Store fact in Vec and map ID to index
+            let index = self.facts.len();
+            self.facts.push(indexed_fact);
+            self.fact_map.insert(id, index);
             id
         }
 
         fn get(&self, id: FactId) -> Option<&Fact> {
-            self.fact_map.get(&id).map(|ptr| unsafe { &**ptr })
+            self.fact_map.get(&id).and_then(|&index| self.facts.get(index))
         }
 
         fn extend_from_vec(&mut self, facts: Vec<Fact>) {
@@ -279,15 +281,15 @@ mod arena_store {
         }
 
         fn len(&self) -> usize {
-            self.fact_map.len()
+            self.facts.len()
         }
 
         fn is_empty(&self) -> bool {
-            self.fact_map.is_empty()
+            self.facts.is_empty()
         }
 
         fn clear(&mut self) {
-            self.arena.reset();
+            self.facts.clear();
             self.fact_map.clear();
             self.field_indexes.clear();
             self.next_id = 0;
