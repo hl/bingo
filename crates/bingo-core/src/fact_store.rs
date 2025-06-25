@@ -204,10 +204,10 @@ mod arena_store {
         }
 
         pub fn with_capacity(capacity: usize) -> Self {
-            Self { 
-                facts: Vec::with_capacity(capacity), 
+            Self {
+                facts: Vec::with_capacity(capacity),
                 field_indexes: HashMap::with_capacity(6), // Pre-allocate for common indexed fields
-                next_id: 0 
+                next_id: 0,
             }
         }
 
@@ -223,7 +223,8 @@ mod arena_store {
         /// Update indexes when a fact is added (only index commonly used fields for performance)
         fn update_indexes(&mut self, fact: &Fact) {
             // Static set of commonly used fields for fast lookup
-            const INDEXED_FIELDS: &[&str] = &["entity_id", "id", "user_id", "customer_id", "status", "category"];
+            const INDEXED_FIELDS: &[&str] =
+                &["entity_id", "id", "user_id", "customer_id", "status", "category"];
 
             for (field_name, field_value) in &fact.data.fields {
                 // Fast string comparison for indexed fields
@@ -231,7 +232,8 @@ mod arena_store {
                     let value_key = self.fact_value_to_index_key(field_value);
 
                     // Optimized entry pattern with pre-allocated capacity hints
-                    let field_map = self.field_indexes
+                    let field_map = self
+                        .field_indexes
                         .entry(field_name.clone())
                         .or_insert_with(|| HashMap::with_capacity(64)); // Expect ~64 unique values per field
 
