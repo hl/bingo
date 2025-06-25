@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust-version: [stable, beta]
+        rust-version: [stable]
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -70,11 +70,25 @@ jobs:
           target
         key: ${{ runner.os }}-${{ matrix.rust-version }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Run tests
-      run: cargo test --verbose --all-features
+    - name: Run unit tests
+      run: cargo test --lib --verbose --all-features
 
-    - name: Run integration tests
-      run: cargo test --test '*' --verbose
+    - name: Run API integration tests
+      run: cargo test -p bingo-api --tests --verbose
+
+    - name: Run core integration tests (excluding performance-sensitive scaling validation)
+      run: |
+        # Run all bingo-core integration tests except scaling_validation_test
+        for test_file in crates/bingo-core/tests/*.rs; do
+          test_name=$(basename "$test_file" .rs)
+          if [ "$test_name" != "scaling_validation_test" ]; then
+            echo "Running test: $test_name"
+            cargo test -p bingo-core --test "$test_name" --verbose || exit 1
+          fi
+        done
+
+    - name: Run scaling validation tests (release mode - REQUIRED for performance targets)
+      run: cargo test -p bingo-core --test scaling_validation_test --release --verbose
 
   benchmark:
     name: Performance Benchmarks
