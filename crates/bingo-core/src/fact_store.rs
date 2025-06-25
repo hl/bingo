@@ -184,7 +184,6 @@ impl VecFactStore {
     }
 }
 
-#[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
 mod arena_store {
     use super::*;
     use std::collections::HashMap;
@@ -346,7 +345,6 @@ mod arena_store {
     }
 }
 
-#[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
 pub use arena_store::ArenaFactStore;
 
 /// Cached fact store that wraps another store with LRU caching
@@ -615,8 +613,7 @@ impl FactStoreFactory {
         Box::new(CachedFactStore::with_capacity(capacity_hint, cache_size))
     }
 
-    /// Create an arena-based store for maximum performance (requires arena-alloc feature)
-    #[cfg(all(feature = "arena-alloc", not(target_arch = "wasm32")))]
+    /// Create an arena-based store for maximum performance
     pub fn create_arena(capacity: usize) -> Box<dyn FactStore> {
         if capacity > 500_000 {
             // Use optimized large capacity constructor for big datasets

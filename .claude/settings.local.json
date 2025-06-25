@@ -73,7 +73,10 @@
       "Bash(rustup:*)",
       "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --workspace --all-targets -- -D warnings)",
       "Bash(RUSTFLAGS=\"-D warnings\" cargo test --lib)",
-      "Bash(CARGO_TERM_COLOR=always RUSTFLAGS=\"-D warnings\" CARGO_INCREMENTAL=0 cargo clippy --all-targets --all-features -- -D warnings)"
+      "Bash(CARGO_TERM_COLOR=always RUSTFLAGS=\"-D warnings\" CARGO_INCREMENTAL=0 cargo clippy --all-targets --all-features -- -D warnings)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --all-targets --all-features -- -D warnings)"
     ],
     "deny": []
   }

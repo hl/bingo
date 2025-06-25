@@ -91,8 +91,7 @@ fn bench_arena_vs_vec_performance(c: &mut Criterion) {
         );
     });
 
-    // Benchmark Arena-based fact store (if available)
-    #[cfg(feature = "arena-alloc")]
+    // Benchmark Arena-based fact store
     group.bench_function("arena_fact_store_500k", |b| {
         b.iter_batched(
             || {

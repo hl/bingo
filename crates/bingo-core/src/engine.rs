@@ -283,47 +283,37 @@ impl BingoEngine {
         Ok(results)
     }
 
-    /// Process facts in parallel for large batches (requires parallel feature)
+    /// Process facts in parallel for large batches
     fn process_facts_parallel(&mut self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
-        #[cfg(feature = "parallel")]
-        {
-            let fact_count = facts.len();
-            let chunk_size = (fact_count / rayon::current_num_threads()).max(1000);
+        let fact_count = facts.len();
+        let chunk_size = (fact_count / rayon::current_num_threads()).max(1000);
 
-            info!(
-                fact_count,
-                chunk_size,
-                threads = rayon::current_num_threads(),
-                "Processing facts in parallel"
-            );
+        info!(
+            fact_count,
+            chunk_size,
+            threads = rayon::current_num_threads(),
+            "Processing facts in parallel"
+        );
 
-            // Store facts in parallel chunks
-            let chunks: Vec<_> = facts.chunks(chunk_size).collect();
+        // Store facts in parallel chunks
+        let chunks: Vec<_> = facts.chunks(chunk_size).collect();
 
-            for chunk in chunks {
-                for fact in chunk {
-                    self.fact_store.insert(fact.clone());
-                }
+        for chunk in chunks {
+            for fact in chunk {
+                self.fact_store.insert(fact.clone());
             }
-
-            // Process through RETE network (currently sequential, could be parallelized in future)
-            let results = self.rete_network.process_facts(facts)?;
-
-            info!(
-                facts_processed = fact_count,
-                results_generated = results.len(),
-                mode = "parallel",
-                "Facts processed through RETE network"
-            );
-            Ok(results)
         }
 
-        #[cfg(not(feature = "parallel"))]
-        {
-            // Fall back to sequential processing
-            info!("Parallel feature not enabled, falling back to sequential processing");
-            self.process_facts_sequential(facts)
-        }
+        // Process through RETE network (currently sequential, could be parallelized in future)
+        let results = self.rete_network.process_facts(facts)?;
+
+        info!(
+            facts_processed = fact_count,
+            results_generated = results.len(),
+            mode = "parallel",
+            "Facts processed through RETE network"
+        );
+        Ok(results)
     }
 
     /// Get engine statistics

@@ -36,7 +36,6 @@ fn test_fact_store_factory() {
     println!("Factory created stores successfully");
 }
 
-#[cfg(feature = "arena-alloc")]
 #[test]
 fn test_arena_fact_store() {
     let mut store = ArenaFactStore::with_capacity(1000);
