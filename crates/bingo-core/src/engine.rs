@@ -60,6 +60,32 @@ impl BingoEngine {
         Ok(engine)
     }
 
+    /// Create a new engine with explicit ArenaFactStore for maximum performance
+    #[instrument]
+    pub fn with_arena_store(capacity: usize) -> Result<Self> {
+        info!(
+            capacity,
+            "Creating Bingo engine with explicit ArenaFactStore for maximum performance"
+        );
+
+        let rete_network =
+            ReteNetwork::new().context("Failed to create RETE network for arena engine")?;
+
+        let engine = Self {
+            rules: Vec::new(),
+            fact_store: FactStoreFactory::create_arena(capacity),
+            rete_network,
+        };
+
+        info!(
+            capacity = capacity,
+            fact_store_type = "ArenaFactStore",
+            "Arena-optimized Bingo engine created successfully"
+        );
+
+        Ok(engine)
+    }
+
     /// Add a rule to the engine
     #[instrument(skip(self), fields(rule_id = %rule.id, rule_name = %rule.name))]
     pub fn add_rule(&mut self, rule: Rule) -> Result<()> {

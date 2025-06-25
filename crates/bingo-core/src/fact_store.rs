@@ -599,8 +599,28 @@ pub struct FactStoreFactory;
 impl FactStoreFactory {
     /// Create the best fact store for the given capacity and performance requirements
     pub fn create_optimized(capacity_hint: usize) -> Box<dyn FactStore> {
-        // Use the large dataset optimization logic for proper memory efficiency
-        Self::create_for_large_dataset(capacity_hint)
+        use tracing::info;
+
+        let store = Self::create_for_large_dataset(capacity_hint);
+
+        // Log store selection for performance transparency
+        let store_type = if capacity_hint > 1_000_000 {
+            "PartitionedFactStore"
+        } else if capacity_hint > 50_000 {
+            "ArenaFactStore"
+        } else if capacity_hint > 10_000 {
+            "CachedFactStore"
+        } else {
+            "VecFactStore"
+        };
+
+        info!(
+            fact_store_type = store_type,
+            capacity_hint = capacity_hint,
+            "Factory selected optimized fact store for performance"
+        );
+
+        store
     }
 
     /// Create a simple Vec-based store for development and testing
@@ -641,6 +661,9 @@ impl FactStoreFactory {
             let partition_count = (estimated_facts / 100_000).clamp(4, 16); // 4-16 partitions
             let capacity_per_partition = estimated_facts / partition_count + 1000;
             Self::create_partitioned(partition_count, capacity_per_partition)
+        } else if estimated_facts > 50_000 {
+            // Use arena store for performance-critical scenarios (50K+ facts)
+            Self::create_arena(estimated_facts)
         } else if estimated_facts > 10_000 {
             // Use cached store for medium datasets
             let cache_size = (estimated_facts / 10).clamp(100, 1000);

@@ -99,11 +99,14 @@ curl -X POST http://localhost:3000/evaluate \
 # Unit tests (167 tests)
 cargo test --lib
 
-# Performance tests (CI-appropriate)
+# Performance tests (CI-appropriate) - MUST use --release for accurate results
 cargo test --release
 
-# Heavy performance tests (manual)
+# Heavy performance tests (manual) - MUST use --release for accurate results
 cargo test --ignored --release
+
+# ⚠️  CRITICAL: Performance tests in debug mode are 10x slower and will fail targets
+# Always use --release flag for performance validation
 ```
 
 ### Quality Checks
