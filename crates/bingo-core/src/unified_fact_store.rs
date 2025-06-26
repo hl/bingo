@@ -8,6 +8,7 @@ use crate::cache::{CacheStats, LruCache};
 use crate::fact_store::FactStore;
 use crate::field_indexing::{FieldIndexStats, FieldIndexer};
 use crate::types::{Fact, FactId, FactValue};
+use crate::unified_memory_coordinator::MemoryConsumer;
 use crate::unified_statistics::{UnifiedStats, UnifiedStatsBuilder};
 use std::collections::HashMap;
 
@@ -496,6 +497,15 @@ impl OptimizedStoreStats {
             self.total_lookups as f64 / self.facts_stored as f64
         }
     }
+
+    /// Estimate memory usage in bytes
+    pub fn memory_usage_bytes(&self) -> usize {
+        // Rough estimate: 128 bytes per fact (Fact struct size + HashMap overhead)
+        self.facts_stored * 128
+            + self.cache_stats.as_ref().map_or(0, |s| s.memory_usage_bytes())
+            + self.field_index_stats.memory_usage_bytes
+            + self.bloom_filter_stats.as_ref().map_or(0, |s| s.total_memory_usage)
+    }
 }
 
 // Implement FactStore trait for backward compatibility
@@ -577,6 +587,67 @@ impl FactStore for OptimizedFactStore {
         }
         self.cache_hits = 0;
         self.cache_misses = 0;
+    }
+}
+
+impl MemoryConsumer for OptimizedFactStore {
+    fn memory_usage_bytes(&self) -> usize {
+        // Rough estimate: 128 bytes per fact (Fact struct size + HashMap overhead)
+        self.len() * 128
+            + self.cache.as_ref().map_or(0, |c| c.stats().memory_usage_bytes())
+            + self.field_indexer.estimate_memory_usage()
+            + self.bloom_filter.as_ref().map_or(0, |bf| bf.stats().total_memory_usage)
+    }
+
+    fn reduce_memory_usage(&mut self, reduction_factor: f64) -> usize {
+        let initial_size = self.memory_usage_bytes();
+
+        // Reduce cache size
+        if let Some(cache) = &mut self.cache {
+            let current_size = cache.len();
+            let target_size = (current_size as f64 * reduction_factor) as usize;
+            let items_to_remove = current_size.saturating_sub(target_size);
+
+            // Clear cache entries (LruCache doesn't have direct size reduction)
+            // For now, we'll clear a portion of the cache
+            if items_to_remove > 0 && current_size > 0 {
+                let clear_ratio = items_to_remove as f64 / current_size as f64;
+                if clear_ratio > 0.5 {
+                    cache.clear();
+                }
+            }
+        }
+
+        // Clear bloom filter if reduction is significant
+        if reduction_factor < 0.5 {
+            if let Some(bloom_filter) = &mut self.bloom_filter {
+                bloom_filter.clear();
+            }
+        }
+
+        // For the main storage, we don't aggressively reduce memory as it holds core data.
+        // More sophisticated strategies would involve data tiering or archiving.
+        initial_size - self.memory_usage_bytes() // Return bytes freed
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut stats = HashMap::new();
+        stats.insert("facts_stored".to_string(), self.len() as f64);
+        stats.insert(
+            "memory_usage_bytes".to_string(),
+            self.memory_usage_bytes() as f64,
+        );
+        stats.insert("cache_hit_rate".to_string(), self.hit_rate());
+        stats.insert("total_lookups".to_string(), self.lookup_count as f64);
+        stats.insert(
+            "bloom_filter_saves".to_string(),
+            self.bloom_filter_saves as f64,
+        );
+        stats
+    }
+
+    fn name(&self) -> &str {
+        "OptimizedFactStore"
     }
 }
 

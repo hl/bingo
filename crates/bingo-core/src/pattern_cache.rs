@@ -5,6 +5,7 @@
 
 use crate::rete_nodes::JoinCondition;
 use crate::types::{Condition, Rule};
+use crate::unified_memory_coordinator::MemoryConsumer;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -223,6 +224,10 @@ impl PatternCache {
             join_cache: HashMap::new(),
             stats: PatternCacheStats::default(),
         }
+    }
+
+    pub fn get_stats(&self) -> &PatternCacheStats {
+        &self.stats
     }
 
     /// Create a pattern cache with initial capacity
@@ -540,6 +545,64 @@ impl PatternCache {
         }
 
         self.update_memory_usage();
+    }
+}
+
+impl MemoryConsumer for PatternCache {
+    fn memory_usage_bytes(&self) -> usize {
+        self.stats.cache_memory_usage
+    }
+
+    fn reduce_memory_usage(&mut self, reduction_factor: f64) -> usize {
+        let initial_usage = self.memory_usage_bytes();
+        self.reduce_capacity(reduction_factor);
+        initial_usage.saturating_sub(self.memory_usage_bytes())
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert(
+            "pattern_cache_hits".to_string(),
+            self.stats.pattern_cache_hits as f64,
+        );
+        map.insert(
+            "pattern_cache_misses".to_string(),
+            self.stats.pattern_cache_misses as f64,
+        );
+        map.insert(
+            "alpha_cache_hits".to_string(),
+            self.stats.alpha_cache_hits as f64,
+        );
+        map.insert(
+            "alpha_cache_misses".to_string(),
+            self.stats.alpha_cache_misses as f64,
+        );
+        map.insert(
+            "join_cache_hits".to_string(),
+            self.stats.join_cache_hits as f64,
+        );
+        map.insert(
+            "join_cache_misses".to_string(),
+            self.stats.join_cache_misses as f64,
+        );
+        map.insert(
+            "patterns_cached".to_string(),
+            self.stats.patterns_cached as f64,
+        );
+        map.insert(
+            "cache_memory_usage".to_string(),
+            self.stats.cache_memory_usage as f64,
+        );
+        map.insert("hit_rate".to_string(), self.stats.hit_rate());
+        map.insert(
+            "pattern_hit_rate".to_string(),
+            self.stats.pattern_hit_rate(),
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "PatternCache"
     }
 }
 

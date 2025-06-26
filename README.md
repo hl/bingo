@@ -94,28 +94,43 @@ curl -X POST http://localhost:3000/evaluate \
 
 ## 🧪 Development
 
-### Testing
+### Quality Testing (Fast & Reliable)
 ```bash
-# Unit tests (167 tests)
-cargo test --lib
+# Complete quality validation (ZERO tolerance for failures)
+cargo fmt --check                           # Code formatting
+cargo clippy --workspace --all-targets -- -D warnings  # Zero warnings
+cargo check --workspace --all-targets       # Compilation check
+cargo test --workspace                      # All quality tests (~189 tests in <5s)
 
-# Performance tests (CI-appropriate) - MUST use --release for accurate results
-cargo test --release
-
-# Heavy performance tests (manual) - MUST use --release for accurate results
-cargo test --ignored --release
-
-# ⚠️  CRITICAL: Performance tests in debug mode are 10x slower and will fail targets
-# Always use --release flag for performance validation
+# Individual package testing
+cargo test --package bingo-api              # API tests (18 tests)
+cargo test --package bingo-core --lib       # Core unit tests (163 tests)
+cargo test --package bingo-rete             # RETE tests (4 tests)
 ```
 
-### Quality Checks
+### Performance Testing (Comprehensive)
 ```bash
-# Zero-tolerance quality validation
-cargo fmt --check
-cargo clippy -- -D warnings
-cargo check --workspace
+# ⚠️  CRITICAL: Performance tests require --release for accurate results
+
+# CI-appropriate scaling tests (100K, 200K facts)
+cargo test --package bingo-core --test scaling_validation_test --release
+
+# Run all performance tests (separated from quality validation)
+cargo test --release -- --ignored
+
+# Heavy scaling tests (500K, 1M facts) - manual execution
+cargo test --package bingo-core --test scaling_validation_test --ignored --release
+
+# Individual performance test examples
+cargo test --release test_calculator_cache_performance_improvement -- --ignored
+cargo test --release test_mixed_operations_performance -- --ignored
 ```
+
+### Test Architecture
+- **Quality Tests**: Fast execution (<60s), zero tolerance for failures
+- **Performance Tests**: Marked with `#[ignore]`, require `--release` mode
+- **Separation Benefits**: Reliable CI/CD with comprehensive performance validation
+- **Documentation**: See [PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md) for complete guide
 
 ### Benchmarking
 ```bash
@@ -164,19 +179,22 @@ RUST_LOG=bingo=debug,info  # Logging level
 
 ## 🏆 Production Readiness
 
-**Quality Standards:**
-- ✅ **Zero warnings** with `-D warnings`
-- ✅ **Comprehensive testing** (167 unit + 4 performance tests)  
+**Quality Standards (ZERO Tolerance):**
+- ✅ **Zero warnings** with `-D warnings` enforcement
+- ✅ **Comprehensive testing** (189+ tests across all packages)  
 - ✅ **Thread safety** throughout (`Send + Sync`)
 - ✅ **Memory safety** with Rust guarantees
-- ✅ **Performance validation** at enterprise scale
+- ✅ **Performance validation** at enterprise scale (16 performance tests)
+- ✅ **Fast CI/CD** with quality/performance test separation
+- ✅ **Zero compilation errors** across workspace
 
 **Enterprise Features:**
-- Linear scaling to 1M+ facts
-- Sub-3GB memory usage
-- Comprehensive error handling
-- Structured logging and metrics
-- OpenAPI integration
+- **Performance**: Linear scaling to 1M+ facts (4-5x faster than targets)
+- **Memory**: Sub-3GB usage for enterprise workloads
+- **Reliability**: Comprehensive error handling and recovery
+- **Observability**: Structured logging with `tracing` integration
+- **API**: RESTful interface with OpenAPI documentation
+- **Testing**: Separated quality validation from performance benchmarking
 
 ## 🤝 Contributing
 

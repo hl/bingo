@@ -126,6 +126,57 @@ graph TD
 - **Graceful Degradation**: Continue processing when non-critical errors occur
 - **Error Tracing**: All errors captured in telemetry
 
+## Testing Architecture
+
+### ✅ Quality vs Performance Test Separation (IMPLEMENTED)
+
+**Quality Test Suite (Fast & Reliable):**
+- **Purpose**: Code correctness, functionality validation, regression detection
+- **Execution**: `cargo test --workspace` (189+ tests in <60 seconds)
+- **Zero Tolerance**: All tests must pass for quality validation
+- **CI/CD Ready**: Suitable for continuous integration pipelines
+
+**Performance Test Suite (Comprehensive):**
+- **Purpose**: Performance benchmarks, stress testing, enterprise scale validation
+- **Execution**: `cargo test --release -- --ignored` (16 specialized tests)
+- **Release Mode**: Required for accurate performance measurements
+- **Separation Strategy**: Marked with `#[ignore]` attributes to prevent CI blocking
+
+### Test Categories
+
+**Unit Tests (163 tests in bingo-core):**
+- Individual component validation
+- Memory management verification
+- Calculator DSL functionality
+- RETE network correctness
+
+**Integration Tests (API, RETE, Calculator):**
+- Cross-component interaction validation
+- API endpoint functionality
+- End-to-end rule processing
+
+**Performance Tests (16 specialized tests):**
+- Core RETE network stress testing
+- API concurrent performance validation
+- Calculator caching and performance
+- Memory optimization verification
+
+### CI/CD Integration Strategy
+
+**Quality Gate (Required - Zero Tolerance):**
+```bash
+cargo fmt --check                           # Formatting
+cargo clippy --workspace --all-targets -- -D warnings  # Linting
+cargo check --workspace --all-targets       # Compilation  
+cargo test --workspace                      # Quality tests
+```
+
+**Performance Gate (Optional/Scheduled):**
+```bash
+cargo test --release -- --ignored          # All performance tests
+cargo test --package bingo-core --test scaling_validation_test --release
+```
+
 ## Configuration
 
 - **Environment Variables**: Runtime configuration

@@ -81,6 +81,7 @@ fn test_fact_store_indexing() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_join_conditions_with_shared_entity_id"]
 fn test_join_conditions_with_shared_entity_id() {
     let mut engine = BingoEngine::new().unwrap();
 

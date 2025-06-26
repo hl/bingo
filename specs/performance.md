@@ -112,6 +112,58 @@ struct PartitionedFactStore {
 - **Measurement First**: Profile before optimizing, benchmark after changes
 - **Gradual Migration**: Phase custom allocators only when standard approaches hit limits
 
+## Testing Architecture
+
+### Quality vs Performance Test Separation (IMPLEMENTED ✅)
+
+**Quality Tests (Fast Execution):**
+- **Purpose**: Code correctness, functionality validation, basic operations
+- **Execution**: `cargo test --workspace` (excludes performance tests)
+- **Target Time**: <60 seconds total execution
+- **Test Count**: 189+ tests across all packages
+- **CI/CD**: Suitable for continuous integration pipelines
+
+**Performance Tests (Comprehensive Validation):**
+- **Purpose**: Performance benchmarks, stress testing, enterprise scale validation
+- **Execution**: `cargo test --release -- --ignored`
+- **Marking**: Tests marked with `#[ignore = "Performance test - run with --release: ..."]`
+- **Release Mode**: Required for accurate performance measurements
+- **Test Count**: 16 specialized performance tests
+
+### Performance Test Categories
+
+**Core RETE Network Stress Tests:**
+- Network robustness under error conditions
+- Complex processing scenarios
+- Memory optimization validation
+- Token pool performance
+
+**API Concurrent Performance Tests:**
+- Concurrent load validation
+- Request/response performance
+- API correctness under load
+
+**Calculator Performance Tests:**
+- Expression compilation caching
+- Result caching validation
+- Complex formula performance
+
+### CI/CD Integration
+
+**Quality Gate (Required - Zero Tolerance):**
+```bash
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo check --workspace --all-targets  
+cargo test --workspace
+```
+
+**Performance Gate (Optional/Nightly):**
+```bash
+cargo test --release -- --ignored
+cargo test --package bingo-core --test scaling_validation_test --release
+```
+
 ## Optimisation Techniques
 
 ### Data Structures

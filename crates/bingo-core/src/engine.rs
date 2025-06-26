@@ -200,7 +200,7 @@ impl BingoEngine {
 
     /// Process a batch of facts through the rule engine
     #[instrument(skip(self, facts), fields(fact_count = facts.len()))]
-    pub fn process_facts(&mut self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
+    pub fn process_facts(&self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
         let fact_count = facts.len();
         let start_time = std::time::Instant::now();
 
@@ -289,13 +289,10 @@ impl BingoEngine {
     }
 
     /// Process facts sequentially (optimal for smaller batches)
-    fn process_facts_sequential(&mut self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
+    fn process_facts_sequential(&self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
         let fact_count = facts.len();
 
-        // Store facts in fact store
-        for fact in &facts {
-            self.fact_store.insert(fact.clone());
-        }
+        // The ReteNetwork is now responsible for fact storage within its thread-safe context.
 
         // Process facts through RETE network
         let results = self.rete_network.process_facts(facts)?;
@@ -310,7 +307,9 @@ impl BingoEngine {
     }
 
     /// Process facts in parallel for large batches
-    fn process_facts_parallel(&mut self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
+    fn process_facts_parallel(&self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
+        use rayon::prelude::*;
+
         let fact_count = facts.len();
         let chunk_size = (fact_count / rayon::current_num_threads()).max(1000);
 
@@ -318,28 +317,29 @@ impl BingoEngine {
             fact_count,
             chunk_size,
             threads = rayon::current_num_threads(),
-            "Processing facts in parallel"
+            "Processing facts in parallel with Rayon"
         );
 
-        // Store facts in parallel chunks
-        let chunks: Vec<_> = facts.chunks(chunk_size).collect();
+        // Process chunks of facts in parallel using Rayon
+        let results: Result<Vec<Vec<Fact>>> = facts
+            .par_chunks(chunk_size)
+            .map(|chunk| {
+                // Each parallel task gets its own Vec to avoid contention
+                self.rete_network.process_facts(chunk.to_vec())
+            })
+            .collect();
 
-        for chunk in chunks {
-            for fact in chunk {
-                self.fact_store.insert(fact.clone());
-            }
-        }
-
-        // Process through RETE network (currently sequential, could be parallelized in future)
-        let results = self.rete_network.process_facts(facts)?;
+        // Flatten the results from all threads into a single Vec
+        let flattened_results: Vec<Fact> = results?.into_iter().flatten().collect();
 
         info!(
             facts_processed = fact_count,
-            results_generated = results.len(),
+            results_generated = flattened_results.len(),
             mode = "parallel",
-            "Facts processed through RETE network"
+            "Parallel fact processing completed"
         );
-        Ok(results)
+
+        Ok(flattened_results)
     }
 
     /// Get engine statistics
@@ -365,8 +365,8 @@ impl BingoEngine {
     pub fn get_rule_performance_profile(
         &self,
         rule_id: u64,
-    ) -> Option<&crate::performance_tracking::RuleExecutionProfile> {
-        self.rete_network.performance_tracker().get_rule_profile(rule_id)
+    ) -> Option<crate::performance_tracking::RuleExecutionProfile> {
+        self.rete_network.performance_tracker().get_rule_profile(rule_id).cloned()
     }
 
     /// Identify performance bottlenecks
@@ -384,7 +384,7 @@ impl BingoEngine {
     /// Get global performance metrics
     pub fn get_global_performance_metrics(
         &self,
-    ) -> &crate::performance_tracking::GlobalPerformanceMetrics {
-        self.rete_network.performance_tracker().get_global_metrics()
+    ) -> crate::performance_tracking::GlobalPerformanceMetrics {
+        self.rete_network.performance_tracker().get_global_metrics().clone()
     }
 }

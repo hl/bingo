@@ -6,6 +6,7 @@
 
 use crate::rete_nodes::NodeId;
 use crate::types::FactId;
+use crate::unified_memory_coordinator::MemoryConsumer;
 use std::collections::{HashMap, HashSet};
 
 /// Tracks the activation state of nodes in the network
@@ -399,6 +400,60 @@ impl NetworkTopology {
 impl Default for IncrementalConstructionManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl MemoryConsumer for IncrementalConstructionManager {
+    fn memory_usage_bytes(&self) -> usize {
+        // Calculate memory usage based on struct fields
+        let mut total = std::mem::size_of::<Self>();
+        total += self.node_activation_states.capacity()
+            * std::mem::size_of::<(NodeId, NodeActivationState)>();
+        total += self.fact_to_nodes.capacity() * std::mem::size_of::<(FactId, HashSet<NodeId>)>();
+        total += self.rule_to_nodes.capacity() * std::mem::size_of::<(u64, HashSet<NodeId>)>();
+        total += self.join_path_stats.capacity()
+            * std::mem::size_of::<((NodeId, NodeId), JoinPathStats)>();
+        total
+    }
+
+    fn reduce_memory_usage(&mut self, reduction_factor: f64) -> usize {
+        let initial_usage = self.memory_usage_bytes();
+        // Aggressively clean up stale data
+        self.cleanup_stale_data(std::time::Duration::from_secs_f64(
+            reduction_factor * 3600.0,
+        ));
+        // Also clear some internal caches if they exist
+        self.join_path_stats.clear();
+        self.fact_to_nodes.clear();
+        initial_usage.saturating_sub(self.memory_usage_bytes())
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert(
+            "lazy_activations".to_string(),
+            self.stats.lazy_activations as f64,
+        );
+        map.insert("deactivations".to_string(), self.stats.deactivations as f64);
+        map.insert(
+            "path_optimizations".to_string(),
+            self.stats.path_optimizations as f64,
+        );
+        map.insert("paths_pruned".to_string(), self.stats.paths_pruned as f64);
+        map.insert("time_saved_ms".to_string(), self.stats.time_saved_ms);
+        map.insert(
+            "memory_saved_bytes".to_string(),
+            self.stats.memory_saved_bytes as f64,
+        );
+        map.insert(
+            "memory_usage_bytes".to_string(),
+            self.memory_usage_bytes() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "IncrementalConstructionManager"
     }
 }
 

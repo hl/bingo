@@ -132,6 +132,7 @@ impl<T> ThreadSafePool<T> {
             hit_rate: pool.hit_rate(),
             current_size: pool.size(),
             peak_size: pool.peak_size,
+            memory_usage_bytes: 0, // Placeholder, actual calculation depends on T
         }
     }
 
@@ -157,6 +158,7 @@ pub struct PoolStats {
     pub hit_rate: f64,
     pub current_size: usize,
     pub peak_size: usize,
+    pub memory_usage_bytes: usize,
 }
 
 impl PoolStats {
@@ -173,6 +175,11 @@ impl PoolStats {
             (self.pool_hits as f64 / self.allocated_count as f64) * 100.0
         }
     }
+
+    /// Estimate memory usage in bytes
+    pub fn memory_usage_bytes(&self) -> usize {
+        self.memory_usage_bytes
+    }
 }
 
 /// Specialized pools for RETE engine objects
@@ -188,6 +195,8 @@ pub struct ReteMemoryPools {
     /// Pool for FactIdSet objects
     pub fact_id_set_pool: ThreadSafePool<FactIdSet>,
 }
+
+use crate::unified_memory_coordinator::MemoryConsumer;
 
 impl ReteMemoryPools {
     /// Create new RETE memory pools with optimized sizes
@@ -215,7 +224,89 @@ impl ReteMemoryPools {
             ),
         }
     }
+}
 
+impl MemoryConsumer for ReteMemoryPools {
+    fn memory_usage_bytes(&self) -> usize {
+        self.token_pool.stats().memory_usage_bytes
+            + self.fact_data_pool.stats().memory_usage_bytes
+            + self.field_map_pool.stats().memory_usage_bytes
+            + self.fact_vec_pool.stats().memory_usage_bytes
+            + self.fact_id_set_pool.stats().memory_usage_bytes
+    }
+
+    fn reduce_memory_usage(&mut self, _reduction_factor: f64) -> usize {
+        // For now, we don't have a direct way to reduce capacity of ThreadSafePools
+        // This would require adding `reduce_capacity` methods to ThreadSafePool and ObjectPool
+        // and then calling them here.
+        0
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        let stats = self.get_stats();
+        map.insert(
+            "token_pool_hits".to_string(),
+            stats.token_pool.pool_hits as f64,
+        );
+        map.insert(
+            "token_pool_misses".to_string(),
+            stats.token_pool.pool_misses as f64,
+        );
+        map.insert(
+            "fact_data_pool_hits".to_string(),
+            stats.fact_data_pool.pool_hits as f64,
+        );
+        map.insert(
+            "fact_data_pool_misses".to_string(),
+            stats.fact_data_pool.pool_misses as f64,
+        );
+        map.insert(
+            "field_map_pool_hits".to_string(),
+            stats.field_map_pool.pool_hits as f64,
+        );
+        map.insert(
+            "field_map_pool_misses".to_string(),
+            stats.field_map_pool.pool_misses as f64,
+        );
+        map.insert(
+            "fact_vec_pool_hits".to_string(),
+            stats.fact_vec_pool.pool_hits as f64,
+        );
+        map.insert(
+            "fact_vec_pool_misses".to_string(),
+            stats.fact_vec_pool.pool_misses as f64,
+        );
+        map.insert(
+            "fact_id_set_pool_hits".to_string(),
+            stats.fact_id_set_pool.pool_hits as f64,
+        );
+        map.insert(
+            "fact_id_set_pool_misses".to_string(),
+            stats.fact_id_set_pool.pool_misses as f64,
+        );
+        map.insert("overall_efficiency".to_string(), self.overall_efficiency());
+        map.insert(
+            "total_pooled_objects".to_string(),
+            self.total_pooled_objects() as f64,
+        );
+        map.insert(
+            "total_peak_objects".to_string(),
+            self.total_peak_objects() as f64,
+        );
+        map.insert(
+            "memory_usage_bytes".to_string(),
+            self.memory_usage_bytes() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "ReteMemoryPools"
+    }
+}
+
+impl ReteMemoryPools {
     /// Create pools with custom sizes for different usage patterns
     pub fn with_sizes(
         token_pool_size: usize,
@@ -337,6 +428,26 @@ impl ReteMemoryPools {
         } else {
             (total_hits as f64 / total_operations as f64) * 100.0
         }
+    }
+
+    /// Get total number of pooled objects across all pools
+    pub fn total_pooled_objects(&self) -> usize {
+        let stats = self.get_stats();
+        stats.token_pool.current_size
+            + stats.fact_data_pool.current_size
+            + stats.field_map_pool.current_size
+            + stats.fact_vec_pool.current_size
+            + stats.fact_id_set_pool.current_size
+    }
+
+    /// Get total peak objects across all pools
+    pub fn total_peak_objects(&self) -> usize {
+        let stats = self.get_stats();
+        stats.token_pool.peak_size
+            + stats.fact_data_pool.peak_size
+            + stats.field_map_pool.peak_size
+            + stats.fact_vec_pool.peak_size
+            + stats.fact_id_set_pool.peak_size
     }
 }
 
@@ -589,6 +700,7 @@ mod tests {
             pool_hits: pool.pool_hits,
             pool_misses: pool.pool_misses,
             hit_rate: pool.hit_rate(),
+            memory_usage_bytes: 0,
             current_size: pool.size(),
             peak_size: pool.peak_size,
         };

@@ -9,7 +9,7 @@ use std::time::Instant;
 
 #[test]
 fn test_fast_lookup_performance_improvement() {
-    let mut network = ReteNetwork::new().unwrap();
+    let network = ReteNetwork::new().unwrap();
 
     // Create a large number of facts to test performance with
     let fact_count = 10_000;
@@ -145,7 +145,7 @@ fn test_fast_lookup_performance_improvement() {
 
 #[test]
 fn test_cache_statistics_accuracy() {
-    let mut network = ReteNetwork::new().unwrap();
+    let network = ReteNetwork::new().unwrap();
 
     // Create facts with predictable access patterns
     let mut facts = Vec::new();

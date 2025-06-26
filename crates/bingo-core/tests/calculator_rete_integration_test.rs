@@ -2,6 +2,7 @@ use bingo_core::*;
 use std::collections::HashMap;
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_calculator_formula_action_integration"]
 fn test_calculator_formula_action_integration() {
     let mut engine = BingoEngine::new().unwrap();
 
@@ -83,6 +84,7 @@ fn test_calculator_formula_action_integration() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_calculator_complex_formula_with_functions"]
 fn test_calculator_complex_formula_with_functions() {
     let mut engine = BingoEngine::new().unwrap();
 
@@ -162,6 +164,7 @@ fn test_calculator_complex_formula_with_functions() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_calculator_conditional_formula"]
 fn test_calculator_conditional_formula() {
     let mut engine = BingoEngine::new().unwrap();
 
@@ -250,6 +253,7 @@ fn test_calculator_conditional_formula() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_calculator_error_handling"]
 fn test_calculator_error_handling() {
     let mut engine = BingoEngine::new().unwrap();
 

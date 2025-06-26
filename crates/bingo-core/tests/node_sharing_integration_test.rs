@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_alpha_node_sharing_across_rules() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create multiple rules with identical conditions to test alpha node sharing
     let shared_condition = Condition::Simple {
@@ -141,7 +141,7 @@ fn test_alpha_node_sharing_across_rules() {
 
 #[test]
 fn test_beta_node_sharing_across_rules() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create rules with multiple conditions that should result in shared beta nodes
     // Both conditions reference user_id so they can be joined
@@ -237,7 +237,7 @@ fn test_beta_node_sharing_across_rules() {
 
 #[test]
 fn test_node_sharing_with_rule_removal() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create shared condition
     let shared_condition = Condition::Simple {
@@ -350,7 +350,7 @@ fn test_node_sharing_with_rule_removal() {
 
 #[test]
 fn test_mixed_shared_and_unique_nodes() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create some shared and some unique conditions
     let shared_condition = Condition::Simple {
@@ -436,7 +436,7 @@ fn test_mixed_shared_and_unique_nodes() {
 
 #[test]
 fn test_performance_impact_of_node_sharing() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create many rules with shared conditions to test performance
     let shared_condition = Condition::Simple {

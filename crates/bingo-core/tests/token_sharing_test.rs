@@ -116,7 +116,7 @@ fn test_alpha_node_with_token_pool() {
         value: FactValue::String("active".to_string()),
     };
 
-    let mut alpha_node = AlphaNode::new(1, condition);
+    let alpha_node = AlphaNode::new(1, condition);
     let mut token_pool = TokenPool::new(10);
 
     // Create facts
@@ -142,8 +142,8 @@ fn test_alpha_node_with_token_pool() {
     assert_eq!(token_pool.pool_hits, 0); // No reuse yet
 
     // Alpha node memory should track matching facts
-    assert_eq!(alpha_node.memory.len(), 2); // fact1 and fact3
-    assert_eq!(alpha_node.memory, vec![1, 3]);
+    assert_eq!(alpha_node.memory.read().unwrap().len(), 2); // fact1 and fact3
+    assert_eq!(*alpha_node.memory.read().unwrap(), vec![1, 3]);
 }
 
 #[test]
@@ -157,6 +157,7 @@ fn test_token_pool_statistics() {
         utilization: 0.0,
         allocated_count: 0,
         returned_count: 0,
+        memory_usage_bytes: 0,
     };
 
     assert_eq!(pool.utilization(), initial_stats.utilization);
@@ -191,7 +192,7 @@ fn test_token_pool_statistics() {
 
 #[test]
 fn test_rete_network_token_pool_integration() {
-    let mut network = ReteNetwork::new().unwrap();
+    let network = ReteNetwork::new().unwrap();
 
     // Create a simple rule
     let rule = Rule {

@@ -183,3 +183,50 @@ Based on comprehensive analysis and private network deployment context, the impl
 4. **Simplified Architecture**: Two rule types (built-in + JSON with calculator DSL)
 5. **Private Network**: Simplified safety model focused on preventing accidents
 6. **Incremental Features**: Add JSON rules and calculator DSL only after core validation
+
+## Testing Architecture (IMPLEMENTED ✅)
+
+### Quality vs Performance Test Separation
+
+**Quality Test Suite (Fast & Reliable - ZERO Tolerance):**
+- **189+ tests** across all packages executing in <60 seconds
+- **Zero tolerance** for failures - all tests must pass
+- **CI/CD ready** with fast feedback loops
+- **Comprehensive coverage**: Unit tests, integration tests, API validation
+
+**Performance Test Suite (Enterprise Validation):**
+- **16 specialized performance tests** marked with `#[ignore]`
+- **Release mode required** for accurate measurements
+- **Comprehensive benchmarking**: Stress testing, concurrent load, scaling validation
+- **Manual/Scheduled execution** to prevent CI blocking
+
+### Test Execution Commands
+
+**Quality Validation (Required for CI/CD):**
+```bash
+cargo fmt --check                           # Code formatting
+cargo clippy --workspace --all-targets -- -D warnings  # Zero warnings
+cargo check --workspace --all-targets       # Compilation check  
+cargo test --workspace                      # All quality tests
+```
+
+**Performance Validation (Comprehensive):**
+```bash
+cargo test --release -- --ignored          # All performance tests
+cargo test --package bingo-core --test scaling_validation_test --release  # Scaling
+```
+
+### Benefits of Separation
+- **Fast CI/CD**: Quality checks complete in seconds, not minutes
+- **Zero Blocking**: Performance tests don't prevent code integration
+- **Comprehensive Coverage**: Full enterprise validation available when needed
+- **Resource Efficiency**: CI environments only run appropriate test scale
+
+## Documentation Structure
+
+- **[README.md](README.md)**: Quick start and overview
+- **[CLAUDE.md](CLAUDE.md)**: Development commands and guidelines  
+- **[PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md)**: Complete performance testing guide
+- **[specs/architecture.md](specs/architecture.md)**: System architecture details
+- **[specs/performance.md](specs/performance.md)**: Performance targets and optimization
+- **[specs/](specs/)**: Complete technical specifications

@@ -4,6 +4,7 @@
 //! including timing, memory usage, and rule firing statistics.
 
 use crate::types::RuleId;
+use crate::unified_memory_coordinator::MemoryConsumer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -632,6 +633,79 @@ pub enum BottleneckType {
     FrequentFiring,
 }
 
+impl MemoryConsumer for RulePerformanceTracker {
+    fn memory_usage_bytes(&self) -> usize {
+        // Calculate memory usage based on struct fields
+        let mut total = std::mem::size_of::<Self>();
+        total +=
+            self.rule_profiles.capacity() * std::mem::size_of::<(RuleId, RuleExecutionProfile)>();
+        // Add estimated size of rule profiles contents
+        for profile in self.rule_profiles.values() {
+            total += profile.recent_executions.capacity() * std::mem::size_of::<ExecutionRecord>();
+            total +=
+                profile.performance_trend.capacity() * std::mem::size_of::<PerformanceTrendPoint>();
+        }
+        total
+    }
+
+    fn reduce_memory_usage(&mut self, reduction_factor: f64) -> usize {
+        let initial_usage = self.memory_usage_bytes();
+        // Reduce the number of recent execution records and performance trend points
+        for profile in self.rule_profiles.values_mut() {
+            let target_records =
+                (profile.recent_executions.len() as f64 * (1.0 - reduction_factor)) as usize;
+            if profile.recent_executions.len() > target_records {
+                profile.recent_executions.truncate(target_records);
+            }
+            let target_trend =
+                (profile.performance_trend.len() as f64 * (1.0 - reduction_factor)) as usize;
+            if profile.performance_trend.len() > target_trend {
+                profile.performance_trend.truncate(target_trend);
+            }
+        }
+        initial_usage.saturating_sub(self.memory_usage_bytes())
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert(
+            "total_rules_tracked".to_string(),
+            self.rule_profiles.len() as f64,
+        );
+        map.insert(
+            "total_evaluations".to_string(),
+            self.global_metrics.total_evaluations as f64,
+        );
+        map.insert(
+            "total_firings".to_string(),
+            self.global_metrics.total_firings as f64,
+        );
+        map.insert(
+            "overall_success_rate".to_string(),
+            self.global_metrics.overall_success_rate,
+        );
+        map.insert(
+            "peak_memory_usage".to_string(),
+            self.global_metrics.peak_memory_usage as f64,
+        );
+        map.insert(
+            "memory_usage_bytes".to_string(),
+            self.memory_usage_bytes() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "RulePerformanceTracker"
+    }
+}
+
+impl Default for MemoryStatistics {
+    fn default() -> Self {
+        Self { average_memory: 0, peak_memory: 0, total_allocated: 0, memory_efficiency: 0.0 }
+    }
+}
+
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {
@@ -642,12 +716,6 @@ impl Default for PerformanceConfig {
             max_execution_records: 100,
             enable_trend_analysis: true,
         }
-    }
-}
-
-impl Default for MemoryStatistics {
-    fn default() -> Self {
-        Self { average_memory: 0, peak_memory: 0, total_allocated: 0, memory_efficiency: 0.0 }
     }
 }
 

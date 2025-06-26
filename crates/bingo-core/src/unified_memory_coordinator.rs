@@ -81,6 +81,17 @@ pub struct CoordinationStats {
     pub avg_memory_usage_bytes: usize,
 }
 
+/// Statistics for a memory consumer
+#[derive(Debug, Clone, Default)]
+pub struct MemoryConsumerStats {
+    pub name: String,
+    pub current_usage_bytes: usize,
+    pub peak_usage_bytes: usize,
+    pub total_allocated_bytes: usize,
+    pub total_freed_bytes: usize,
+    pub custom_metrics: HashMap<String, f64>,
+}
+
 /// Trait for components that consume memory and can be controlled
 pub trait MemoryConsumer {
     /// Get current memory usage estimate in bytes

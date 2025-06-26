@@ -13,19 +13,11 @@ Bingo is a production-ready high-performance RETE rules engine built in **Rust 2
 # Build the project (optimized for release)
 cargo build --release
 
-# Run all unit tests (167 tests)
-cargo test --lib
-
-# Run performance tests (CI-appropriate)
-cargo test --release
-
-# Run heavy performance tests (manual only)
-cargo test --ignored --release
-
-# Code quality checks (zero tolerance)
+# Complete quality validation (ZERO tolerance for failures)
 cargo fmt --check
-cargo clippy -- -D warnings
-cargo check --workspace
+cargo clippy --workspace --all-targets -- -D warnings  
+cargo check --workspace --all-targets
+cargo test --workspace
 
 # Start web server (http://127.0.0.1:3000)
 cargo run --bin bingo
@@ -34,13 +26,22 @@ cargo run --bin bingo
 cargo run --bin bingo explain
 ```
 
-### Performance Testing
+### Performance Testing (Separated from Quality Validation)
 ```bash
+# ⚠️  CRITICAL: Performance tests require --release mode for accurate results
+
+# Run all performance tests (16 tests marked with #[ignore])
+cargo test --release -- --ignored
+
 # CI-appropriate scaling tests (100K, 200K facts)
 cargo test --package bingo-core --test scaling_validation_test --release
 
 # Manual heavy tests (500K, 1M facts)
 cargo test --package bingo-core --test scaling_validation_test --ignored --release
+
+# Individual performance test examples
+cargo test --release test_calculator_cache_performance_improvement -- --ignored
+cargo test --release test_mixed_operations_performance -- --ignored
 
 # Comprehensive benchmarks
 cargo bench
@@ -49,6 +50,11 @@ cargo bench
 cargo bench --bench engine_bench
 cargo bench --bench million_fact_bench
 ```
+
+### Test Architecture
+- **Quality Tests**: Fast execution (<60s), run with `cargo test --workspace`
+- **Performance Tests**: Comprehensive validation, run with `cargo test --release -- --ignored`
+- **Documentation**: See [PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md) for complete guide
 
 ### API Testing
 ```bash

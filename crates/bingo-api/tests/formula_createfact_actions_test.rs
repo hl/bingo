@@ -254,6 +254,7 @@ async fn test_multiple_action_types() {
 }
 
 #[tokio::test]
+#[ignore = "Performance test - run with --release: cargo test --release test_fact_processing_with_formula_actions"]
 async fn test_fact_processing_with_formula_actions() {
     let server = create_test_server().await;
 

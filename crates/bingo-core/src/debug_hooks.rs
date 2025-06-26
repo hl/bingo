@@ -5,6 +5,7 @@
 
 use crate::rete_nodes::{NodeId, Token};
 use crate::types::{Fact, FactValue, RuleId};
+use crate::unified_memory_coordinator::MemoryConsumer;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -879,6 +880,70 @@ impl Default for DebugConfig {
             enable_conditional_debugging: false,
             event_sample_rate: 1.0,
         }
+    }
+}
+
+impl MemoryConsumer for DebugHookManager {
+    fn memory_usage_bytes(&self) -> usize {
+        // Calculate memory usage based on struct fields
+        let mut total = std::mem::size_of::<Self>();
+        total += self.sessions.capacity() * std::mem::size_of::<(DebugSessionId, DebugSession)>();
+        total += self.event_hooks.capacity() * std::mem::size_of::<Box<dyn EventHook>>();
+        total += self.rule_hooks.capacity()
+            * std::mem::size_of::<(RuleId, Vec<Box<dyn RuleFireHook>>)>();
+        total += self.token_hooks.capacity() * std::mem::size_of::<Box<dyn TokenPropagationHook>>();
+        // Add event buffer size
+        if let Ok(buffer) = self.event_buffer.lock() {
+            total += buffer.capacity() * std::mem::size_of::<DebugEvent>();
+        }
+        total
+    }
+
+    fn reduce_memory_usage(&mut self, _reduction_factor: f64) -> usize {
+        let initial_usage = self.memory_usage_bytes();
+        // Aggressively clear sessions and event buffer
+        self.sessions.clear();
+        if let Ok(mut buffer) = self.event_buffer.lock() {
+            buffer.clear();
+        }
+        // Optionally reduce capacity of vectors/HashMaps based on reduction_factor
+        // For simplicity, we'll just clear them for now.
+        initial_usage.saturating_sub(self.memory_usage_bytes())
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert("total_sessions".to_string(), self.sessions.len() as f64);
+        map.insert(
+            "total_event_hooks".to_string(),
+            self.event_hooks.len() as f64,
+        );
+        map.insert("total_rule_hooks".to_string(), self.rule_hooks.len() as f64);
+        map.insert(
+            "total_token_hooks".to_string(),
+            self.token_hooks.len() as f64,
+        );
+        map.insert(
+            "total_debug_time_ms".to_string(),
+            self.debug_stats.total_debug_time.as_millis() as f64,
+        );
+        map.insert(
+            "hook_invocations".to_string(),
+            self.debug_stats.hook_invocations as f64,
+        );
+        map.insert(
+            "overhead_percentage".to_string(),
+            self.debug_stats.overhead_percentage,
+        );
+        map.insert(
+            "memory_usage_bytes".to_string(),
+            self.memory_usage_bytes() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "DebugHookManager"
     }
 }
 

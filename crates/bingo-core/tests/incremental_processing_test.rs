@@ -12,7 +12,7 @@ fn test_incremental_processing_basic_functionality() {
     println!("🔄 Basic Incremental Processing Test");
     println!("===================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create a simple rule that will help us test incremental processing
     let rule = Rule {
@@ -126,7 +126,7 @@ fn test_incremental_processing_with_deletions() {
     println!("🗑️ Incremental Processing with Deletions Test");
     println!("=============================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     let rule = Rule {
         id: 1,
@@ -195,7 +195,7 @@ fn test_processing_mode_configurations() {
     println!("⚙️ Processing Mode Configuration Test");
     println!("====================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     let rule = Rule {
         id: 1,
@@ -273,7 +273,7 @@ fn test_incremental_processing_performance_scaling() {
     println!("📈 Incremental Processing Performance Scaling Test");
     println!("================================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     let rule = Rule {
         id: 1,
@@ -381,7 +381,7 @@ fn test_incremental_memory_usage() {
     println!("💾 Incremental Processing Memory Usage Test");
     println!("==========================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     let rule = Rule {
         id: 1,

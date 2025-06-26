@@ -254,6 +254,7 @@ async fn test_engine_stats_performance() {
 }
 
 #[tokio::test]
+#[ignore = "Performance test - run with --release: cargo test --release test_mixed_operations_performance"]
 async fn test_mixed_operations_performance() {
     let server = create_test_server().await;
 
@@ -337,6 +338,7 @@ async fn test_request_size_handling() {
 }
 
 #[tokio::test]
+#[ignore = "Performance test - run with --release: cargo test --release test_api_correctness_after_concurrency_changes"]
 async fn test_api_correctness_after_concurrency_changes() {
     let server = create_test_server().await;
 

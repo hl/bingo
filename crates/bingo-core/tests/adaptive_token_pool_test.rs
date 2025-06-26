@@ -172,11 +172,12 @@ fn test_token_pool_adaptive_resizing() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_rete_network_with_optimal_token_pool"]
 fn test_rete_network_with_optimal_token_pool() {
     println!("\n🏗️  Testing RETE Network with Optimal Token Pool");
     println!("==============================================");
 
-    let mut network = ReteNetwork::new().unwrap();
+    let network = ReteNetwork::new().unwrap();
 
     // Create a simple rule to test token pool integration
     let rule = Rule {

@@ -15,7 +15,7 @@ fn test_phase3_combined_performance_benchmark() {
     println!("🚀 Phase 3 Performance Benchmark - Combined Optimizations");
     println!("=========================================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create multiple rules with shared conditions and complex formulas
     // This tests all optimizations simultaneously
@@ -328,7 +328,7 @@ fn test_phase3_memory_efficiency_benchmark() {
     println!("💾 Phase 3 Memory Efficiency Benchmark");
     println!("=====================================");
 
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create rules designed to test memory efficiency
     let rule_count = 100;
@@ -476,7 +476,7 @@ fn test_phase3_scaling_performance() {
     for &fact_count in &fact_counts {
         println!("🔢 Testing with {} facts...", fact_count);
 
-        let mut engine = ReteNetwork::new().unwrap();
+        let engine = ReteNetwork::new().unwrap();
 
         // Create a moderately complex rule set
         let rules = vec![

@@ -9,7 +9,7 @@ use std::time::Instant;
 
 #[test]
 fn test_memory_pools_basic_functionality() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create a rule to trigger fact processing
     let rule = Rule {
@@ -85,7 +85,7 @@ fn test_memory_pools_basic_functionality() {
 
 #[test]
 fn test_memory_pool_efficiency_improvement() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create a rule that will cause many memory allocations
     let rule = Rule {
@@ -347,7 +347,7 @@ fn test_memory_pool_thread_safety() {
 
 #[test]
 fn test_memory_pool_cleanup_and_reset() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create a simple rule
     let rule = Rule {

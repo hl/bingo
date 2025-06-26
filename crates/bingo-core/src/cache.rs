@@ -139,6 +139,12 @@ impl CacheStats {
             (self.size as f64 / self.capacity as f64) * 100.0
         }
     }
+
+    /// Estimate memory usage in bytes
+    pub fn memory_usage_bytes(&self) -> usize {
+        // Rough estimate: 64 bytes per cache entry
+        self.size * 64
+    }
 }
 
 #[cfg(test)]

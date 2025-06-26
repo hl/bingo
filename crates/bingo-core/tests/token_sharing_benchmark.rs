@@ -20,7 +20,7 @@ fn create_test_fact(id: u64, status: &str, value: i64) -> Fact {
 fn test_token_sharing_memory_efficiency() {
     // Test memory efficiency of token sharing vs naive approach
 
-    let mut network = ReteNetwork::new().unwrap();
+    let network = ReteNetwork::new().unwrap();
 
     // Create a rule that will generate many tokens
     let rule = Rule {

@@ -65,6 +65,7 @@ fn benchmark_token_pool_with_config(pool_size: usize, workload_size: usize) {
         utilization: token_pool.utilization(),
         allocated_count: token_pool.allocated_count,
         returned_count: token_pool.returned_count,
+        memory_usage_bytes: token_pool.memory_usage_bytes(),
     };
 
     println!("  Allocation time: {:?}", allocation_time);

@@ -153,7 +153,7 @@ impl FieldIndexer {
     }
 
     /// Estimate memory usage of the indexes (rough calculation)
-    fn estimate_memory_usage(&self) -> usize {
+    pub fn estimate_memory_usage(&self) -> usize {
         let mut size = std::mem::size_of::<Self>();
 
         for (field_name, field_index) in &self.indexes {

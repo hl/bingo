@@ -41,7 +41,7 @@ fn bench_fact_processing(c: &mut Criterion) {
                     let engine = BingoEngine::new().unwrap();
                     (facts, engine)
                 },
-                |(facts, mut engine)| black_box(engine.process_facts(facts).unwrap()),
+                |(facts, engine)| black_box(engine.process_facts(facts).unwrap()),
                 criterion::BatchSize::LargeInput,
             );
         });
@@ -62,7 +62,7 @@ fn bench_memory_usage(c: &mut Criterion) {
                 for _ in 0..iters {
                     let memory_tracker = MemoryTracker::start().unwrap();
                     let facts = generate_test_facts(*size);
-                    let mut engine = BingoEngine::new().unwrap();
+                    let engine = BingoEngine::new().unwrap();
 
                     let start = std::time::Instant::now();
                     let _result = black_box(engine.process_facts(facts).unwrap());
@@ -121,7 +121,7 @@ fn bench_engine_stats(c: &mut Criterion) {
     let mut group = c.benchmark_group("engine_stats");
 
     // Pre-populate engine with facts
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
     let facts = generate_test_facts(100_000);
     engine.process_facts(facts).unwrap();
 

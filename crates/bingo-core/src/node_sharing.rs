@@ -5,6 +5,7 @@
 
 use crate::rete_nodes::{AlphaNode, BetaNode, JoinCondition, NodeId};
 use crate::types::Condition;
+use crate::unified_memory_coordinator::MemoryConsumer;
 use std::collections::HashMap;
 
 /// A canonical representation of an alpha node for sharing purposes
@@ -81,6 +82,73 @@ pub struct NodeSharingRegistry {
     pub beta_shares_found: usize,
     pub alpha_nodes_created: usize,
     pub beta_nodes_created: usize,
+}
+
+impl NodeSharingRegistry {
+    /// Create a new node sharing registry
+    pub fn memory_usage_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.alpha_node_map.capacity() * std::mem::size_of::<(AlphaNodeSignature, NodeId)>()
+            + self.beta_node_map.capacity() * std::mem::size_of::<(BetaNodeSignature, NodeId)>()
+            + self.alpha_ref_counts.capacity() * std::mem::size_of::<(NodeId, usize)>()
+            + self.beta_ref_counts.capacity() * std::mem::size_of::<(NodeId, usize)>()
+    }
+}
+
+impl MemoryConsumer for NodeSharingRegistry {
+    fn memory_usage_bytes(&self) -> usize {
+        self.memory_usage_bytes()
+    }
+
+    fn reduce_memory_usage(&mut self, _reduction_factor: f64) -> usize {
+        // Node sharing registry doesn't have dynamic memory to reduce easily
+        // Clearing it would defeat its purpose. No-op for now.
+        0
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let stats = self.get_stats();
+        let mut map = HashMap::new();
+        map.insert(
+            "alpha_nodes_total".to_string(),
+            stats.alpha_nodes_total as f64,
+        );
+        map.insert(
+            "beta_nodes_total".to_string(),
+            stats.beta_nodes_total as f64,
+        );
+        map.insert(
+            "alpha_shares_found".to_string(),
+            stats.alpha_shares_found as f64,
+        );
+        map.insert(
+            "beta_shares_found".to_string(),
+            stats.beta_shares_found as f64,
+        );
+        map.insert(
+            "alpha_nodes_active".to_string(),
+            stats.alpha_nodes_active as f64,
+        );
+        map.insert(
+            "beta_nodes_active".to_string(),
+            stats.beta_nodes_active as f64,
+        );
+        map.insert("alpha_sharing_rate".to_string(), stats.alpha_sharing_rate);
+        map.insert("beta_sharing_rate".to_string(), stats.beta_sharing_rate);
+        map.insert(
+            "overall_sharing_rate".to_string(),
+            stats.overall_sharing_rate(),
+        );
+        map.insert(
+            "nodes_without_sharing".to_string(),
+            stats.nodes_without_sharing() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "NodeSharingRegistry"
+    }
 }
 
 impl NodeSharingRegistry {

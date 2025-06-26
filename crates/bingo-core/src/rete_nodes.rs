@@ -2,7 +2,7 @@ use crate::calculator::{CalculatorResult, EvaluationContext};
 use crate::calculator_cache::CachedCalculator;
 use crate::types::{Action, ActionType, Condition, Fact, FactId, FactValue, Operator};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 /// Unique identifier for nodes in the RETE network
 pub type NodeId = u64;
@@ -224,6 +224,15 @@ impl TokenPool {
         }
     }
 
+    /// Estimate memory usage in bytes
+    pub fn memory_usage_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.single_tokens.capacity() * std::mem::size_of::<Token>()
+            + self.multi_tokens.capacity() * std::mem::size_of::<Token>()
+            + self.allocation_rate_tracker.recent_allocations.capacity()
+                * std::mem::size_of::<std::time::Instant>()
+    }
+
     /// Get a token for a single fact ID (reuse if possible)
     pub fn get_single_token(&mut self, fact_id: FactId) -> Token {
         self.allocation_rate_tracker.record_allocation();
@@ -259,16 +268,6 @@ impl TokenPool {
         self.allocation_requests_since_resize += 1;
         if self.allocation_requests_since_resize >= 1000 {
             self.maybe_resize_pool();
-        }
-    }
-
-    /// Get pool utilization statistics
-    pub fn utilization(&self) -> f64 {
-        let total_requests = self.pool_hits + self.pool_misses;
-        if total_requests == 0 {
-            0.0
-        } else {
-            (self.pool_hits as f64 / total_requests as f64) * 100.0
         }
     }
 
@@ -362,6 +361,7 @@ impl TokenPool {
             allocation_rate: self.allocation_rate_tracker.current_rate(),
             peak_allocation_burst: self.peak_allocation_burst,
             current_burst_count: self.current_burst_count,
+            memory_usage_bytes: self.memory_usage_bytes(),
         }
     }
 
@@ -509,6 +509,7 @@ pub struct TokenPoolStats {
     pub utilization: f64,
     pub allocated_count: usize,
     pub returned_count: usize,
+    pub memory_usage_bytes: usize,
 }
 
 /// Comprehensive token pool statistics for detailed monitoring and tuning
@@ -526,6 +527,7 @@ pub struct TokenPoolComprehensiveStats {
     pub allocation_rate: f64,
     pub peak_allocation_burst: usize,
     pub current_burst_count: usize,
+    pub memory_usage_bytes: usize,
 }
 
 impl TokenPoolStats {
@@ -538,28 +540,79 @@ impl TokenPoolStats {
             (self.pool_hits as f64 / total as f64) * 100.0
         }
     }
+
+    /// Estimate memory usage in bytes
+    pub fn memory_usage_bytes(&self) -> usize {
+        // Rough estimate based on the size of the struct and its fields
+        std::mem::size_of::<Self>()
+    }
 }
 
-/// Alpha nodes test single fact conditions
+impl TokenPoolComprehensiveStats {
+    /// Get hit rate as a percentage
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.pool_hits + self.pool_misses;
+        if total == 0 {
+            0.0
+        } else {
+            (self.pool_hits as f64 / total as f64) * 100.0
+        }
+    }
+
+    /// Estimate memory usage in bytes
+    pub fn memory_usage_bytes(&self) -> usize {
+        // Rough estimate based on the size of the struct and its fields
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl TokenPool {
+    /// Get pool utilization as a percentage
+    pub fn utilization(&self) -> f64 {
+        let total_requests = self.pool_hits + self.pool_misses;
+        if total_requests == 0 {
+            0.0
+        } else {
+            (self.pool_hits as f64 / total_requests as f64) * 100.0
+        }
+    }
+
+    /// Get pool statistics for monitoring and optimization
+    pub fn get_stats(&self) -> TokenPoolStats {
+        TokenPoolStats {
+            pool_hits: self.pool_hits,
+            pool_misses: self.pool_misses,
+            utilization: self.utilization(),
+            allocated_count: self.allocated_count,
+            returned_count: self.returned_count,
+            memory_usage_bytes: self.memory_usage_bytes(),
+        }
+    }
+}
 #[derive(Debug)]
 pub struct AlphaNode {
     pub node_id: NodeId,
     pub condition: Condition,
-    pub memory: Vec<FactId>,
-    pub successors: HashSet<NodeId>,
+    pub memory: RwLock<Vec<FactId>>,
+    pub successors: RwLock<HashSet<NodeId>>,
 }
 
 impl AlphaNode {
     pub fn new(node_id: NodeId, condition: Condition) -> Self {
-        Self { node_id, condition, memory: Vec::new(), successors: HashSet::new() }
+        Self {
+            node_id,
+            condition,
+            memory: RwLock::new(Vec::new()),
+            successors: RwLock::new(HashSet::new()),
+        }
     }
 
     pub fn with_capacity(node_id: NodeId, condition: Condition, capacity: usize) -> Self {
         Self {
             node_id,
             condition,
-            memory: Vec::with_capacity(capacity),
-            successors: HashSet::new(),
+            memory: RwLock::new(Vec::with_capacity(capacity)),
+            successors: RwLock::new(HashSet::new()),
         }
     }
 
@@ -590,9 +643,9 @@ impl AlphaNode {
     }
 
     /// Process a fact and return tokens if it matches (using shared token pool)
-    pub fn process_fact(&mut self, fact: &Fact, token_pool: &mut TokenPool) -> Vec<Token> {
+    pub fn process_fact(&self, fact: &Fact, token_pool: &mut TokenPool) -> Vec<Token> {
         if self.test_fact(fact) {
-            self.memory.push(fact.id);
+            self.memory.write().unwrap().push(fact.id);
             vec![token_pool.get_single_token(fact.id)]
         } else {
             Vec::new()
@@ -601,7 +654,7 @@ impl AlphaNode {
 
     /// Get all facts currently in this node's memory as tokens
     pub fn get_tokens(&self) -> Vec<Token> {
-        self.memory.iter().map(|&id| Token::new(id)).collect()
+        self.memory.read().unwrap().iter().map(|&id| Token::new(id)).collect()
     }
 }
 
@@ -609,10 +662,10 @@ impl AlphaNode {
 #[derive(Debug)]
 pub struct BetaNode {
     pub node_id: NodeId,
-    pub left_memory: Vec<Token>,
-    pub right_memory: Vec<Token>,
+    pub left_memory: RwLock<Vec<Token>>,
+    pub right_memory: RwLock<Vec<Token>>,
     pub join_conditions: Vec<JoinCondition>,
-    pub successors: HashSet<NodeId>,
+    pub successors: RwLock<HashSet<NodeId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -626,22 +679,24 @@ impl BetaNode {
     pub fn new(node_id: NodeId, join_conditions: Vec<JoinCondition>) -> Self {
         Self {
             node_id,
-            left_memory: Vec::new(),
-            right_memory: Vec::new(),
+            left_memory: RwLock::new(Vec::new()),
+            right_memory: RwLock::new(Vec::new()),
             join_conditions,
-            successors: HashSet::new(),
+            successors: RwLock::new(HashSet::new()),
         }
     }
 
     /// Process tokens from left input
-    pub fn process_left_tokens(&mut self, tokens: Vec<Token>, facts: &[Fact]) -> Vec<Token> {
+    pub fn process_left_tokens(&self, tokens: Vec<Token>, facts: &[Fact]) -> Vec<Token> {
         let mut results = Vec::new();
+        let mut left_mem = self.left_memory.write().unwrap();
+        let right_mem = self.right_memory.read().unwrap();
 
         for token in tokens {
-            self.left_memory.push(token.clone());
+            left_mem.push(token.clone());
 
             // Try to join with existing right memory
-            for right_token in &self.right_memory {
+            for right_token in right_mem.iter() {
                 if self.tokens_match(&token, right_token, facts) {
                     results.push(self.join_tokens(&token, right_token));
                 }
@@ -652,14 +707,16 @@ impl BetaNode {
     }
 
     /// Process tokens from right input
-    pub fn process_right_tokens(&mut self, tokens: Vec<Token>, facts: &[Fact]) -> Vec<Token> {
+    pub fn process_right_tokens(&self, tokens: Vec<Token>, facts: &[Fact]) -> Vec<Token> {
         let mut results = Vec::new();
+        let mut right_mem = self.right_memory.write().unwrap();
+        let left_mem = self.left_memory.read().unwrap();
 
         for token in tokens {
-            self.right_memory.push(token.clone());
+            right_mem.push(token.clone());
 
             // Try to join with existing left memory
-            for left_token in &self.left_memory {
+            for left_token in left_mem.iter() {
                 if self.tokens_match(left_token, &token, facts) {
                     results.push(self.join_tokens(left_token, &token));
                 }
@@ -754,8 +811,8 @@ pub struct TerminalNode {
     pub node_id: NodeId,
     pub rule_id: u64,
     pub actions: Vec<Action>,
-    pub memory: Vec<Token>,
-    pub calculator: CachedCalculator,
+    pub memory: RwLock<Vec<Token>>,
+    pub calculator: Mutex<CachedCalculator>,
 }
 
 impl TerminalNode {
@@ -764,25 +821,22 @@ impl TerminalNode {
             node_id,
             rule_id,
             actions,
-            memory: Vec::new(),
-            calculator: CachedCalculator::with_default_caches(),
+            memory: RwLock::new(Vec::new()),
+            calculator: Mutex::new(CachedCalculator::with_default_caches()),
         }
     }
 
     /// Process tokens and execute actions (optimized to avoid fact cloning)
-    pub fn process_tokens(
-        &mut self,
-        tokens: Vec<Token>,
-        facts: &[Fact],
-    ) -> anyhow::Result<Vec<Fact>> {
+    pub fn process_tokens(&self, tokens: Vec<Token>, facts: &[Fact]) -> anyhow::Result<Vec<Fact>> {
         let mut results = Vec::new();
+        let mut mem = self.memory.write().unwrap();
 
         // Pre-allocate result capacity based on tokens and actions
         let capacity_hint = tokens.len() * self.actions.len();
         results.reserve(capacity_hint.min(1000));
 
         for token in tokens {
-            self.memory.push(token.clone());
+            mem.push(token.clone());
 
             // Execute actions for this token
             for action in &self.actions {
@@ -827,7 +881,12 @@ impl TerminalNode {
                                 };
 
                                 // Evaluate the expression using cached calculator
-                                match self.calculator.eval_cached(expression, &context) {
+                                match self
+                                    .calculator
+                                    .lock()
+                                    .unwrap()
+                                    .eval_cached(expression, &context)
+                                {
                                     Ok(CalculatorResult::Value(computed_value)) => {
                                         let mut modified_fact = original_fact.clone();
                                         modified_fact
@@ -928,12 +987,12 @@ impl TerminalNode {
 
     /// Get calculator cache statistics for monitoring
     pub fn get_calculator_cache_stats(&self) -> crate::calculator_cache::CalculatorCacheStats {
-        self.calculator.cache_stats()
+        self.calculator.lock().unwrap().cache_stats()
     }
 
     /// Get calculator cache utilization
     pub fn get_calculator_cache_utilization(&self) -> crate::calculator_cache::CacheUtilization {
-        self.calculator.cache_utilization()
+        self.calculator.lock().unwrap().cache_utilization()
     }
 }
 
@@ -1015,7 +1074,7 @@ mod tests {
             value: FactValue::Integer(18),
         };
 
-        let mut alpha_node = AlphaNode::new(1, condition);
+        let alpha_node = AlphaNode::new(1, condition);
 
         let mut fields = HashMap::new();
         fields.insert("age".to_string(), FactValue::Integer(25));
@@ -1026,7 +1085,7 @@ mod tests {
         let tokens = alpha_node.process_fact(&fact, &mut token_pool);
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].fact_ids.as_slice(), &[1]);
-        assert_eq!(alpha_node.memory.len(), 1);
+        assert_eq!(alpha_node.memory.read().unwrap().len(), 1);
     }
 
     #[test]

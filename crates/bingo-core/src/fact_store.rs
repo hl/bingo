@@ -496,17 +496,14 @@ impl PartitionedFactStore {
     }
 
     /// Get partition for a field value (for efficient querying)
-    #[allow(dead_code)]
-    fn partition_for_field_value(&self, field_value: &FactValue) -> Option<usize> {
+    fn partition_for_field_value(&self, field_value: &FactValue) -> usize {
         // Hash the field value to determine partition
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        // Use the existing Hash implementation for FactValue
         field_value.hash(&mut hasher);
-
-        Some((hasher.finish() as usize) % self.partition_count)
+        (hasher.finish() as usize) % self.partition_count
     }
 
     /// Get statistics for each partition
@@ -547,7 +544,7 @@ impl FactStore for PartitionedFactStore {
         let partition_index = self.partition_for_id(id);
 
         // Search in the determined partition for the global ID
-        self.partitions[partition_index].facts().iter().find(|fact| fact.id == id)
+        self.partitions[partition_index].get(id)
     }
 
     fn extend_from_vec(&mut self, facts: Vec<Fact>) {
@@ -569,26 +566,27 @@ impl FactStore for PartitionedFactStore {
     }
 
     fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<&Fact> {
-        let mut results = Vec::new();
-
-        // For partitioned search, we need to search all partitions
-        // since facts are distributed by ID, not by field value
-        for partition in &self.partitions {
-            results.extend(partition.find_by_field(field, value));
+        // Optimized: Route the query directly to the correct partition based on the value.
+        let partition_index = self.partition_for_field_value(value);
+        if let Some(partition) = self.partitions.get(partition_index) {
+            partition.find_by_field(field, value)
+        } else {
+            Vec::new()
         }
-
-        results
     }
 
     fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<&Fact> {
-        let mut results = Vec::new();
+        if criteria.is_empty() {
+            return Vec::new();
+        }
 
-        // For multi-criteria search, search all partitions
-        // TODO: Optimize this by using partition hints from criteria
+        // For multi-criteria search, we must still query all partitions unless
+        // we have a very advanced indexing strategy. The primary value-based
+        // partitioning helps most with single, high-cardinality field lookups.
+        let mut results = Vec::new();
         for partition in &self.partitions {
             results.extend(partition.find_by_criteria(criteria));
         }
-
         results
     }
 }

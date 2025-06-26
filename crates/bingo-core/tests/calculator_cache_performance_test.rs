@@ -8,8 +8,9 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_calculator_cache_performance_improvement"]
 fn test_calculator_cache_performance_improvement() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create a rule with formula actions that will be evaluated multiple times
     let rule = Rule {
@@ -122,8 +123,9 @@ fn test_calculator_cache_performance_improvement() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_expression_compilation_caching"]
 fn test_expression_compilation_caching() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     // Create multiple rules with the same expressions to test compilation caching
     for rule_id in 1..=10 {
@@ -192,8 +194,9 @@ fn test_expression_compilation_caching() {
 }
 
 #[test]
+#[ignore = "Performance test - run with --release: cargo test --release test_context_sensitive_result_caching"]
 fn test_context_sensitive_result_caching() {
-    let mut engine = ReteNetwork::new().unwrap();
+    let engine = ReteNetwork::new().unwrap();
 
     let rule = Rule {
         id: 1,

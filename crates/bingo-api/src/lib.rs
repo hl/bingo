@@ -10,8 +10,13 @@ use axum::{
     response::Json,
     routing::{delete, get, post, put},
 };
+use bingo_core::{
+    BingoEngine, Fact as CoreFact, FactData as CoreFactData, FactValue as CoreFactValue,
+};
 use chrono::{DateTime, Utc};
+use fnv::FnvHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
@@ -21,10 +26,6 @@ use utoipa_rapidoc::RapiDoc;
 use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
-
-use bingo_core::{
-    BingoEngine, Fact as CoreFact, FactData as CoreFactData, FactValue as CoreFactValue,
-};
 
 pub mod types;
 use types::*;
@@ -200,14 +201,9 @@ async fn process_facts_handler(
     let start = std::time::Instant::now();
 
     // Convert API facts to core facts
-    let mut next_id = 0u64;
-    let core_facts: Vec<CoreFact> = payload
-        .facts
-        .iter()
-        .map(|api_fact| convert_api_fact_to_core(api_fact, &mut next_id))
-        .collect();
+    let core_facts: Vec<CoreFact> = payload.facts.iter().map(convert_api_fact_to_core).collect();
 
-    let mut engine = state.engine.write().await;
+    let engine = state.engine.read().await;
     let _engine_stats_before = engine.get_stats();
 
     let results = engine.process_facts(core_facts).map_err(|e| {
@@ -480,48 +476,40 @@ async fn delete_rule_handler(
     State(state): State<AppState>,
     Path(rule_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ApiError>)> {
-    let mut rules = state.rules.lock().await;
+    let rule_id_numeric = stable_hash_id(&rule_id);
 
-    match rules.remove(&rule_id) {
-        Some(_) => {
-            // Also remove from engine (requires write lock)
-            let mut engine = state.engine.write().await;
-            // Hash the string ID to get the numeric ID used in the engine
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            rule_id.hash(&mut hasher);
-            let rule_id_numeric = hasher.finish();
-
-            engine.remove_rule(rule_id_numeric).map_err(|e| {
-                error!(rule_id = %rule_id, error = %e, "Failed to remove rule from engine");
-                // Re-insert the rule in memory since engine removal failed
-                // This would require getting the rule data back, but for now we log the error
-                // In production, this would need proper rollback
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ApiError::new(
-                        "ENGINE_ERROR",
-                        &format!("Failed to remove rule from engine: {}", e),
-                    )),
-                )
-            })?;
-            drop(engine); // Release write lock early
-
-            info!(rule_id = %rule_id, "Rule deleted successfully from memory and engine");
-            Ok(StatusCode::NO_CONTENT)
-        }
-        None => {
-            warn!(rule_id = %rule_id, "Cannot delete: rule not found");
-            Err((
+    // Check if rule exists in API cache first
+    {
+        let rules = state.rules.lock().await;
+        if !rules.contains_key(&rule_id) {
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(ApiError::new(
                     "RULE_NOT_FOUND",
                     &format!("Rule with ID '{}' not found", rule_id),
                 )),
-            ))
+            ));
         }
     }
+
+    // Rule exists, so try to remove it from engine
+    let mut engine = state.engine.write().await;
+    engine.remove_rule(rule_id_numeric).map_err(|e| {
+        error!(rule_id = %rule_id, error = %e, "Failed to remove rule from engine");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError::new(
+                "ENGINE_ERROR",
+                &format!("Failed to remove rule from engine: {}", e),
+            )),
+        )
+    })?;
+
+    // Engine removal successful, remove from API cache
+    let mut rules = state.rules.lock().await;
+    rules.remove(&rule_id);
+    info!(rule_id = %rule_id, "Rule deleted successfully from memory and engine");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// List rules with optional filtering
@@ -611,6 +599,13 @@ async fn get_engine_stats_handler(State(state): State<AppState>) -> Json<EngineS
 }
 
 // Utility functions for converting between API and core types
+
+/// Creates a stable u64 hash from a string ID.
+fn stable_hash_id(id: &str) -> u64 {
+    let mut hasher = FnvHasher::default();
+    id.hash(&mut hasher);
+    hasher.finish()
+}
 
 // Helper function to convert a single ApiCondition to core Condition
 fn convert_api_condition_to_core(
@@ -751,18 +746,13 @@ fn convert_api_rule_to_core(api_rule: &ApiRule) -> anyhow::Result<bingo_core::Ru
         actions.push(action);
     }
 
-    // Hash the string ID to create a consistent numeric ID for the core engine
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    api_rule.id.hash(&mut hasher);
-    let numeric_id = hasher.finish();
+    // Use a stable hash of the string ID to create a consistent numeric ID for the core engine
+    let numeric_id = stable_hash_id(&api_rule.id);
 
     Ok(Rule { id: numeric_id, name: api_rule.name.clone(), conditions, actions })
 }
 
-fn convert_api_fact_to_core(api_fact: &ApiFact, next_id: &mut u64) -> CoreFact {
+fn convert_api_fact_to_core(api_fact: &ApiFact) -> CoreFact {
     let mut fields = std::collections::HashMap::new();
 
     for (key, value) in &api_fact.data {
@@ -784,14 +774,10 @@ fn convert_api_fact_to_core(api_fact: &ApiFact, next_id: &mut u64) -> CoreFact {
         fields.insert(key.clone(), core_value);
     }
 
-    // Preserve user-provided ID if present, otherwise generate new one
-    let fact_id = if let Ok(user_id) = api_fact.id.parse::<u64>() {
-        user_id // Use user-provided ID
-    } else {
-        let generated = *next_id;
-        *next_id += 1;
-        generated // Generate new ID
-    };
+    // The core engine will assign the final u64 ID. We use the stable hash
+    // of the user-provided string ID to ensure that if the same fact is sent
+    // multiple times, the engine can recognize it.
+    let fact_id = stable_hash_id(&api_fact.id);
 
     CoreFact { id: fact_id, data: CoreFactData { fields } }
 }
@@ -829,5 +815,7 @@ fn convert_core_fact_to_api(core_fact: &CoreFact) -> ApiFact {
         data.insert(key.clone(), json_value);
     }
 
-    ApiFact { id: Uuid::new_v4().to_string(), data, created_at: Utc::now() }
+    // IMPORTANT: Preserve the core fact ID on the way out so clients can
+    // correlate results with original facts (or identify new facts).
+    ApiFact { id: core_fact.id.to_string(), data, created_at: Utc::now() }
 }

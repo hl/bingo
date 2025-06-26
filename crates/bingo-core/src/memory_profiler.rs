@@ -10,6 +10,7 @@
 //! The profiler enables automatic memory optimization based on usage patterns,
 //! memory pressure detection, and intelligent capacity planning.
 
+use crate::unified_memory_coordinator::MemoryConsumer;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
@@ -137,6 +138,53 @@ pub enum OptimizationEventType {
 impl Default for ReteMemoryProfiler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl MemoryConsumer for ReteMemoryProfiler {
+    fn memory_usage_bytes(&self) -> usize {
+        self.get_total_allocated_memory()
+    }
+
+    fn reduce_memory_usage(&mut self, _reduction_factor: f64) -> usize {
+        let initial_usage = self.get_total_allocated_memory();
+        // Trigger a cleanup based on the reduction factor
+        // For simplicity, we'll just call collect_statistics which might trigger optimization
+        self.collect_statistics();
+        initial_usage.saturating_sub(self.get_total_allocated_memory())
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert(
+            "total_allocated_bytes".to_string(),
+            self.get_total_allocated_memory() as f64,
+        );
+        map.insert(
+            "pressure_level".to_string(),
+            self.get_pressure_level() as u8 as f64,
+        );
+        map.insert(
+            "component_count".to_string(),
+            self.component_stats.len() as f64,
+        );
+        map.insert(
+            "memory_growth_trend".to_string(),
+            self.calculate_memory_growth_trend(),
+        );
+        map.insert(
+            "allocation_trend".to_string(),
+            self.calculate_allocation_trend(),
+        );
+        map.insert(
+            "optimization_events_count".to_string(),
+            self.optimization_events.len() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "ReteMemoryProfiler"
     }
 }
 

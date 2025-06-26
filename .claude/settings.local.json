@@ -77,7 +77,9 @@
       "Bash(gh pr view:*)",
       "Bash(gh pr comment:*)",
       "Bash(RUSTFLAGS=\"-D warnings\" cargo clippy --all-targets --all-features -- -D warnings)",
-      "Bash(RUSTFLAGS=\"-D warnings\" cargo check --workspace --all-targets)"
+      "Bash(RUSTFLAGS=\"-D warnings\" cargo check --workspace --all-targets)",
+      "Bash(gtimeout 120 cargo test --package bingo-core --lib)",
+      "Bash(gtimeout 300 cargo test --workspace)"
     ],
     "deny": []
   }

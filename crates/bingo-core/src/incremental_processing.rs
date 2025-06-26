@@ -5,6 +5,7 @@
 //! for large fact sets with small incremental updates.
 
 use crate::types::{Fact, FactId};
+use crate::unified_memory_coordinator::MemoryConsumer;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -257,6 +258,55 @@ impl FactChangeTracker {
 impl Default for FactChangeTracker {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl MemoryConsumer for FactChangeTracker {
+    fn memory_usage_bytes(&self) -> usize {
+        // Calculate memory usage based on struct fields
+        let mut total = std::mem::size_of::<Self>();
+        total += self.last_known_state.capacity() * std::mem::size_of::<(FactId, u64)>();
+        total += self.fact_states.capacity() * std::mem::size_of::<(FactId, FactState)>();
+        total += self.tracked_facts.capacity() * std::mem::size_of::<FactId>();
+        total
+    }
+
+    fn reduce_memory_usage(&mut self, reduction_factor: f64) -> usize {
+        let initial_usage = self.memory_usage_bytes();
+        self.cleanup_old_entries(std::time::Duration::from_secs_f64(
+            reduction_factor * 3600.0,
+        )); // Scale age by reduction factor
+        initial_usage.saturating_sub(self.memory_usage_bytes())
+    }
+
+    fn get_stats(&self) -> HashMap<String, f64> {
+        let mut map = HashMap::new();
+        map.insert(
+            "total_facts_processed".to_string(),
+            self.stats.total_facts_processed as f64,
+        );
+        map.insert("new_facts".to_string(), self.stats.new_facts as f64);
+        map.insert(
+            "modified_facts".to_string(),
+            self.stats.modified_facts as f64,
+        );
+        map.insert(
+            "unchanged_facts".to_string(),
+            self.stats.unchanged_facts as f64,
+        );
+        map.insert("deleted_facts".to_string(), self.stats.deleted_facts as f64);
+        map.insert("cache_hit_rate".to_string(), self.stats.cache_hit_rate);
+        map.insert("efficiency".to_string(), self.stats.efficiency());
+        map.insert("change_rate".to_string(), self.stats.change_rate());
+        map.insert(
+            "memory_usage_bytes".to_string(),
+            self.memory_usage_bytes() as f64,
+        );
+        map
+    }
+
+    fn name(&self) -> &str {
+        "FactChangeTracker"
     }
 }
 
