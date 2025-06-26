@@ -8,10 +8,14 @@
 //! 3. Memory constraints in typical server configurations
 //! 4. Performance characteristics of similar systems (Drools, etc.)
 //!
-//! Performance Targets:
-//! - 100K facts: 3 seconds (33K facts/sec)
-//! - 500K facts: 10 seconds, 2.5GB memory (50K facts/sec)  
-//! - 1M facts: 30 seconds, 4GB memory (33K facts/sec, enterprise batch processing)
+//! IMPORTANT: Performance tests MUST run in release mode for accurate results.
+//! In debug mode, performance is 10x slower due to lack of optimizations.
+//!
+//! Performance Targets (Release Mode):
+//! - 100K facts: 3 seconds (33K facts/sec) - good for CI
+//! - 200K facts: 6 seconds (CI-appropriate test)  
+//! - 500K facts: 10 seconds, 2.5GB memory (CI: ignored - too resource intensive)
+//! - 1M facts: 30 seconds, 4GB memory (CI: ignored - too resource intensive)
 
 use bingo_core::*;
 use std::collections::HashMap;
@@ -83,6 +87,7 @@ fn test_100k_fact_scaling() {
 }
 
 #[test]
+#[ignore] // Skip in CI - too resource intensive for limited CI runners  
 fn test_500k_fact_scaling() {
     let memory_tracker = MemoryTracker::start().unwrap();
     let mut engine = BingoEngine::with_capacity(500_000).unwrap();
@@ -160,6 +165,7 @@ fn test_500k_fact_scaling() {
 }
 
 #[test]
+#[ignore] // Skip in CI - too resource intensive for limited CI runners
 fn test_1m_fact_scaling() {
     let memory_tracker = MemoryTracker::start().unwrap();
     let mut engine = BingoEngine::with_capacity(1_000_000).unwrap();
@@ -245,4 +251,92 @@ fn test_1m_fact_scaling() {
         memory_delta as f64 / (1024.0 * 1024.0 * 1024.0)
     );
     println!("🎯 Ready for enterprise production deployment!");
+}
+
+#[test]
+fn test_200k_fact_scaling_ci_appropriate() {
+    // CI-appropriate test: smaller scale but validates same performance characteristics
+    let memory_tracker = MemoryTracker::start().unwrap();
+    let mut engine = BingoEngine::with_capacity(200_000).unwrap();
+
+    // Add a simple rule
+    let rule = Rule {
+        id: 1,
+        name: "CI Scale Rule".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "status".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("active".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::SetField {
+                field: "ci_processed".to_string(),
+                value: FactValue::Boolean(true),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
+    // Generate 200K facts (CI-appropriate scale)
+    let facts: Vec<Fact> = (0..200_000)
+        .map(|i| {
+            let mut fields = HashMap::new();
+            fields.insert("entity_id".to_string(), FactValue::Integer(i as i64));
+            fields.insert(
+                "status".to_string(),
+                FactValue::String(if i % 4 == 0 { "active" } else { "inactive" }.to_string()),
+            );
+            fields.insert(
+                "region".to_string(),
+                FactValue::String(format!("region_{}", i % 20)),
+            );
+
+            Fact { id: i as u64, data: FactData { fields } }
+        })
+        .collect();
+
+    let start = std::time::Instant::now();
+    let results = engine.process_facts(facts).unwrap();
+    let elapsed = start.elapsed();
+
+    let (start_stats, end_stats, memory_delta) = memory_tracker.finish().unwrap();
+
+    println!(
+        "✅ Processed 200K facts in {:?} (CI target: <6s), generated {} results",
+        elapsed,
+        results.len()
+    );
+    println!(
+        "Memory usage: {} -> {}, Delta: {} bytes ({:.2} MB)",
+        start_stats.format_rss(),
+        end_stats.format_rss(),
+        memory_delta,
+        memory_delta as f64 / (1024.0 * 1024.0)
+    );
+
+    let stats = engine.get_stats();
+    println!("Final engine stats: {:?}", stats);
+
+    // CI-appropriate performance targets (scaled down for limited resources)
+    assert!(
+        elapsed.as_secs() < 6,
+        "Should process 200K facts under 6 seconds (CI target)"
+    );
+    assert!(
+        memory_delta < 1_000_000_000,
+        "Memory usage should be under 1GB for 200K facts (CI target)"
+    );
+    assert_eq!(stats.fact_count, 200_000);
+    assert!(
+        results.len() > 40_000,
+        "Should generate results for ~25% of facts"
+    );
+
+    println!("🚀 200K fact CI scaling test passed!");
+    println!(
+        "📊 Performance: {:.0} facts/second | Memory: {:.1} MB",
+        200_000.0 / elapsed.as_secs_f64(),
+        memory_delta as f64 / (1024.0 * 1024.0)
+    );
 }
