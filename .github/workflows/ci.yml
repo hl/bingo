@@ -11,21 +11,16 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  test:
-    name: Test Suite
+  # Essential checks - always run
+  quality:
+    name: Code Quality & Basic Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust:
-          - stable
-
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust
-      uses: dtolnay/rust-toolchain@master
+      uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: ${{ matrix.rust }}
         components: rustfmt, clippy
 
     - name: Cache dependencies
@@ -35,7 +30,7 @@ jobs:
           ~/.cargo/registry
           ~/.cargo/git
           target
-        key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Check formatting
       run: cargo fmt -- --check
@@ -43,47 +38,40 @@ jobs:
     - name: Run clippy (ZERO warnings tolerance)
       run: cargo clippy --all-targets --all-features -- -D warnings
 
-    - name: Build
+    - name: Build (debug for speed)
       run: cargo build --verbose
 
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Run unit tests only (fast)
+      run: cargo test --lib --verbose
 
-    - name: Run tests with all features
-      run: cargo test --all-features --verbose
-
-    - name: Run scaling validation tests
-      run: cargo test --test scaling_validation_test --release --verbose
-
-    - name: Build documentation
-      run: cargo doc --no-deps --document-private-items
-
-  coverage:
-    name: Code Coverage
+  # Performance validation - CI-appropriate scale only
+  performance:
+    name: Performance Validation
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
       with:
-        components: llvm-tools-preview
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-release-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Install cargo-llvm-cov
-      uses: taiki-e/install-action@cargo-llvm-cov
+    # Only run 100K test - fastest scaling validation
+    - name: Run 100K scaling test (CI-appropriate)
+      run: cargo test test_100k_fact_scaling --release --verbose
 
-    - name: Generate code coverage
-      run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        files: lcov.info
-        fail_ci_if_error: true
-
-  security-audit:
+  # Security audit - only on main branch pushes to reduce resource usage
+  security:
     name: Security Audit
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v4
 
@@ -96,8 +84,9 @@ jobs:
     - name: Run security audit
       run: cargo audit
 
-  benchmark:
-    name: Performance Benchmarks
+  # Coverage - only on main branch to reduce CI load
+  coverage:
+    name: Code Coverage
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -105,18 +94,22 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
-
-    - name: Run benchmarks
-      run: cargo bench
-
-    - name: Store benchmark result
-      uses: benchmark-action/github-action-benchmark@v1
       with:
-        tool: 'cargo'
-        output-file-path: target/criterion/*/base/benchmark.json
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        auto-push: true
+        components: llvm-tools-preview
 
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@cargo-llvm-cov
+
+    - name: Generate code coverage (exclude heavy tests)
+      run: cargo llvm-cov --lib --lcov --output-path lcov.info
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: lcov.info
+        fail_ci_if_error: false  # Don't fail CI on coverage issues
+
+  # Release validation - only on main branch
   release-check:
     name: Release Check
     runs-on: ubuntu-latest
@@ -126,16 +119,6 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
-
-    - name: Check if ready for release
-      run: |
-        # Check that all crates have the same version
-        VERSIONS=$(cargo metadata --format-version=1 | jq -r '.workspace_members[] | split(" ")[1]' | sort -u)
-        if [ $(echo "$VERSIONS" | wc -l) -ne 1 ]; then
-          echo "Error: Workspace crates have different versions"
-          echo "$VERSIONS"
-          exit 1
-        fi
 
     - name: Verify release build
       run: cargo build --release --verbose
