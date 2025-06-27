@@ -3,11 +3,11 @@
 //! This module provides comprehensive debugging capabilities for the RETE network,
 //! including execution traces, performance profiling, and rule analysis tools.
 
+use crate::rete_nodes::{NodeId, Token};
 use crate::types::{Fact, RuleId};
-use crate::rete_nodes::{Token, NodeId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 /// Unique identifier for debugging sessions
@@ -326,7 +326,7 @@ pub struct TracePerformance {
 }
 
 /// Memory usage tracking
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MemoryUsage {
     /// Memory at start of execution
     pub start_memory: usize,
@@ -359,13 +359,13 @@ pub struct RuleDependency {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DependencyType {
     /// Data dependency (rule depends on facts created by another)
-    DataDependency,
+    Data,
     /// Conflict dependency (rules compete for same resources)
-    ConflictDependency,
+    Conflict,
     /// Temporal dependency (execution order matters)
-    TemporalDependency,
+    Temporal,
     /// Conditional dependency (one rule enables another)
-    ConditionalDependency,
+    Conditional,
 }
 
 /// Performance profile for a rule
@@ -506,6 +506,12 @@ pub enum OptimizationComplexity {
     Critical,
 }
 
+impl Default for DebugManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DebugManager {
     /// Create new debug manager
     pub fn new() -> Self {
@@ -519,7 +525,11 @@ impl DebugManager {
     }
 
     /// Create new debugging session
-    pub fn create_session(&mut self, target_rules: Vec<RuleId>, config: Option<DebugConfig>) -> DebugSessionId {
+    pub fn create_session(
+        &mut self,
+        target_rules: Vec<RuleId>,
+        config: Option<DebugConfig>,
+    ) -> DebugSessionId {
         let session_id = Uuid::new_v4();
         let session = DebugSession {
             session_id,
@@ -553,9 +563,7 @@ impl DebugManager {
             started_at: SystemTime::now(),
             completed_at: None,
             execution_path: Vec::new(),
-            result: ExecutionResult::ConditionsNotMet {
-                failed_conditions: Vec::new(),
-            },
+            result: ExecutionResult::ConditionsNotMet { failed_conditions: Vec::new() },
             performance: TracePerformance::default(),
             memory_usage: MemoryUsage::default(),
             dependencies: Vec::new(),
@@ -589,10 +597,10 @@ impl DebugManager {
         } else {
             return;
         };
-        
+
         // Calculate performance metrics
         self.calculate_trace_performance(trace_id);
-        
+
         // Update profiles
         if let Some(trace) = self.traces.get(&trace_id).cloned() {
             self.update_rule_profile(rule_id, &trace);
@@ -602,13 +610,15 @@ impl DebugManager {
     /// Calculate performance metrics for a trace
     fn calculate_trace_performance(&mut self, trace_id: TraceId) {
         if let Some(trace) = self.traces.get_mut(&trace_id) {
-            let mut performance = TracePerformance::default();
-            
-            performance.nodes_traversed = trace.execution_path.len();
-            performance.total_time = trace.completed_at
-                .unwrap_or(SystemTime::now())
-                .duration_since(trace.started_at)
-                .unwrap_or_default();
+            let mut performance = TracePerformance {
+                nodes_traversed: trace.execution_path.len(),
+                total_time: trace
+                    .completed_at
+                    .unwrap_or(SystemTime::now())
+                    .duration_since(trace.started_at)
+                    .unwrap_or_default(),
+                ..Default::default()
+            };
 
             for node_exec in &trace.execution_path {
                 match node_exec.node_type.as_str() {
@@ -626,7 +636,8 @@ impl DebugManager {
                     performance.action_execution_time += action_exec.execution_time;
                 }
 
-                performance.token_operations += node_exec.input_tokens.len() + node_exec.output_tokens.len();
+                performance.token_operations +=
+                    node_exec.input_tokens.len() + node_exec.output_tokens.len();
             }
 
             trace.performance = performance;
@@ -653,14 +664,15 @@ impl DebugManager {
         });
 
         profile.evaluation_count += 1;
-        
+
         if matches!(trace.result, ExecutionResult::RuleFired { .. }) {
             profile.fire_count += 1;
         }
 
         let execution_time = trace.performance.total_time;
         profile.total_execution_time += execution_time;
-        profile.average_execution_time = profile.total_execution_time / profile.evaluation_count as u32;
+        profile.average_execution_time =
+            profile.total_execution_time / profile.evaluation_count as u32;
 
         if execution_time < profile.min_execution_time {
             profile.min_execution_time = execution_time;
@@ -686,22 +698,22 @@ impl DebugManager {
     }
 
     /// Set breakpoint
-    pub fn set_breakpoint(&mut self, session_id: DebugSessionId, node_id: NodeId, condition: BreakpointCondition) -> anyhow::Result<()> {
+    pub fn set_breakpoint(
+        &mut self,
+        session_id: DebugSessionId,
+        node_id: NodeId,
+        condition: BreakpointCondition,
+    ) -> anyhow::Result<()> {
         if let Some(session) = self.sessions.get_mut(&session_id) {
-            let breakpoint = Breakpoint {
-                node_id,
-                condition,
-                enabled: true,
-                hit_count: 0,
-            };
+            let breakpoint = Breakpoint { node_id, condition, enabled: true, hit_count: 0 };
             session.breakpoints.insert(node_id, breakpoint);
-            
+
             tracing::info!(
                 session_id = %session_id,
                 node_id = %node_id,
                 "Set breakpoint"
             );
-            
+
             Ok(())
         } else {
             Err(anyhow::anyhow!("Debug session not found: {}", session_id))
@@ -709,7 +721,12 @@ impl DebugManager {
     }
 
     /// Check if execution should break at a node
-    pub fn should_break(&mut self, session_id: DebugSessionId, node_id: NodeId, token: &Token) -> bool {
+    pub fn should_break(
+        &mut self,
+        session_id: DebugSessionId,
+        node_id: NodeId,
+        token: &Token,
+    ) -> bool {
         if let Some(session) = self.sessions.get_mut(&session_id) {
             if let Some(breakpoint) = session.breakpoints.get_mut(&node_id) {
                 if !breakpoint.enabled {
@@ -761,9 +778,7 @@ impl DebugManager {
     /// Get execution traces for a session
     pub fn get_session_traces(&self, session_id: DebugSessionId) -> Vec<&ExecutionTrace> {
         if let Some(session) = self.sessions.get(&session_id) {
-            session.traces.iter()
-                .filter_map(|trace_id| self.traces.get(trace_id))
-                .collect()
+            session.traces.iter().filter_map(|trace_id| self.traces.get(trace_id)).collect()
         } else {
             Vec::new()
         }
@@ -776,7 +791,9 @@ impl DebugManager {
 
             // Analyze execution time trends
             if profile.performance_trend.len() >= 10 {
-                let recent_times: Vec<_> = profile.performance_trend.iter()
+                let recent_times: Vec<_> = profile
+                    .performance_trend
+                    .iter()
                     .rev()
                     .take(10)
                     .map(|dp| dp.execution_time.as_micros())
@@ -802,7 +819,9 @@ impl DebugManager {
                     bottleneck_type: BottleneckType::ConditionEvaluation,
                     severity: 0.8,
                     description: "Low success rate indicates inefficient conditions".to_string(),
-                    suggestion: "Consider reordering conditions or adding more selective conditions first".to_string(),
+                    suggestion:
+                        "Consider reordering conditions or adding more selective conditions first"
+                            .to_string(),
                     node_id: None,
                 });
             }
@@ -825,8 +844,11 @@ impl DebugManager {
                     optimization_type: OptimizationType::RuleReordering,
                     potential_improvement: (1.0 - profile.success_rate) * 50.0,
                     priority: 0.8,
-                    description: format!("Rule {} has low success rate ({}%), consider reordering conditions", 
-                                       profile.rule_id, (profile.success_rate * 100.0) as u32),
+                    description: format!(
+                        "Rule {} has low success rate ({}%), consider reordering conditions",
+                        profile.rule_id,
+                        (profile.success_rate * 100.0) as u32
+                    ),
                     affected_rules: vec![profile.rule_id],
                     complexity: OptimizationComplexity::Low,
                 });
@@ -838,8 +860,11 @@ impl DebugManager {
                     optimization_type: OptimizationType::IndexOptimization,
                     potential_improvement: 30.0,
                     priority: 0.7,
-                    description: format!("Rule {} has high execution time ({}ms), consider adding indexes", 
-                                       profile.rule_id, profile.average_execution_time.as_millis()),
+                    description: format!(
+                        "Rule {} has high execution time ({}ms), consider adding indexes",
+                        profile.rule_id,
+                        profile.average_execution_time.as_millis()
+                    ),
                     affected_rules: vec![profile.rule_id],
                     complexity: OptimizationComplexity::Medium,
                 });
@@ -852,10 +877,8 @@ impl DebugManager {
     /// Clean up old traces
     pub fn cleanup_old_traces(&mut self) {
         let cutoff = SystemTime::now() - Duration::from_millis(self.config.trace_retention_ms);
-        
-        self.traces.retain(|_, trace| {
-            trace.started_at > cutoff
-        });
+
+        self.traces.retain(|_, trace| trace.started_at > cutoff);
     }
 
     /// Get debugging statistics
@@ -871,8 +894,8 @@ impl Default for DebugConfig {
             enable_profiling: true,
             enable_memory_tracking: true,
             max_traces: 1000,
-            trace_retention_ms: 3600_000, // 1 hour
-            min_execution_time_us: 100,   // 100 microseconds
+            trace_retention_ms: 3_600_000, // 1 hour
+            min_execution_time_us: 100,    // 100 microseconds
             enable_token_tracking: true,
             enable_dependency_analysis: false,
         }
@@ -895,23 +918,7 @@ impl Default for TracePerformance {
     }
 }
 
-impl Default for MemoryUsage {
-    fn default() -> Self {
-        Self {
-            start_memory: 0,
-            peak_memory: 0,
-            end_memory: 0,
-            token_memory: 0,
-            fact_memory: 0,
-            working_memory: 0,
-        }
-    }
-}
-
 /// Get current timestamp in milliseconds since Unix epoch
 pub fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }

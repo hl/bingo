@@ -36,6 +36,7 @@ use types::*;
     paths(
         health_handler,
         process_facts_handler,
+        evaluate_handler,
         create_rule_handler,
         get_rule_handler,
         update_rule_handler,
@@ -48,6 +49,10 @@ use types::*;
             ApiFact,
             ApiRule,
             ApiCondition,
+            EvaluateRequest,
+            EvaluateResponse,
+            ApiRuleExecutionResult,
+            ApiActionResult,
             ApiAction,
             ProcessFactsRequest,
             ProcessFactsResponse,
@@ -114,8 +119,10 @@ pub fn create_app() -> anyhow::Result<Router> {
     let app = Router::new()
         // Health check
         .route("/health", get(health_handler))
-        // Fact processing
+        // Fact processing (legacy)
         .route("/facts/process", post(process_facts_handler))
+        // New simplified evaluation endpoint - YOUR API!
+        .route("/evaluate", post(evaluate_handler))
         // Rule management
         .route("/rules", post(create_rule_handler))
         .route("/rules", get(list_rules_handler))
@@ -202,8 +209,9 @@ async fn process_facts_handler(
 
     // Convert API facts to core facts
     let core_facts: Vec<CoreFact> = payload.facts.iter().map(convert_api_fact_to_core).collect();
+    let facts_count = payload.facts.len();
 
-    let engine = state.engine.read().await;
+    let mut engine = state.engine.write().await;
     let _engine_stats_before = engine.get_stats();
 
     let results = engine.process_facts(core_facts).map_err(|e| {
@@ -227,13 +235,14 @@ async fn process_facts_handler(
     let engine_stats_after = engine.get_stats();
     let processing_time_ms = start.elapsed().as_millis() as u64;
 
-    // Convert core facts back to API facts
-    let api_results: Vec<ApiFact> = results.iter().map(convert_core_fact_to_api).collect();
+    // For legacy compatibility, return the original facts
+    // (the simplified engine doesn't generate new facts, just executes actions)
+    let api_results: Vec<ApiFact> = payload.facts;
 
     let response = ProcessFactsResponse {
         request_id: request_id.clone(),
         results: api_results,
-        facts_processed: payload.facts.len(),
+        facts_processed: facts_count,
         rules_evaluated: engine_stats_after.rule_count,
         rules_fired: results.len(),
         processing_time_ms,
@@ -598,6 +607,142 @@ async fn get_engine_stats_handler(State(state): State<AppState>) -> Json<EngineS
     Json(stats)
 }
 
+/// ✅ YOUR API ENDPOINT! Evaluate rules + facts with predefined calculators
+#[utoipa::path(
+    post,
+    path = "/evaluate",
+    request_body = EvaluateRequest,
+    responses(
+        (status = 200, description = "Rules evaluated successfully", body = EvaluateResponse),
+        (status = 400, description = "Invalid request payload", body = ApiError),
+        (status = 500, description = "Internal server error", body = ApiError)
+    ),
+    tag = "evaluation"
+)]
+#[instrument(skip(state))]
+async fn evaluate_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<EvaluateRequest>,
+) -> Result<Json<EvaluateResponse>, (StatusCode, Json<ApiError>)> {
+    let request_id = Uuid::new_v4().to_string();
+
+    info!(
+        request_id = %request_id,
+        rules_count = payload.rules.len(),
+        facts_count = payload.facts.len(),
+        "🚀 YOUR API: Evaluating rules + facts with predefined calculators"
+    );
+
+    let start = std::time::Instant::now();
+
+    // Convert API rules to core rules
+    let mut core_rules = Vec::new();
+    for api_rule in &payload.rules {
+        match convert_api_rule_to_core(api_rule) {
+            Ok(core_rule) => core_rules.push(core_rule),
+            Err(e) => {
+                error!(
+                    request_id = %request_id,
+                    rule_id = %api_rule.id,
+                    error = %e,
+                    "Failed to convert API rule to core rule"
+                );
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(
+                        ApiError::new(
+                            "RULE_CONVERSION_ERROR",
+                            &format!("Failed to convert rule '{}': {}", api_rule.id, e),
+                        )
+                        .with_request_id(request_id),
+                    ),
+                ));
+            }
+        }
+    }
+
+    // Convert API facts to core facts
+    let core_facts: Vec<CoreFact> = payload.facts.iter().map(convert_api_fact_to_core).collect();
+
+    // ✅ YOUR API: Use the simplified evaluate method!
+    let mut engine = state.engine.write().await;
+    let results = engine.evaluate(core_rules, core_facts).map_err(|e| {
+        error!(
+            request_id = %request_id,
+            error = %e,
+            "Failed to evaluate rules and facts"
+        );
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(
+                ApiError::new("EVALUATION_ERROR", &format!("Failed to evaluate: {}", e))
+                    .with_request_id(request_id.clone()),
+            ),
+        )
+    })?;
+
+    let processing_time_ms = start.elapsed().as_millis() as u64;
+    let engine_stats = engine.get_stats();
+
+    // Convert core results to API results
+    let api_results: Vec<ApiRuleExecutionResult> = results
+        .iter()
+        .map(|result| {
+            let actions_executed = result
+                .actions_executed
+                .iter()
+                .map(|action| match action {
+                    bingo_core::ActionResult::FieldSet { field, value } => {
+                        ApiActionResult::FieldSet {
+                            field: field.clone(),
+                            value: convert_fact_value_to_json(value),
+                        }
+                    }
+                    bingo_core::ActionResult::CalculatorResult { calculator, result } => {
+                        ApiActionResult::CalculatorResult {
+                            calculator: calculator.clone(),
+                            result: result.clone(),
+                        }
+                    }
+                    bingo_core::ActionResult::Logged { message } => {
+                        ApiActionResult::Logged { message: message.clone() }
+                    }
+                })
+                .collect();
+
+            ApiRuleExecutionResult {
+                rule_id: result.rule_id.to_string(),
+                fact_id: result.fact_id.to_string(),
+                actions_executed,
+            }
+        })
+        .collect();
+
+    let response = EvaluateResponse {
+        request_id: request_id.clone(),
+        results: api_results,
+        rules_processed: payload.rules.len(),
+        facts_processed: payload.facts.len(),
+        rules_fired: results.len(),
+        processing_time_ms,
+        stats: EngineStats {
+            total_facts: engine_stats.fact_count,
+            total_rules: engine_stats.rule_count,
+            network_nodes: engine_stats.node_count,
+            memory_usage_bytes: engine_stats.memory_usage_bytes,
+        },
+    };
+
+    info!(
+        request_id = %request_id,
+        rules_fired = results.len(),
+        processing_time_ms = processing_time_ms,
+        "✅ YOUR API: Successfully evaluated rules and facts"
+    );
+
+    Ok(Json(response))
+}
+
 // Utility functions for converting between API and core types
 
 /// Creates a stable u64 hash from a string ID.
@@ -805,17 +950,4 @@ fn convert_fact_value_to_json(value: &CoreFactValue) -> serde_json::Value {
         CoreFactValue::Date(dt) => serde_json::Value::String(dt.to_rfc3339()),
         CoreFactValue::Null => serde_json::Value::Null,
     }
-}
-
-fn convert_core_fact_to_api(core_fact: &CoreFact) -> ApiFact {
-    let mut data = HashMap::new();
-
-    for (key, value) in &core_fact.data.fields {
-        let json_value = convert_fact_value_to_json(value);
-        data.insert(key.clone(), json_value);
-    }
-
-    // IMPORTANT: Preserve the core fact ID on the way out so clients can
-    // correlate results with original facts (or identify new facts).
-    ApiFact { id: core_fact.id.to_string(), data, created_at: Utc::now() }
 }

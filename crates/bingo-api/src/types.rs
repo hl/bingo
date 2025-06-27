@@ -470,3 +470,92 @@ impl ApiAction {
         }
     }
 }
+
+/// Request payload for the evaluate endpoint - YOUR API!
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct EvaluateRequest {
+    /// Rules to evaluate with predefined calculators
+    #[schema(example = json!([{
+        "id": "1",
+        "name": "Calculate Overtime", 
+        "conditions": [{
+            "type": "simple",
+            "field": "hours_worked",
+            "operator": "greater_than", 
+            "value": 40
+        }],
+        "actions": [{
+            "type": "call_calculator",
+            "calculator_name": "hours_calculator",
+            "input_mapping": {"hours": "hours_worked", "rate": "hourly_rate"},
+            "output_field": "overtime_pay"
+        }]
+    }]))]
+    pub rules: Vec<ApiRule>,
+
+    /// Facts to process
+    #[schema(example = json!([{
+        "id": "1",
+        "data": {
+            "employee_id": 12345,
+            "hours_worked": 45.5, 
+            "hourly_rate": 25.0
+        }
+    }]))]
+    pub facts: Vec<ApiFact>,
+}
+
+/// Response from the evaluate endpoint - YOUR API!
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct EvaluateResponse {
+    /// Unique request identifier for tracking
+    pub request_id: String,
+
+    /// Results of rule execution
+    pub results: Vec<ApiRuleExecutionResult>,
+
+    /// Number of rules processed
+    pub rules_processed: usize,
+
+    /// Number of facts processed
+    pub facts_processed: usize,
+
+    /// Number of rules that fired
+    pub rules_fired: usize,
+
+    /// Processing time in milliseconds
+    pub processing_time_ms: u64,
+
+    /// Engine statistics after processing
+    pub stats: EngineStats,
+}
+
+/// Result of executing a rule - YOUR API!
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ApiRuleExecutionResult {
+    /// ID of the rule that fired
+    pub rule_id: String,
+
+    /// ID of the fact that triggered the rule
+    pub fact_id: String,
+
+    /// Results of the actions executed
+    pub actions_executed: Vec<ApiActionResult>,
+}
+
+/// Result of executing an action - YOUR API!
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "type")]
+pub enum ApiActionResult {
+    /// Field was set to a value
+    #[serde(rename = "field_set")]
+    FieldSet { field: String, value: serde_json::Value },
+
+    /// Calculator was executed with result - YOUR PREDEFINED CALCULATOR!
+    #[serde(rename = "calculator_result")]
+    CalculatorResult { calculator: String, result: String },
+
+    /// Message was logged
+    #[serde(rename = "logged")]
+    Logged { message: String },
+}

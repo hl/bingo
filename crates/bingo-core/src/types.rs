@@ -11,6 +11,14 @@ pub struct CalculatorError {
     pub details: Option<HashMap<String, FactValue>>,
 }
 
+impl std::error::Error for CalculatorError {}
+
+impl fmt::Display for CalculatorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Calculator error: {}", self.message)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ErrorCode {
     MissingRequiredField,
@@ -111,6 +119,25 @@ impl std::hash::Hash for FactValue {
 }
 
 impl Eq for FactValue {}
+
+impl PartialOrd for FactValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use FactValue::*;
+        match (self, other) {
+            (String(a), String(b)) => a.partial_cmp(b),
+            (Integer(a), Integer(b)) => a.partial_cmp(b),
+            (Float(a), Float(b)) => a.partial_cmp(b),
+            (Boolean(a), Boolean(b)) => a.partial_cmp(b),
+            (Date(a), Date(b)) => a.partial_cmp(b),
+            (Null, Null) => Some(std::cmp::Ordering::Equal),
+            // Cross-type comparisons: convert to same type if possible
+            (Integer(a), Float(b)) => (*a as f64).partial_cmp(b),
+            (Float(a), Integer(b)) => a.partial_cmp(&(*b as f64)),
+            // For incompatible types, no ordering
+            _ => None,
+        }
+    }
+}
 
 impl fmt::Display for FactValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

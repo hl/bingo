@@ -1,11 +1,10 @@
-use crate::fact_store::{FactStore, FactStoreFactory};
-use crate::performance_tracking::PerformanceConfig;
-use crate::rete_network::ReteNetwork;
+use crate::fact_store::{ArenaFactStore, FactStore};
+use crate::rete_network::{ReteNetwork, RuleExecutionResult};
 use crate::types::*;
-use anyhow::{Context, Result};
-use tracing::{debug, error, info, instrument, warn};
+use anyhow::Result;
+use tracing::{info, instrument};
 
-/// Main engine for processing rules and facts
+/// Main engine for processing rules and facts - simplified for API use
 pub struct BingoEngine {
     rules: Vec<Rule>,
     fact_store: Box<dyn FactStore>,
@@ -18,373 +17,159 @@ impl BingoEngine {
     pub fn new() -> Result<Self> {
         info!("Creating new Bingo engine");
 
-        let rete_network =
-            ReteNetwork::new().context("Failed to create RETE network for new engine")?;
+        let fact_store = Box::new(ArenaFactStore::new());
+        let rete_network = ReteNetwork::new();
 
-        let engine =
-            Self { rules: Vec::new(), fact_store: FactStoreFactory::create_simple(), rete_network };
-
-        info!(
-            fact_store_type = "simple",
-            "Bingo engine created successfully"
-        );
-
-        Ok(engine)
+        Ok(Self { rules: Vec::new(), fact_store, rete_network })
     }
 
-    /// Create a new engine optimized for the expected number of facts
+    /// Create an engine with capacity hint for facts
     #[instrument]
     pub fn with_capacity(fact_count_hint: usize) -> Result<Self> {
-        if fact_count_hint == 0 {
-            warn!("Creating engine with zero capacity hint, falling back to default");
-            return Self::new();
-        }
-
-        info!(fact_count_hint, "Creating optimized Bingo engine");
-
-        let rete_network =
-            ReteNetwork::new().context("Failed to create RETE network for optimized engine")?;
-
-        let engine = Self {
-            rules: Vec::new(),
-            fact_store: FactStoreFactory::create_optimized(fact_count_hint),
-            rete_network,
-        };
-
         info!(
             fact_count_hint = fact_count_hint,
-            fact_store_type = "optimized",
-            "Optimized Bingo engine created successfully"
+            "Creating Bingo engine with capacity hint"
         );
 
-        Ok(engine)
-    }
+        let fact_store = Box::new(ArenaFactStore::with_capacity(fact_count_hint));
+        let rete_network = ReteNetwork::new();
 
-    /// Create a new engine with explicit ArenaFactStore for maximum performance
-    #[instrument]
-    pub fn with_arena_store(capacity: usize) -> Result<Self> {
-        info!(
-            capacity,
-            "Creating Bingo engine with explicit ArenaFactStore for maximum performance"
-        );
-
-        let rete_network =
-            ReteNetwork::new().context("Failed to create RETE network for arena engine")?;
-
-        let engine = Self {
-            rules: Vec::new(),
-            fact_store: FactStoreFactory::create_arena(capacity),
-            rete_network,
-        };
-
-        info!(
-            capacity = capacity,
-            fact_store_type = "ArenaFactStore",
-            "Arena-optimized Bingo engine created successfully"
-        );
-
-        Ok(engine)
+        Ok(Self { rules: Vec::new(), fact_store, rete_network })
     }
 
     /// Add a rule to the engine
-    #[instrument(skip(self), fields(rule_id = %rule.id, rule_name = %rule.name))]
+    #[instrument(skip(self))]
     pub fn add_rule(&mut self, rule: Rule) -> Result<()> {
-        if rule.name.is_empty() {
-            warn!(rule_id = rule.id, "Adding rule with empty name");
-        }
+        info!(rule_id = rule.id, "Adding rule to engine");
 
-        if rule.conditions.is_empty() {
-            error!(
-                rule_id = rule.id,
-                rule_name = %rule.name,
-                "Cannot add rule with no conditions"
-            );
-            return Err(anyhow::anyhow!(
-                "Rule '{}' (ID: {}) must have at least one condition",
-                rule.name,
-                rule.id
-            ))
-            .context("Failed to add rule to engine");
-        }
+        // Add to RETE network for pattern matching
+        self.rete_network.add_rule(rule.clone())?;
 
-        // Check for duplicate rule ID
-        if self.rules.iter().any(|r| r.id == rule.id) {
-            error!(
-                rule_id = rule.id,
-                rule_name = %rule.name,
-                "Rule with this ID already exists"
-            );
-            return Err(anyhow::anyhow!(
-                "Rule with ID {} already exists in engine",
-                rule.id
-            ))
-            .context("Failed to add rule to engine");
-        }
-
-        info!(
-            rule_id = rule.id,
-            rule_name = %rule.name,
-            condition_count = rule.conditions.len(),
-            action_count = rule.actions.len(),
-            "Adding rule to engine"
-        );
-
-        // Add rule to RETE network for compilation
-        self.rete_network.add_rule(rule.clone()).with_context(|| {
-            format!(
-                "Failed to compile rule '{}' (ID: {}) into RETE network",
-                rule.name, rule.id
-            )
-        })?;
-
-        self.rules.push(rule.clone());
-
-        info!(
-            rule_id = rule.id,
-            rule_name = %rule.name,
-            total_rules = self.rules.len(),
-            "Rule added successfully to engine"
-        );
+        // Store the rule
+        self.rules.push(rule);
 
         Ok(())
     }
 
-    /// Update an existing rule in the engine
-    #[instrument(skip(self), fields(rule_id = %updated_rule.id, rule_name = %updated_rule.name))]
-    pub fn update_rule(&mut self, updated_rule: Rule) -> Result<()> {
-        info!(rule_id = %updated_rule.id, rule_name = %updated_rule.name, "Updating rule in engine");
+    /// Add multiple rules at once
+    #[instrument(skip(self, rules))]
+    pub fn add_rules(&mut self, rules: Vec<Rule>) -> Result<()> {
+        info!(rule_count = rules.len(), "Adding multiple rules to engine");
 
-        // Find and replace the rule in memory
-        if let Some(existing_rule_index) = self.rules.iter().position(|r| r.id == updated_rule.id) {
-            // Remove old rule from RETE network
-            self.rete_network.remove_rule(updated_rule.id)?;
-
-            // Update rule in memory
-            self.rules[existing_rule_index] = updated_rule.clone();
-
-            // Add updated rule to RETE network
-            self.rete_network.add_rule(updated_rule.clone())?;
-
-            info!(rule_id = %updated_rule.id, "Rule updated successfully in engine");
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!(
-                "Rule with ID {} not found in engine",
-                updated_rule.id
-            ))
+        for rule in rules {
+            self.add_rule(rule)?;
         }
+
+        Ok(())
     }
 
-    /// Remove a rule from the engine
-    #[instrument(skip(self), fields(rule_id = %rule_id))]
-    pub fn remove_rule(&mut self, rule_id: u64) -> Result<()> {
-        info!(rule_id = %rule_id, "Removing rule from engine");
+    /// Process facts and return rule execution results
+    #[instrument(skip(self, facts))]
+    pub fn process_facts(&mut self, facts: Vec<Fact>) -> Result<Vec<RuleExecutionResult>> {
+        info!(fact_count = facts.len(), "Processing facts through engine");
 
-        // Find and remove the rule from memory
-        if let Some(existing_rule_index) = self.rules.iter().position(|r| r.id == rule_id) {
-            // Remove from RETE network
-            self.rete_network.remove_rule(rule_id)?;
-
-            // Remove from memory
-            let removed_rule = self.rules.remove(existing_rule_index);
-
-            info!(rule_id = %rule_id, rule_name = %removed_rule.name, "Rule removed successfully from engine");
-            Ok(())
-        } else {
-            Err(anyhow::anyhow!(
-                "Rule with ID {} not found in engine",
-                rule_id
-            ))
-        }
-    }
-
-    /// Process a batch of facts through the rule engine
-    #[instrument(skip(self, facts), fields(fact_count = facts.len()))]
-    pub fn process_facts(&self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
-        let fact_count = facts.len();
-        let start_time = std::time::Instant::now();
-
-        if facts.is_empty() {
-            debug!("No facts provided for processing, returning empty result");
-            return Ok(Vec::new());
-        }
-
-        if self.rules.is_empty() {
-            warn!(
-                fact_count = fact_count,
-                "Processing facts but no rules are defined - no results will be produced"
-            );
-            return Ok(Vec::new());
-        }
-
-        // Validate facts before processing
-        let mut invalid_facts = 0;
+        // Store facts in the fact store
         for fact in &facts {
-            if fact.data.fields.is_empty() {
-                invalid_facts += 1;
-            }
+            self.fact_store.insert(fact.clone());
         }
 
-        if invalid_facts > 0 {
-            warn!(
-                invalid_facts = invalid_facts,
-                total_facts = fact_count,
-                "Some facts have no fields and may not match any rules"
-            );
-        }
+        // Process through RETE network
+        let results = self.rete_network.process_facts(&facts, self.fact_store.as_ref())?;
 
-        info!(
-            fact_count = fact_count,
-            rule_count = self.rules.len(),
-            "Processing facts through engine"
-        );
-
-        // Start performance tracking session
-        let _session_id = self.rete_network.start_performance_session(fact_count);
-
-        let result = if fact_count > 10_000 {
-            self.process_facts_parallel(facts)
-                .context("Failed to process large fact batch in parallel")
-        } else {
-            self.process_facts_sequential(facts)
-                .context("Failed to process fact batch sequentially")
-        };
-
-        // Finish performance tracking session
-        if let Some(session_summary) = self.rete_network.performance_tracker_mut().finish_session()
-        {
-            debug!(
-                session_id = %session_summary.session_id,
-                session_duration_ms = session_summary.total_duration.as_millis(),
-                facts_processed = session_summary.facts_processed,
-                rules_fired = session_summary.rules_fired,
-                throughput = session_summary.average_throughput,
-                "Performance tracking session completed"
-            );
-        }
-
-        let processing_time = start_time.elapsed();
-
-        match &result {
-            Ok(output_facts) => {
-                info!(
-                    input_fact_count = fact_count,
-                    output_fact_count = output_facts.len(),
-                    processing_time_ms = processing_time.as_millis(),
-                    rule_count = self.rules.len(),
-                    "Fact processing completed successfully"
-                );
-            }
-            Err(error) => {
-                error!(
-                    input_fact_count = fact_count,
-                    processing_time_ms = processing_time.as_millis(),
-                    error = %error,
-                    "Fact processing failed"
-                );
-            }
-        }
-
-        result
-    }
-
-    /// Process facts sequentially (optimal for smaller batches)
-    fn process_facts_sequential(&self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
-        let fact_count = facts.len();
-
-        // The ReteNetwork is now responsible for fact storage within its thread-safe context.
-
-        // Process facts through RETE network
-        let results = self.rete_network.process_facts(facts)?;
-
-        info!(
-            facts_processed = fact_count,
-            results_generated = results.len(),
-            mode = "sequential",
-            "Facts processed through RETE network"
-        );
+        info!(rules_fired = results.len(), "Completed fact processing");
         Ok(results)
     }
 
-    /// Process facts in parallel for large batches
-    fn process_facts_parallel(&self, facts: Vec<Fact>) -> Result<Vec<Fact>> {
-        use rayon::prelude::*;
-
-        let fact_count = facts.len();
-        let chunk_size = (fact_count / rayon::current_num_threads()).max(1000);
-
+    /// Simple API: process rules and facts, return results
+    #[instrument(skip(self, rules, facts))]
+    pub fn evaluate(
+        &mut self,
+        rules: Vec<Rule>,
+        facts: Vec<Fact>,
+    ) -> Result<Vec<RuleExecutionResult>> {
         info!(
-            fact_count,
-            chunk_size,
-            threads = rayon::current_num_threads(),
-            "Processing facts in parallel with Rayon"
+            rule_count = rules.len(),
+            fact_count = facts.len(),
+            "Evaluating rules against facts"
         );
 
-        // Process chunks of facts in parallel using Rayon
-        let results: Result<Vec<Vec<Fact>>> = facts
-            .par_chunks(chunk_size)
-            .map(|chunk| {
-                // Each parallel task gets its own Vec to avoid contention
-                self.rete_network.process_facts(chunk.to_vec())
-            })
-            .collect();
+        // Clear previous state
+        self.rules.clear();
+        self.fact_store.clear();
+        self.rete_network = ReteNetwork::new();
 
-        // Flatten the results from all threads into a single Vec
-        let flattened_results: Vec<Fact> = results?.into_iter().flatten().collect();
+        // Add rules
+        self.add_rules(rules)?;
 
-        info!(
-            facts_processed = fact_count,
-            results_generated = flattened_results.len(),
-            mode = "parallel",
-            "Parallel fact processing completed"
-        );
-
-        Ok(flattened_results)
+        // Process facts
+        self.process_facts(facts)
     }
 
-    /// Get engine statistics
-    #[instrument(skip(self))]
+    /// Get current engine statistics
     pub fn get_stats(&self) -> EngineStats {
         let rete_stats = self.rete_network.get_stats();
+
         EngineStats {
             rule_count: self.rules.len(),
             fact_count: self.fact_store.len(),
-            node_count: rete_stats.node_count,
-            memory_usage_bytes: std::mem::size_of_val(&self.rules)
-                + std::mem::size_of_val(&*self.fact_store)
-                + rete_stats.memory_usage_bytes,
+            node_count: rete_stats.node_count as usize,
+            memory_usage_bytes: rete_stats.memory_usage_bytes as usize,
         }
     }
 
-    /// Get performance summary for all rules
-    pub fn get_performance_summary(&self) -> crate::performance_tracking::PerformanceSummary {
-        self.rete_network.get_performance_summary()
+    /// Get the number of rules loaded
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
     }
 
-    /// Get performance profile for a specific rule
-    pub fn get_rule_performance_profile(
-        &self,
-        rule_id: u64,
-    ) -> Option<crate::performance_tracking::RuleExecutionProfile> {
-        self.rete_network.performance_tracker().get_rule_profile(rule_id).cloned()
+    /// Get the number of facts stored
+    pub fn fact_count(&self) -> usize {
+        self.fact_store.len()
     }
 
-    /// Identify performance bottlenecks
-    pub fn identify_performance_bottlenecks(
-        &self,
-    ) -> Vec<crate::performance_tracking::PerformanceBottleneck> {
-        self.rete_network.identify_performance_bottlenecks()
+    /// Clear all rules and facts
+    #[instrument(skip(self))]
+    pub fn clear(&mut self) {
+        info!("Clearing all rules and facts from engine");
+
+        self.rules.clear();
+        self.fact_store.clear();
+        self.rete_network = ReteNetwork::new();
     }
 
-    /// Configure performance tracking
-    pub fn configure_performance_tracking(&mut self, config: PerformanceConfig) {
-        self.rete_network.configure_performance_tracking(config);
+    /// Update an existing rule
+    #[instrument(skip(self))]
+    pub fn update_rule(&mut self, rule: Rule) -> Result<()> {
+        info!(rule_id = rule.id, "Updating rule in engine");
+
+        // Remove the old rule if it exists
+        self.remove_rule(rule.id)?;
+
+        // Add the new rule
+        self.add_rule(rule)
     }
 
-    /// Get global performance metrics
-    pub fn get_global_performance_metrics(
-        &self,
-    ) -> crate::performance_tracking::GlobalPerformanceMetrics {
-        self.rete_network.performance_tracker().get_global_metrics().clone()
+    /// Remove a rule by ID
+    #[instrument(skip(self))]
+    pub fn remove_rule(&mut self, rule_id: u64) -> Result<()> {
+        info!(rule_id = rule_id, "Removing rule from engine");
+
+        // Remove from rules vector
+        self.rules.retain(|rule| rule.id != rule_id);
+
+        // For simplicity, rebuild the entire network when removing rules
+        // In a more sophisticated implementation, we'd selectively remove nodes
+        self.rete_network = ReteNetwork::new();
+        for rule in &self.rules {
+            self.rete_network.add_rule(rule.clone())?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for BingoEngine {
+    fn default() -> Self {
+        Self::new().expect("Failed to create default BingoEngine")
     }
 }
