@@ -2,18 +2,7 @@
 
 ## System Overview
 
-Bingo is a **production-ready**, modular, high-performance RETE rules engine built with **Rust 2024 edition** featuring clear separation of concerns across multiple crates. The architecture leverages modern Rust capabilities including improved pattern matching, const generics, and enhanced async patterns.
-
-## ✅ Implementation Status: COMPLETE (with pending debug functionality)
-
-**All architectural components have been fully implemented and are production-ready:**
-- ✅ Complete RETE engine with alpha/beta networks
-- ✅ Calculator DSL with conditional set logic
-- ✅ OpenAPI-compliant JSON API server
-- ✅ Advanced memory optimizations (token sharing, LRU caching, partitioning)
-- ✅ Comprehensive test coverage and performance benchmarks
-- ✅ Realistic production scaling targets (1M facts in <30s, 4GB memory limit)
-- ⚠️ Advanced debugging and profiling (implemented but temporarily disabled)
+Bingo is a modular, high-performance RETE rules engine built with Rust 2024 edition featuring clear separation of concerns across multiple crates. The architecture leverages modern Rust capabilities including improved pattern matching, const generics, and enhanced async patterns.
 
 ## Component Architecture
 
@@ -32,154 +21,202 @@ graph TD
 ## Crate Responsibilities
 
 ### bingo-api (Main Binary)
-- **✅ Production-Ready**: OpenAPI 3.0 compliant HTTP API server
-- **Rust 2024 Edition**: Modern async patterns and improved error handling
-- HTTP server using `axum` and `tokio` with structured logging
-- **OpenAPI Integration**: Automatic documentation generation with Swagger UI
+- **Stateless HTTP Server**: OpenAPI 3.0 compliant HTTP API server using `axum` and `tokio`
+- **Per-Request Processing**: Fresh engine instance created for each evaluation request
+- **OpenAPI Integration**: Automatic documentation generation with Swagger UI at `/swagger-ui/`
 - **Native JSON Types**: Type-safe request/response handling with comprehensive validation
-- Request validation and error handling with detailed error responses
-- HTTP middleware (tracing, CORS, request logging)
-- Dockerized deployment configuration
+- **Mandatory Field Validation**: Rules and facts are required in all evaluation requests
+- **Request Validation**: Input validation and structured error responses
+- **HTTP Middleware**: Tracing, CORS, request logging, and observability
+- **Horizontal Scaling**: No shared state enables unlimited parallel processing
+
+**Key Endpoints:**
+- `GET /health` - Health check endpoint (stateless)
+- `POST /evaluate` - Stateless rule evaluation endpoint (rules + facts mandatory)
+- `GET /engine/stats` - Engine statistics endpoint (stateless)
+- `GET /swagger-ui/` - OpenAPI documentation
+- `GET /api-docs/openapi.json` - OpenAPI specification
 
 ### bingo-core (Main Engine)
-- **✅ Complete RETE Implementation**: Full alpha/beta network with enterprise performance
-- **✅ Calculator DSL**: Business-friendly expressions with conditional set logic
-- **✅ Memory Optimizations**: Token sharing, LRU caching, fact partitioning
-- **✅ Advanced Debugging**: Execution tracing, performance profiling (temporarily disabled)
-- **✅ Production Scaling**: Realistic targets validated (1M facts <30s, <4GB memory)
-- **Rust 2024 Features**: Enhanced pattern matching, const generics, cross-type comparisons
-- High-level engine API with comprehensive type safety
-- Generic rule and fact type definitions with JSON integration
-- Engine statistics, memory tracking, and performance monitoring
-- Advanced fact storage strategies (Vec, Cached, Partitioned, Arena-based)
+- **RETE Implementation**: Complete alpha/beta network with enterprise performance
+- **Calculator DSL**: Business-friendly expressions with conditional set logic
+- **Memory Optimizations**: Token sharing, LRU caching, fact partitioning
+- **Fact Storage**: Multiple backends (Vec, Cached, Partitioned, Arena-based)
+- **Engine Statistics**: Memory tracking and performance monitoring
+- **Type Safety**: Comprehensive type system with JSON integration
+
+**Core Components:**
+- `Engine` - Main orchestration component
+- `ReteNetwork` - RETE algorithm implementation
+- `FactStore` - Pluggable fact storage backends
+- `Calculator` - DSL expression evaluation
+- `MemoryTracker` - Memory usage monitoring
 
 ### bingo-rete
-- **Core RETE Implementation**: Advanced RETE algorithm with modern optimizations
-- Network node management (alpha, beta, terminal, aggregation)
-- Pattern matching with cross-type comparisons
-- Memory management with arena allocation and LRU caching
-- Performance optimizations using Rust 2024 features
+- **Core RETE Algorithm**: Advanced RETE implementation with modern optimizations
+- **Network Nodes**: Alpha, beta, terminal, and aggregation nodes
+- **Pattern Matching**: Cross-type comparisons with automatic type conversion
+- **Memory Management**: Arena allocation and LRU caching
+- **Performance**: Optimized using Rust 2024 features
 
 ## Data Flow
 
-1. **Input**: JSON facts via HTTP POST (up to 3M facts per request)
-2. **Parsing**: Deserialisation into internal fact representation
-3. **Partitioning**: Facts distributed across worker partitions for parallel processing
-4. **Processing**: Facts propagated through RETE network in each partition
-5. **Evaluation**: Rules fire when conditions match
-6. **Actions**: Rule actions executed (logging, fact creation)
-7. **Aggregation**: Results collected from all partitions
-8. **Output**: Results serialised back to JSON
+### Request Processing Pipeline
+
+1. **HTTP Input**: JSON requests received via Axum HTTP server
+2. **Validation**: Request validation using OpenAPI schema definitions
+3. **Deserialization**: JSON facts parsed into internal `Fact` structures
+4. **Engine Initialization**: RETE network constructed from rule definitions
+5. **Fact Processing**: Facts propagated through alpha and beta nodes
+6. **Rule Evaluation**: Conditions matched and actions executed
+7. **Result Collection**: Action results collected and aggregated
+8. **Response Serialization**: Results serialized to JSON response
+9. **HTTP Output**: Structured response with processing statistics
+
+### Internal Data Structures
+
+```rust
+// Core fact representation
+pub struct Fact {
+    pub id: String,
+    pub data: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+// Rule execution result
+pub struct RuleExecutionResult {
+    pub rule_id: String,
+    pub fact_id: String,
+    pub actions_executed: Vec<ActionResult>,
+}
+
+// Engine processing statistics
+pub struct EngineStats {
+    pub rule_count: usize,
+    pub fact_count: usize,
+    pub node_count: usize,
+    pub memory_usage_bytes: usize,
+}
+```
 
 ## Concurrency Model
 
-- **Web Layer**: Tokio async runtime for HTTP handling
-- **Engine Layer**: Partitioned processing across tokio tasks
-- **RETE Layer**: Single-threaded within partitions, lockless design
-- **Coordination**: Crossbeam channels for inter-partition communication
+### Threading Architecture
+- **Web Layer**: Tokio async runtime for HTTP request handling
+- **Engine Layer**: Single-threaded RETE processing per request
+- **Memory Management**: Thread-safe Arc-based token sharing
+- **I/O Operations**: Async for network and file operations
+
+### Memory Safety
+- **Ownership**: Rust ownership system prevents data races
+- **Arc/Rc**: Reference counting for shared immutable data
+- **Channels**: Message passing for inter-component communication
+- **No Locks**: Lock-free design within RETE processing
 
 ## Rust 2024 Edition Features
 
-### Language Features Used
+### Language Features Utilized
 - **Enhanced Pattern Matching**: Improved `match` expressions with type inference
 - **Use Declarations**: Simplified imports with `use {Type::*, Operator::*}`
-- **Cross-Type Comparisons**: Integer/Float automatic conversion in conditions
+- **Cross-Type Comparisons**: Automatic integer/float conversion in conditions
 - **Const Improvements**: Enhanced const evaluation for compile-time optimizations
-- **Modern Async Patterns**: Updated tokio integration with better error handling
+- **Modern Async**: Updated tokio patterns with better error handling
 - **Generic Enhancements**: Improved type system for calculator DSL
 
 ### Performance Benefits
-- **Compile-Time Optimizations**: Better const evaluation and inlining
-- **Memory Layout**: Improved enum and struct layouts
-- **Pattern Matching**: More efficient match compilation
-- **Cross-Type Operations**: Zero-cost numeric conversions
-- **Async Runtime**: Enhanced tokio performance with modern patterns
+- **Compile-Time Optimizations**: Better const evaluation and function inlining
+- **Memory Layout**: Optimized enum and struct memory layouts
+- **Pattern Matching**: More efficient match compilation and branch prediction
+- **Numeric Conversions**: Zero-cost automatic type conversions
+- **Async Runtime**: Enhanced tokio performance with reduced allocations
 
-### Code Quality Improvements
-- **Better Error Messages**: Improved compiler diagnostics
-- **Type Inference**: Reduced explicit type annotations
-- **Pattern Ergonomics**: More concise and readable pattern matching
-- **Documentation**: Better integration with rustdoc and examples
+## Memory Management Strategy
 
-## Memory Strategy
+### Storage Backends
 
-### ✅ Implemented Optimizations
-- **Token Sharing**: Arc-based FactIdSet reduces memory duplication in RETE network
-- **LRU Caching**: Intelligent caching of frequently accessed facts and tokens
-- **Fact Partitioning**: Distributed storage for very large datasets (1M+ facts)
-- **Memory Pooling**: Token pools reduce allocation overhead
-- **Smart Factory**: Automatic selection of optimal storage strategy
+#### ArenaFactStore (Default)
+- **Purpose**: High-performance fact storage using arena allocation
+- **Memory Pattern**: Bump allocator with batch deallocation
+- **Performance**: O(1) allocation, batch cleanup
+- **Use Case**: Default for most workloads
 
-### Architecture
-- **Arena Allocation**: Bump allocators for fact storage (target: <300MB for 3M facts)
-- **String Interning**: Reduce memory footprint for repeated strings
-- **Integer IDs**: Compact fact references (~100 bytes per fact maximum)
-- **Memory Pools**: Reusable allocations across evaluation cycles
-- **Modern Memory Management**: Leveraging Rust 2024 improvements
-- **Partition-Based Memory**: Separate arenas per processing partition
-- **Memory Compaction**: Periodic cleanup of unused memory regions
+#### CachedFactStore
+- **Purpose**: LRU caching for frequently accessed facts
+- **Memory Pattern**: HashMap with LRU eviction policy
+- **Performance**: O(1) lookup with cache warming
+- **Use Case**: Repeated fact access patterns
 
-## Error Handling
+#### PartitionedFactStore
+- **Purpose**: Memory distribution for very large datasets
+- **Memory Pattern**: Sharded storage across multiple backends
+- **Performance**: Parallel processing capability
+- **Use Case**: 1M+ facts requiring memory distribution
 
-- **anyhow**: Context-aware error propagation
-- **thiserror**: Structured error types for domain errors
+### Optimization Techniques
+- **Token Sharing**: Arc-based FactIdSet reduces RETE network memory duplication
+- **String Interning**: Deduplication of repeated field names and values
+- **Memory Pools**: Reusable allocations for tokens and intermediate results
+- **Capacity Pre-allocation**: Hint-based memory reservation for known dataset sizes
+
+## Error Handling Architecture
+
+### Error Types
+- **Domain Errors**: Business logic errors using `thiserror`
+- **System Errors**: Infrastructure errors using `anyhow`
+- **API Errors**: HTTP-specific errors with status codes
+- **Calculator Errors**: DSL evaluation errors with context
+
+### Error Propagation
+- **Result Types**: Explicit error handling with `Result<T, E>`
+- **Error Context**: Rich error context using `anyhow::Context`
 - **Graceful Degradation**: Continue processing when non-critical errors occur
-- **Error Tracing**: All errors captured in telemetry
+- **Error Tracing**: All errors captured in structured logging
+
+### Error Response Format
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid rule condition",
+    "details": {
+      "field": "operator",
+      "value": "invalid_op",
+      "expected": ["equal", "not_equal", "contains"]
+    },
+    "request_id": "req_12345"
+  }
+}
+```
+
+## Configuration Management
+
+### Environment Variables
+- `BINGO_HOST` - Server bind address (default: 127.0.0.1)
+- `BINGO_PORT` - Server port (default: 3000)
+- `RUST_LOG` - Logging configuration (default: info)
+
+### Runtime Configuration
+- **Default Values**: Sensible defaults for all configuration parameters
+- **Validation**: Configuration validation at application startup
+- **Override Hierarchy**: Environment variables override defaults
+- **Documentation**: All configuration options documented in OpenAPI
 
 ## Testing Architecture
 
-### ✅ Quality vs Performance Test Separation (IMPLEMENTED)
+### Test Organization
+- **Unit Tests**: Component-level testing within each module
+- **Integration Tests**: Cross-component interaction testing
+- **API Tests**: HTTP endpoint functionality testing
+- **Performance Tests**: Scaling and benchmark validation
 
-**Quality Test Suite (Fast & Reliable):**
-- **Purpose**: Code correctness, functionality validation, regression detection
-- **Execution**: `cargo test --workspace` (189+ tests in <60 seconds)
-- **Zero Tolerance**: All tests must pass for quality validation
-- **CI/CD Ready**: Suitable for continuous integration pipelines
+### Test Execution Strategy
+- **Quality Tests**: Fast execution (<60s) with `cargo test --workspace`
+- **Performance Tests**: Comprehensive validation with `cargo test --release -- --ignored`
+- **Separation**: Quality and performance tests separated for CI efficiency
+- **Zero Tolerance**: All quality tests must pass for code acceptance
 
-**Performance Test Suite (Comprehensive):**
-- **Purpose**: Performance benchmarks, stress testing, enterprise scale validation
-- **Execution**: `cargo test --release -- --ignored` (16 specialized tests)
-- **Release Mode**: Required for accurate performance measurements
-- **Separation Strategy**: Marked with `#[ignore]` attributes to prevent CI blocking
-
-### Test Categories
-
-**Unit Tests (163 tests in bingo-core):**
-- Individual component validation
-- Memory management verification
-- Calculator DSL functionality
-- RETE network correctness
-
-**Integration Tests (API, RETE, Calculator):**
-- Cross-component interaction validation
-- API endpoint functionality
-- End-to-end rule processing
-
-**Performance Tests (16 specialized tests):**
-- Core RETE network stress testing
-- API concurrent performance validation
-- Calculator caching and performance
-- Memory optimization verification
-
-### CI/CD Integration Strategy
-
-**Quality Gate (Required - Zero Tolerance):**
-```bash
-cargo fmt --check                           # Formatting
-cargo clippy --workspace --all-targets -- -D warnings  # Linting
-cargo check --workspace --all-targets       # Compilation  
-cargo test --workspace                      # Quality tests
-```
-
-**Performance Gate (Optional/Scheduled):**
-```bash
-cargo test --release -- --ignored          # All performance tests
-cargo test --package bingo-core --test scaling_validation_test --release
-```
-
-## Configuration
-
-- **Environment Variables**: Runtime configuration
-- **CLI Arguments**: Command-specific options
-- **Defaults**: Sensible defaults for all parameters
-- **Validation**: Configuration validation at startup
+### Test Infrastructure
+- **Mock Data**: Standardized test data sets for consistent validation
+- **Test Utilities**: Helper functions for common test patterns
+- **Benchmark Harness**: Criterion-based performance measurement
+- **CI Integration**: Automated quality gate enforcement

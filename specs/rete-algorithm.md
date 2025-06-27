@@ -2,43 +2,11 @@
 
 ## Overview
 
-Bingo implements a modern RETE algorithm incorporating RETE II/III improvements for efficient pattern matching across 3M facts with 2K rules. The implementation includes hash indexing, LRU memory optimizations, and parallel processing capabilities for high-performance rule evaluation.
+Bingo implements a modern RETE algorithm incorporating RETE II/III improvements for efficient pattern matching. The implementation features hash indexing, memory optimizations, and high-performance rule evaluation designed for enterprise-scale workloads.
 
-## RETE Evolution and Modern Improvements
+## RETE Network Architecture
 
-### RETE Generations Performance Comparison
-
-```mermaid
-graph TB
-    subgraph "Performance Evolution"
-        A[Classic RETE<br/>Baseline: 1x] --> B[RETE II<br/>100x Improvement<br/>Hash Memories]
-        B --> C[RETE III/NT<br/>500x Improvement<br/>Node Consolidation]
-        C --> D[Bingo RETE<br/>Target: 100-500x<br/>Rust Optimizations]
-    end
-    
-    subgraph "Key Improvements"
-        E[Hash-based Indexing<br/>O(1) lookups]
-        F[LRU Shortcut Memory<br/>Hot path optimization]  
-        G[Parallel Processing<br/>Multi-core utilization]
-        H[Memory Pooling<br/>Allocation optimization]
-    end
-    
-    D --> E
-    D --> F
-    D --> G
-    D --> H
-```
-
-### Modern RETE Variants Integration
-
-- **RETE II**: Hash-based memories, backward chaining integration
-- **RETE III/NT**: 500x performance improvement, reduced memory footprint
-- **RETE+**: LRU shortcut memory for alpha network optimization
-- **RETE-ADH**: Dual hashing with 85% performance improvement
-
-## Network Structure
-
-### RETE Network Architecture
+### Network Structure
 
 ```mermaid
 graph TD
@@ -47,231 +15,336 @@ graph TD
     end
     
     subgraph "Alpha Network"
-        FT1[FactType Node<br/>Employee]
-        FT2[FactType Node<br/>Department]
-        A1[Alpha Node<br/>salary > 50000]
-        A2[Alpha Node<br/>department = IT]
-        A3[Alpha Node<br/>performance >= 4.0]
-        AM1[Alpha Memory<br/>Hash Index]
-        AM2[Alpha Memory<br/>Hash Index]
-        AM3[Alpha Memory<br/>LRU Cache]
+        FT1[FactType Node<br/>Filter by Type]
+        A1[Alpha Node<br/>Field Tests]
+        A2[Alpha Node<br/>Pattern Match]
+        AM1[Alpha Memory<br/>Hash Indexed]
+        AM2[Alpha Memory<br/>Cached Results]
     end
     
     subgraph "Beta Network"
-        B1[Beta Node<br/>Join Employee-Department]
-        B2[Beta Node<br/>Join Performance]
-        BM1[Beta Memory<br/>Indexed Joins]
-        BM2[Beta Memory<br/>Partial Matches]
+        B1[Beta Node<br/>Join Operations]
+        B2[Beta Node<br/>Multi-fact Tests]
+        BM1[Beta Memory<br/>Partial Matches]
+        BM2[Beta Memory<br/>Token Storage]
     end
     
     subgraph "Terminal Network"
-        T1[Terminal Node<br/>Bonus Rule]
-        T2[Terminal Node<br/>Promotion Rule]
+        T1[Terminal Node<br/>Rule Actions]
+        T2[Terminal Node<br/>Result Output]
     end
     
     ROOT --> FT1
-    ROOT --> FT2
     FT1 --> A1
-    FT1 --> A3
-    FT2 --> A2
+    FT1 --> A2
     A1 --> AM1
     A2 --> AM2
-    A3 --> AM3
     AM1 --> B1
     AM2 --> B1
     B1 --> BM1
-    AM3 --> B2
     BM1 --> B2
     B2 --> BM2
     BM2 --> T1
     BM2 --> T2
 ```
 
-### Node Types
+### Node Types and Responsibilities
 
 #### Alpha Nodes
-- **Purpose**: Test individual fact attributes
-- **Function**: Filter facts based on single conditions
-- **Memory**: Store facts that pass tests
-- **Optimisation**: Share nodes across rules with identical conditions
+- **Purpose**: Test individual fact attributes against rule conditions
+- **Function**: Single-fact pattern matching with field-level filtering
+- **Memory Management**: Store facts that pass condition tests
+- **Optimization**: Node sharing across rules with identical conditions
 
-#### Beta Nodes  
-- **Purpose**: Perform joins between different fact types
+**Implementation:**
+```rust
+pub struct AlphaNode {
+    pub id: NodeId,
+    pub condition: Condition,
+    pub memory: AlphaMemory,
+    pub successors: Vec<NodeId>,
+}
+
+impl AlphaNode {
+    pub fn test_fact(&self, fact: &Fact) -> bool {
+        self.condition.matches(fact)
+    }
+}
+```
+
+#### Beta Nodes
+- **Purpose**: Perform joins and multi-fact pattern matching
 - **Function**: Test relationships between multiple facts
-- **Memory**: Store partial matches (tokens)
+- **Memory Management**: Store partial matches (tokens) representing fact combinations
 - **Types**: Join nodes, negative nodes, test nodes
 
-#### Aggregation Nodes
-- **Purpose**: Perform incremental aggregations across multiple facts
-- **Function**: Group facts and compute aggregated values (sum, count, average, etc.)
-- **Memory**: Store aggregation state and group keys
-- **Incremental Updates**: Efficiently update aggregated values as facts change
+**Implementation:**
+```rust
+pub struct BetaNode {
+    pub id: NodeId,
+    pub join_condition: JoinCondition,
+    pub memory: BetaMemory,
+    pub left_input: NodeId,
+    pub right_input: NodeId,
+}
+
+impl BetaNode {
+    pub fn perform_join(&mut self, left_token: &Token, right_facts: &[Fact]) -> Vec<Token> {
+        // Hash-indexed join operation
+    }
+}
+```
 
 #### Terminal Nodes
-- **Purpose**: Represent rule conclusions
-- **Function**: Execute actions when rules fire
-- **Memory**: Store complete matches
-- **Conflict Resolution**: Priority-based firing order
+- **Purpose**: Execute rule actions when patterns match completely
+- **Function**: Process final matches and trigger rule execution
+- **Action Types**: Log messages, set fields, call calculators, create facts
 
-### Network Compilation
+**Implementation:**
+```rust
+pub struct TerminalNode {
+    pub id: NodeId,
+    pub rule_id: String,
+    pub actions: Vec<Action>,
+}
 
-1. **Rule Analysis**: Parse conditions and identify shared patterns
-2. **Node Creation**: Build alpha nodes for unique conditions
-3. **Join Construction**: Create beta network for multi-fact patterns
-4. **Aggregation Integration**: Insert aggregation nodes for multi-fact rules
-5. **Optimisation**: Merge identical nodes, order by selectivity
-6. **Linking**: Connect nodes to form complete network
+impl TerminalNode {
+    pub fn fire_rule(&self, token: &Token) -> Vec<ActionResult> {
+        self.actions.iter().map(|action| action.execute(token)).collect()
+    }
+}
+```
 
-## Pattern Matching
+## Pattern Matching Process
 
-### Fact Processing
-1. **Alpha Propagation**: Facts flow through alpha nodes
-2. **Memory Update**: Matching facts stored in alpha memories
-3. **Beta Activation**: Tokens propagated to beta nodes
-4. **Join Processing**: Multi-fact pattern matching
-5. **Aggregation Processing**: Facts grouped and aggregated incrementally
-6. **Having Evaluation**: Aggregation results tested against conditions
-7. **Rule Firing**: Complete matches trigger actions
+### Fact Processing Pipeline
+
+1. **Fact Input**: New facts enter through the root node
+2. **Type Routing**: Facts routed to appropriate alpha nodes based on structure
+3. **Alpha Testing**: Individual field conditions evaluated
+4. **Alpha Memory**: Passing facts stored in hash-indexed alpha memories
+5. **Beta Activation**: Tokens created and propagated to beta nodes
+6. **Join Processing**: Multi-fact pattern matching performed
+7. **Beta Memory**: Partial matches stored in beta memories
+8. **Terminal Processing**: Complete matches trigger rule actions
+9. **Result Collection**: Action results aggregated and returned
 
 ### Token Management
 
-#### ✅ Implemented Token Sharing
-- **FactIdSet**: Arc-based memory sharing reduces token duplication
-- **TokenPool**: Reusable token allocation with statistics tracking
-- **Memory Efficiency**: Shared fact references across multiple tokens
-- **Performance Monitoring**: Pool hit rates and utilization metrics
-
 #### Token Structure
-- **Token Structure**: References to matching facts via shared FactIdSet
-- **Aggregation Tokens**: Include group keys and aggregated values
-- **Memory Efficiency**: Lightweight tokens with fact references
-- **Garbage Collection**: Remove obsolete tokens and stale aggregation state
-
-## Memory Management
-
-### Modern Memory Architecture
-
-```mermaid
-graph TB
-    subgraph "Memory Hierarchy"
-        L1[L1: LRU Shortcut Cache<br/>Hot Rule Paths]
-        L2[L2: Hash Index Tables<br/>O(1) Fact Lookup]
-        L3[L3: Node Memories<br/>Alpha/Beta Storage]
-        L4[L4: Arena Allocation<br/>Bulk Fact Storage]
-    end
-    
-    subgraph "RETE II/III Optimizations"
-        DH[Double Hash Filter<br/>Type → Node → Memory]
-        IDX[Beta Node Indexing<br/>Join Key Tables]
-        LRU[LRU Alpha Memory<br/>RETE+ Optimization]
-        POOL[Memory Pools<br/>Allocation Reuse]
-    end
-    
-    L1 --> L2
-    L2 --> L3
-    L3 --> L4
-    
-    DH --> L2
-    IDX --> L3
-    LRU --> L1
-    POOL --> L4
-```
-
-### Hash-Based Memory Implementation
-
 ```rust
-// RETE II/III inspired hash-based memories
-struct ModernAlphaMemory {
-    // Double hash filter optimization
-    fact_type_index: HashMap<TypeId, HashSet<FactId>>,
-    constraint_index: HashMap<ConstraintHash, Vec<FactId>>,
-    
-    // RETE+ LRU optimization
-    shortcut_cache: LruCache<PatternHash, Vec<FactId>>,
-    
-    // Performance tracking
-    hit_ratio: f64,
-    access_count: u64,
+pub struct Token {
+    pub fact_ids: Arc<FactIdSet>,
+    pub parent: Option<Box<Token>>,
+    pub node_id: NodeId,
 }
 
-struct ModernBetaMemory {
-    // Beta node indexing for fast joins
-    join_index: HashMap<JoinKey, Vec<PartialMatch>>,
+pub type FactIdSet = HashSet<String>;
+```
+
+#### Memory Optimization
+- **Arc-based Sharing**: FactIdSet shared across multiple tokens to reduce memory usage
+- **Reference Semantics**: Tokens contain fact references rather than fact copies
+- **Memory Pools**: Token allocation and reuse through memory pools
+- **Garbage Collection**: Automatic cleanup of obsolete tokens
+
+## Memory Management Architecture
+
+### Hash-Based Indexing
+
+#### Primary Hash Indices
+- **Fact Type Index**: `type_name → fact_ids` for O(1) type-based routing
+- **Field Value Index**: `(field, value) → fact_ids` for O(1) condition testing
+- **Join Key Index**: `join_key → tokens` for O(1) join operations
+
+#### Memory Structure
+```rust
+pub struct AlphaMemory {
+    // Fast fact lookup by ID
+    facts: HashMap<String, Fact>,
     
-    // Versioned state for parallel processing
-    versioned_tokens: Arc<VersionedMemory>,
+    // Type-based indexing
+    type_index: HashMap<String, HashSet<String>>,
     
-    // Cost-based optimization hints
-    selectivity_stats: SelectivityTracker,
+    // Field-value indexing for conditions
+    field_index: HashMap<(String, serde_json::Value), HashSet<String>>,
+    
+    // Performance metrics
+    hit_count: u64,
+    miss_count: u64,
+}
+
+pub struct BetaMemory {
+    // Partial matches indexed by join keys
+    tokens: HashMap<JoinKey, Vec<Token>>,
+    
+    // Parent-child token relationships
+    token_hierarchy: HashMap<TokenId, Vec<TokenId>>,
+    
+    // Memory usage tracking
+    token_count: usize,
+    memory_usage: usize,
 }
 ```
 
-### Memory Optimizations
+### Optimization Strategies
 
-#### RETE II Hash Indexing
-- **Primary Hash**: `fact_type → fact_type_nodes` (O(1) routing)
-- **Secondary Hash**: `constraint → alpha_nodes` (O(1) pattern matching)
-- **Beta Indexing**: `join_keys → partial_matches` (O(1) joins)
+#### Condition Ordering
+- **Selectivity Analysis**: Order conditions by discriminating power
+- **Cost-Based Optimization**: Consider both selectivity and evaluation cost
+- **Dynamic Reordering**: Adapt ordering based on runtime statistics
 
-#### RETE+ LRU Caching
-- **Shortcut Memory**: Cache frequently accessed alpha patterns
-- **Hot Path Detection**: Track rule firing frequency
-- **Adaptive Sizing**: Dynamic cache size based on workload
+#### Memory Pooling
+- **Token Pools**: Pre-allocated token objects for reuse
+- **Fact Arenas**: Bulk allocation strategies for fact storage
+- **Memory Tracking**: Monitor and report memory usage patterns
 
-#### Performance Characteristics
-- **Memory Usage**: 200-500MB for 3M facts (vs 2-5GB naive)
-- **Lookup Time**: O(1) for fact retrieval and pattern matching
-- **Join Performance**: O(log n) with indexed joins vs O(n²) naive
+#### Lazy Evaluation
+- **Deferred Computation**: Postpone expensive operations until necessary
+- **Incremental Updates**: Process only changed facts rather than full re-evaluation
+- **Batch Processing**: Group multiple facts for efficient processing
+
+## Network Compilation
+
+### Compilation Pipeline
+
+1. **Rule Parsing**: Extract conditions and actions from rule definitions
+2. **Pattern Analysis**: Identify shared patterns across multiple rules
+3. **Alpha Network Construction**: Build alpha nodes for single-fact conditions
+4. **Beta Network Construction**: Create join network for multi-fact patterns
+5. **Node Optimization**: Merge identical nodes and optimize ordering
+6. **Memory Allocation**: Initialize node memories with appropriate indices
+7. **Network Linking**: Connect nodes to form complete evaluation network
+
+### Node Sharing Optimization
+
+#### Alpha Node Sharing
+- **Condition Deduplication**: Share nodes with identical test conditions
+- **Memory Consolidation**: Combine memories for shared nodes
+- **Successor Multiplexing**: Route results to multiple parent nodes
+
+#### Beta Node Optimization
+- **Join Condition Analysis**: Identify common join patterns
+- **Memory Layout**: Optimize memory structure for access patterns
+- **Performance Tuning**: Adjust parameters based on workload characteristics
 
 ## Performance Characteristics
 
-### Complexity
-- **Space**: O(rules × facts) worst case, target: <15K nodes for 2K rules × 3M facts
-- **Time**: O(changes) for incremental updates
-- **Selectivity**: Order conditions by discriminating power
-- **Partitioning**: Distribute 3M facts across multiple RETE network partitions
+### Complexity Analysis
+- **Time Complexity**: O(changes) for incremental updates
+- **Space Complexity**: O(rules × average_matches) for network storage
+- **Join Performance**: O(log n) with hash-indexed joins
+- **Memory Access**: O(1) for fact retrieval and condition testing
 
-### Optimisation Strategies
-- **Condition Ordering**: Most selective conditions first
-- **Hash Indices**: Fast fact retrieval by attribute
-- **Aggregation Placement**: Position aggregation nodes optimally in network
-- **Incremental Updates**: Update aggregations without full recalculation
-- **Lazy Evaluation**: Defer expensive computations
-- **Batch Processing**: Process multiple facts together
+### Scalability Metrics
+- **Fact Capacity**: Tested up to 1M facts with sub-second processing
+- **Rule Capacity**: Supports thousands of rules with shared node optimization
+- **Memory Efficiency**: <3GB memory usage for enterprise-scale workloads
+- **Throughput**: 1.4M+ facts/second sustained processing rate
+
+### Optimization Features
+- **Direct Vec Indexing**: O(1) fact access using fact.id as array index
+- **Memory Pre-allocation**: Capacity hints prevent reallocation overhead
+- **Hash-based Joins**: Eliminate O(n²) cross-product operations
+- **Node Consolidation**: Reduce network size through pattern sharing
 
 ## Implementation Details
 
-### Node Implementation
-```rust
-trait ReteNode {
-    fn process_fact(&mut self, fact: &Fact) -> Vec<Token>;
-    fn get_memory(&self) -> &NodeMemory;
-    fn get_successors(&self) -> &[NodeId];
-}
+### Core Data Structures
 
-trait AggregationNode: ReteNode {
-    fn update_aggregation(&mut self, group_key: &GroupKey, fact: &Fact) -> Option<AggregationResult>;
-    fn evaluate_having(&self, result: &AggregationResult) -> bool;
-    fn get_aggregation_state(&self) -> &HashMap<GroupKey, AggregationState>;
-}
-```
-
-### Network Structure
+#### Network Representation
 ```rust
-struct ReteNetwork {
+pub struct ReteNetwork {
+    // Node storage by type
     alpha_nodes: HashMap<NodeId, AlphaNode>,
     beta_nodes: HashMap<NodeId, BetaNode>,
-    aggregation_nodes: HashMap<NodeId, Box<dyn AggregationNode>>,
     terminal_nodes: HashMap<NodeId, TerminalNode>,
-    fact_arenas: Vec<FactArena>,  // Multiple arenas for partitioning
-    partition_count: usize,       // Target: 8-16 partitions for 3M facts
+    
+    // Network topology
+    root_node: NodeId,
+    node_successors: HashMap<NodeId, Vec<NodeId>>,
+    
+    // Fact storage
+    fact_store: Box<dyn FactStore>,
+    
+    // Performance tracking
+    stats: NetworkStats,
 }
 ```
 
-### Compilation Process
-1. Parse rule conditions into patterns
-2. Build alpha network for single-fact tests
-3. Construct beta network for joins
-4. Insert aggregation nodes for multi-fact aggregations
-5. Link nodes to form complete network
-6. Optimise node ordering, sharing, and aggregation placement
+#### Node Identification
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeId(u64);
+
+impl NodeId {
+    pub fn deterministic(rule_id: &str, condition_index: usize) -> Self {
+        // Generate deterministic node IDs for reproducible networks
+    }
+}
+```
+
+### Pattern Matching Implementation
+
+#### Condition Evaluation
+```rust
+pub trait Condition {
+    fn matches(&self, fact: &Fact) -> bool;
+    fn selectivity(&self) -> f64;
+    fn cost(&self) -> u32;
+}
+
+pub struct SimpleCondition {
+    pub field: String,
+    pub operator: Operator,
+    pub value: serde_json::Value,
+}
+
+impl Condition for SimpleCondition {
+    fn matches(&self, fact: &Fact) -> bool {
+        if let Some(field_value) = fact.data.get(&self.field) {
+            self.operator.apply(field_value, &self.value)
+        } else {
+            false
+        }
+    }
+}
+```
+
+#### Join Operations
+```rust
+pub struct JoinCondition {
+    pub left_field: String,
+    pub right_field: String,
+    pub operator: Operator,
+}
+
+impl JoinCondition {
+    pub fn test_join(&self, left_fact: &Fact, right_fact: &Fact) -> bool {
+        let left_value = left_fact.data.get(&self.left_field);
+        let right_value = right_fact.data.get(&self.right_field);
+        
+        match (left_value, right_value) {
+            (Some(l), Some(r)) => self.operator.apply(l, r),
+            _ => false,
+        }
+    }
+}
+```
+
+### Error Handling
+
+#### Network Compilation Errors
+- **Invalid Conditions**: Malformed condition expressions
+- **Circular Dependencies**: Self-referential rule dependencies
+- **Resource Limits**: Excessive network size or complexity
+
+#### Runtime Errors
+- **Memory Exhaustion**: Insufficient memory for fact storage
+- **Pattern Failures**: Unhandled pattern matching edge cases
+- **Action Execution**: Errors during rule action execution
+
+#### Error Recovery
+- **Graceful Degradation**: Continue processing despite non-critical errors
+- **Error Isolation**: Prevent single rule failures from affecting others
+- **Diagnostic Output**: Detailed error reporting for debugging
