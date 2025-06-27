@@ -16,6 +16,7 @@ use bingo_core::{
 use chrono::{DateTime, Utc};
 use fnv::FnvHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 use tower_http::{cors::CorsLayer, limit::RequestBodyLimitLayer, trace::TraceLayer};
 use tracing::{error, info, instrument};
 use utoipa::OpenApi;
@@ -24,7 +25,10 @@ use utoipa_redoc::{Redoc, Servable};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
+pub mod ruleset_cache;
 pub mod types;
+
+use ruleset_cache::RulesetCache;
 use types::*;
 
 /// OpenAPI specification
@@ -34,6 +38,8 @@ use types::*;
         health_handler,
         evaluate_handler,
         get_engine_stats_handler,
+        register_ruleset_handler,
+        get_cache_stats_handler,
     ),
     components(
         schemas(
@@ -42,6 +48,8 @@ use types::*;
             ApiCondition,
             EvaluateRequest,
             EvaluateResponse,
+            RegisterRulesetRequest,
+            RegisterRulesetResponse,
             ApiRuleExecutionResult,
             ApiActionResult,
             ApiAction,
@@ -53,6 +61,7 @@ use types::*;
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "evaluation", description = "Stateless rule evaluation endpoints"),
+        (name = "rulesets", description = "Ruleset compilation and caching"),
         (name = "engine", description = "Engine statistics and management"),
     ),
     info(
@@ -75,15 +84,16 @@ use types::*;
 )]
 struct ApiDoc;
 
-/// Application state for stateless API
+/// Application state for optimized stateless API
 #[derive(Clone)]
 pub struct AppState {
     start_time: DateTime<Utc>,
+    ruleset_cache: Arc<RulesetCache>,
 }
 
 impl AppState {
     pub fn new() -> anyhow::Result<Self> {
-        Ok(Self { start_time: Utc::now() })
+        Ok(Self { start_time: Utc::now(), ruleset_cache: Arc::new(RulesetCache::default()) })
     }
 }
 
@@ -97,10 +107,13 @@ pub fn create_app() -> anyhow::Result<Router> {
     let app = Router::new()
         // Health check
         .route("/health", get(health_handler))
-        // Stateless evaluation endpoint
+        // Optimized evaluation endpoint (supports both rules and ruleset_id)
         .route("/evaluate", post(evaluate_handler))
-        // Engine statistics
+        // Ruleset compilation and caching
+        .route("/rulesets", post(register_ruleset_handler))
+        // Engine and cache statistics
         .route("/engine/stats", get(get_engine_stats_handler))
+        .route("/cache/stats", get(get_cache_stats_handler))
         // OpenAPI documentation endpoints
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .merge(Redoc::with_url("/redoc", ApiDoc::openapi()))
@@ -169,46 +182,57 @@ async fn get_engine_stats_handler(State(_state): State<AppState>) -> Json<Engine
     Json(stats)
 }
 
-/// ✅ STATELESS EVALUATION ENDPOINT! Evaluate rules + facts with predefined calculators
-///
-/// This endpoint processes rules and facts in a completely stateless manner. Each request must
-/// include both rules and facts (both mandatory). A fresh engine instance is created per request
-/// for maximum concurrency and horizontal scaling. No state is shared between requests.
+/// Register and compile a ruleset for caching
 #[utoipa::path(
     post,
-    path = "/evaluate",
-    request_body = EvaluateRequest,
+    path = "/rulesets",
+    request_body = RegisterRulesetRequest,
     responses(
-        (status = 200, description = "Rules evaluated successfully with stateless processing", body = EvaluateResponse),
-        (status = 400, description = "Invalid request payload - rules and facts are mandatory", body = ApiError),
-        (status = 500, description = "Internal server error during stateless evaluation", body = ApiError)
+        (status = 201, description = "Ruleset compiled and cached successfully", body = RegisterRulesetResponse),
+        (status = 400, description = "Invalid ruleset definition", body = ApiError),
+        (status = 409, description = "Ruleset ID already exists", body = ApiError),
+        (status = 500, description = "Internal server error during compilation", body = ApiError)
     ),
-    tag = "evaluation"
+    tag = "rulesets"
 )]
-#[instrument(skip(_state))]
-async fn evaluate_handler(
-    State(_state): State<AppState>,
-    Json(payload): Json<EvaluateRequest>,
-) -> Result<Json<EvaluateResponse>, (StatusCode, Json<ApiError>)> {
+#[instrument(skip(state))]
+async fn register_ruleset_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<RegisterRulesetRequest>,
+) -> Result<(StatusCode, Json<RegisterRulesetResponse>), (StatusCode, Json<ApiError>)> {
     let request_id = Uuid::new_v4().to_string();
 
     info!(
         request_id = %request_id,
+        ruleset_id = %payload.ruleset_id,
         rules_count = payload.rules.len(),
-        facts_count = payload.facts.len(),
-        "🚀 YOUR API: Evaluating rules + facts with predefined calculators"
+        "🚀 CACHE: Registering and compiling ruleset"
     );
 
-    // Validate that rules and facts are provided (mandatory fields)
+    // Validate request
     if let Err(validation_error) = payload.validate() {
         error!(
             request_id = %request_id,
             error = %validation_error,
-            "Request validation failed"
+            "Ruleset validation failed"
         );
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ApiError::new("VALIDATION_ERROR", &validation_error).with_request_id(request_id)),
+        ));
+    }
+
+    // Check if ruleset already exists (prevent overwrite)
+    if state.ruleset_cache.get(&payload.ruleset_id).is_some() {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(
+                ApiError::new(
+                    "RULESET_EXISTS",
+                    &format!("Ruleset '{}' already exists in cache", payload.ruleset_id),
+                )
+                .with_request_id(request_id),
+            ),
         ));
     }
 
@@ -240,29 +264,276 @@ async fn evaluate_handler(
         }
     }
 
-    // Convert API facts to core facts
-    let core_facts: Vec<CoreFact> = payload.facts.iter().map(convert_api_fact_to_core).collect();
+    // Compile and cache the ruleset
+    let ttl = payload.ttl_seconds.map(std::time::Duration::from_secs);
+    let compiled_ruleset = state
+        .ruleset_cache
+        .compile_and_cache(
+            payload.ruleset_id.clone(),
+            core_rules,
+            ttl,
+            payload.description.clone(),
+        )
+        .map_err(|e| {
+            error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to compile ruleset"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(
+                    ApiError::new(
+                        "COMPILATION_ERROR",
+                        &format!("Failed to compile ruleset: {}", e),
+                    )
+                    .with_request_id(request_id.clone()),
+                ),
+            )
+        })?;
 
-    // ✅ STATELESS: Create fresh engine per request with capacity hint
-    let mut engine = BingoEngine::with_capacity(payload.facts.len()).map_err(|e| {
+    let compilation_time_ms = start.elapsed().as_millis() as u64;
+    let ttl_seconds =
+        (compiled_ruleset.expires_at - compiled_ruleset.compiled_at).num_seconds() as u64;
+
+    let response = RegisterRulesetResponse {
+        ruleset_id: payload.ruleset_id.clone(),
+        ruleset_hash: compiled_ruleset.hash.clone(),
+        compiled: true,
+        rule_count: payload.rules.len(),
+        compilation_time_ms,
+        ttl_seconds,
+        registered_at: compiled_ruleset.compiled_at,
+    };
+
+    info!(
+        request_id = %request_id,
+        ruleset_id = %payload.ruleset_id,
+        rule_count = payload.rules.len(),
+        compilation_time_ms = compilation_time_ms,
+        hash = %compiled_ruleset.hash,
+        "✅ CACHE: Ruleset compiled and cached successfully"
+    );
+
+    Ok((StatusCode::CREATED, Json(response)))
+}
+
+/// Get cache statistics
+#[utoipa::path(
+    get,
+    path = "/cache/stats",
+    tag = "engine",
+    responses(
+        (status = 200, description = "Cache statistics retrieved successfully", body = serde_json::Value)
+    )
+)]
+#[instrument(skip(state))]
+async fn get_cache_stats_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let cache_stats = state.ruleset_cache.get_stats();
+
+    let stats = serde_json::json!({
+        "cache": {
+            "total_entries": cache_stats.total_entries,
+            "cache_hits": cache_stats.cache_hits,
+            "cache_misses": cache_stats.cache_misses,
+            "hit_rate": cache_stats.hit_rate,
+            "expired_entries": cache_stats.expired_entries,
+            "total_compilations": cache_stats.total_compilations,
+            "average_compilation_time_ms": cache_stats.average_compilation_time_ms,
+        }
+    });
+
+    info!("Cache statistics retrieved");
+    Json(stats)
+}
+
+/// ✅ STATELESS EVALUATION ENDPOINT! Evaluate rules + facts with predefined calculators
+///
+/// This endpoint processes rules and facts in a completely stateless manner. Each request must
+/// include both rules and facts (both mandatory). A fresh engine instance is created per request
+/// for maximum concurrency and horizontal scaling. No state is shared between requests.
+#[utoipa::path(
+    post,
+    path = "/evaluate",
+    request_body = EvaluateRequest,
+    responses(
+        (status = 200, description = "Rules evaluated successfully with stateless processing", body = EvaluateResponse),
+        (status = 400, description = "Invalid request payload - rules and facts are mandatory", body = ApiError),
+        (status = 500, description = "Internal server error during stateless evaluation", body = ApiError)
+    ),
+    tag = "evaluation"
+)]
+#[instrument(skip(state))]
+async fn evaluate_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<EvaluateRequest>,
+) -> Result<Json<EvaluateResponse>, (StatusCode, Json<ApiError>)> {
+    let request_id = Uuid::new_v4().to_string();
+
+    // Determine mode based on payload
+    let mode = match (&payload.rules, &payload.ruleset_id) {
+        (Some(_), None) => "rules",
+        (None, Some(_)) => "cached_ruleset",
+        _ => "unknown",
+    };
+
+    info!(
+        request_id = %request_id,
+        mode = mode,
+        facts_count = payload.facts.len(),
+        "🚀 OPTIMIZED API: Evaluating with cached/fresh rules + facts"
+    );
+
+    // Validate that rules and facts are provided (mandatory fields)
+    if let Err(validation_error) = payload.validate() {
         error!(
             request_id = %request_id,
-            error = %e,
-            "Failed to create engine"
+            error = %validation_error,
+            "Request validation failed"
         );
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(
-                ApiError::new(
-                    "ENGINE_CREATION_ERROR",
-                    &format!("Failed to create engine: {}", e),
-                )
-                .with_request_id(request_id.clone()),
-            ),
-        )
-    })?;
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiError::new("VALIDATION_ERROR", &validation_error).with_request_id(request_id)),
+        ));
+    }
 
-    let results = engine.evaluate(core_rules, core_facts).map_err(|e| {
+    let start = std::time::Instant::now();
+
+    // Convert API facts to core facts (always needed)
+    let core_facts: Vec<CoreFact> = payload.facts.iter().map(convert_api_fact_to_core).collect();
+
+    // ✅ OPTIMIZED: Create engine with cached or fresh rules
+    let mut engine = match (&payload.rules, &payload.ruleset_id) {
+        (Some(api_rules), None) => {
+            // Traditional mode: convert rules and create fresh engine
+            info!(
+                request_id = %request_id,
+                rules_count = api_rules.len(),
+                "Creating fresh engine with provided rules"
+            );
+
+            let mut core_rules = Vec::new();
+            for api_rule in api_rules {
+                match convert_api_rule_to_core(api_rule) {
+                    Ok(core_rule) => core_rules.push(core_rule),
+                    Err(e) => {
+                        error!(
+                            request_id = %request_id,
+                            rule_id = %api_rule.id,
+                            error = %e,
+                            "Failed to convert API rule to core rule"
+                        );
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(
+                                ApiError::new(
+                                    "RULE_CONVERSION_ERROR",
+                                    &format!("Failed to convert rule '{}': {}", api_rule.id, e),
+                                )
+                                .with_request_id(request_id),
+                            ),
+                        ));
+                    }
+                }
+            }
+
+            let mut engine = BingoEngine::with_capacity(payload.facts.len()).map_err(|e| {
+                error!(
+                    request_id = %request_id,
+                    error = %e,
+                    "Failed to create engine"
+                );
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(
+                        ApiError::new(
+                            "ENGINE_CREATION_ERROR",
+                            &format!("Failed to create engine: {}", e),
+                        )
+                        .with_request_id(request_id.clone()),
+                    ),
+                )
+            })?;
+
+            // Add rules to engine
+            for rule in core_rules {
+                engine.add_rule(rule).map_err(|e| {
+                    error!(
+                        request_id = %request_id,
+                        error = %e,
+                        "Failed to add rule to engine"
+                    );
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(
+                            ApiError::new("RULE_ADD_ERROR", &format!("Failed to add rule: {}", e))
+                                .with_request_id(request_id.clone()),
+                        ),
+                    )
+                })?;
+            }
+
+            engine
+        }
+        (None, Some(ruleset_id)) => {
+            // ✅ CACHE HIT: Use pre-compiled ruleset
+            info!(
+                request_id = %request_id,
+                ruleset_id = %ruleset_id,
+                "Attempting to use cached ruleset"
+            );
+
+            if let Some(compiled_ruleset) = state.ruleset_cache.get(ruleset_id) {
+                info!(
+                    request_id = %request_id,
+                    ruleset_id = %ruleset_id,
+                    rule_count = compiled_ruleset.rules.len(),
+                    usage_count = compiled_ruleset.usage_count,
+                    "🚀 CACHE HIT: Using pre-compiled ruleset"
+                );
+
+                // Create engine from cached ruleset
+                compiled_ruleset.create_engine_with_capacity(payload.facts.len()).map_err(|e| {
+                    error!(
+                        request_id = %request_id,
+                        error = %e,
+                        "Failed to create engine from cached ruleset"
+                    );
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(
+                            ApiError::new(
+                                "CACHED_ENGINE_ERROR",
+                                &format!("Failed to create engine from cached ruleset: {}", e),
+                            )
+                            .with_request_id(request_id.clone()),
+                        ),
+                    )
+                })?
+            } else {
+                // Cache miss
+                error!(
+                    request_id = %request_id,
+                    ruleset_id = %ruleset_id,
+                    "Cached ruleset not found"
+                );
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(
+                        ApiError::new(
+                            "RULESET_NOT_FOUND",
+                            &format!("Ruleset '{}' not found in cache", ruleset_id),
+                        )
+                        .with_request_id(request_id),
+                    ),
+                ));
+            }
+        }
+        _ => unreachable!("Validation should have caught this case"),
+    };
+
+    // Process facts through the engine
+    let results = engine.process_facts(core_facts).map_err(|e| {
         error!(
             request_id = %request_id,
             error = %e,
@@ -303,6 +574,14 @@ async fn evaluate_handler(
                     bingo_core::ActionResult::Logged { message } => {
                         ApiActionResult::Logged { message: message.clone() }
                     }
+                    bingo_core::ActionResult::LazyLogged { .. } => {
+                        // Materialize the lazy message for API response
+                        ApiActionResult::Logged {
+                            message: action
+                                .get_message()
+                                .unwrap_or_else(|| "Unknown message".to_string()),
+                        }
+                    }
                 })
                 .collect();
 
@@ -314,10 +593,15 @@ async fn evaluate_handler(
         })
         .collect();
 
+    let rules_processed = match &payload.rules {
+        Some(rules) => rules.len(),
+        None => engine_stats.rule_count,
+    };
+
     let response = EvaluateResponse {
         request_id: request_id.clone(),
         results: api_results,
-        rules_processed: payload.rules.len(),
+        rules_processed,
         facts_processed: payload.facts.len(),
         rules_fired: results.len(),
         processing_time_ms,
@@ -331,9 +615,10 @@ async fn evaluate_handler(
 
     info!(
         request_id = %request_id,
+        mode = mode,
         rules_fired = results.len(),
         processing_time_ms = processing_time_ms,
-        "✅ YOUR API: Successfully evaluated rules and facts"
+        "✅ OPTIMIZED API: Successfully evaluated with cached/fresh rules + facts"
     );
 
     Ok(Json(response))

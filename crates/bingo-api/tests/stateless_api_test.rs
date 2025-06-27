@@ -109,7 +109,7 @@ async fn test_stateless_evaluation_performance() {
         let facts = create_test_facts(20, &format!("batch-{}", i));
         let rules = vec![create_test_rule(&format!("rule-{}", i), &format!("Test Rule {}", i))];
 
-        let request = EvaluateRequest { facts, rules };
+        let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
 
         let response = server.post("/evaluate").json(&request).await;
 
@@ -158,7 +158,7 @@ async fn test_concurrent_evaluations() {
             &format!("Concurrent Rule {}", i),
         )];
 
-        let request = EvaluateRequest { facts, rules };
+        let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
         let response = server.post("/evaluate").json(&request).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -212,7 +212,7 @@ async fn test_large_request_handling() {
     let large_facts = create_test_facts(1000, "large-batch");
     let rules = vec![create_test_rule("large-rule", "Large Batch Rule")];
 
-    let request = EvaluateRequest { facts: large_facts, rules };
+    let request = EvaluateRequest { facts: large_facts, rules: Some(rules), ruleset_id: None };
 
     // This should succeed with stateless processing
     let start = Instant::now();
@@ -249,7 +249,7 @@ async fn test_mixed_operations_performance() {
             let facts = create_test_facts(5, &format!("mixed-{}", i));
             let rules =
                 vec![create_test_rule(&format!("mixed-rule-{}", i), &format!("Mixed Rule {}", i))];
-            let request = EvaluateRequest { facts, rules };
+            let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
             let response = server.post("/evaluate").json(&request).await;
             assert_eq!(response.status_code(), StatusCode::OK);
         } else if i % 3 == 1 {
@@ -296,7 +296,7 @@ async fn test_api_correctness_after_stateless_conversion() {
     // 3. Stateless evaluation should work
     let facts = create_test_facts(10, "correctness");
     let rules = vec![create_test_rule("correctness-test", "Correctness Test Rule")];
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -354,7 +354,7 @@ async fn test_calculator_integration() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -372,14 +372,14 @@ async fn test_empty_rules_validation() {
 
     // Test with empty rules array
     let facts = create_test_facts(5, "test");
-    let request = EvaluateRequest { facts, rules: vec![] };
+    let request = EvaluateRequest { facts, rules: Some(vec![]), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
 
     let error: ApiError = response.json();
     assert_eq!(error.code, "VALIDATION_ERROR");
-    assert!(error.message.contains("must contain at least one rule"));
+    assert!(error.message.contains("Rules array cannot be empty"));
 }
 
 #[tokio::test]
@@ -388,7 +388,7 @@ async fn test_empty_facts_validation() {
 
     // Test with empty facts array
     let rules = vec![create_test_rule("test-rule", "Test Rule")];
-    let request = EvaluateRequest { facts: vec![], rules };
+    let request = EvaluateRequest { facts: vec![], rules: Some(rules), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -403,7 +403,7 @@ async fn test_empty_rules_and_facts_validation() {
     let server = create_test_server().await;
 
     // Test with both empty arrays
-    let request = EvaluateRequest { facts: vec![], rules: vec![] };
+    let request = EvaluateRequest { facts: vec![], rules: Some(vec![]), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -411,7 +411,7 @@ async fn test_empty_rules_and_facts_validation() {
     let error: ApiError = response.json();
     assert_eq!(error.code, "VALIDATION_ERROR");
     // Should catch the rules validation first
-    assert!(error.message.contains("must contain at least one rule"));
+    assert!(error.message.contains("Rules array cannot be empty"));
 }
 
 #[tokio::test]
@@ -425,7 +425,7 @@ async fn test_empty_fact_data_validation() {
         created_at: chrono::Utc::now(),
     };
     let rules = vec![create_test_rule("test-rule", "Test Rule")];
-    let request = EvaluateRequest { facts: vec![empty_fact], rules };
+    let request = EvaluateRequest { facts: vec![empty_fact], rules: Some(rules), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -458,7 +458,7 @@ async fn test_invalid_rule_validation() {
     };
 
     let facts = create_test_facts(1, "test");
-    let request = EvaluateRequest { facts, rules: vec![invalid_rule] };
+    let request = EvaluateRequest { facts, rules: Some(vec![invalid_rule]), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -487,7 +487,7 @@ async fn test_rule_without_conditions_validation() {
     };
 
     let facts = create_test_facts(1, "test");
-    let request = EvaluateRequest { facts, rules: vec![invalid_rule] };
+    let request = EvaluateRequest { facts, rules: Some(vec![invalid_rule]), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -520,7 +520,7 @@ async fn test_rule_without_actions_validation() {
     };
 
     let facts = create_test_facts(1, "test");
-    let request = EvaluateRequest { facts, rules: vec![invalid_rule] };
+    let request = EvaluateRequest { facts, rules: Some(vec![invalid_rule]), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -537,7 +537,7 @@ async fn test_mandatory_fields_success_case() {
     // Test successful case with valid rules and facts
     let facts = create_test_facts(2, "valid");
     let rules = vec![create_test_rule("valid-rule", "Valid Rule")];
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -626,7 +626,7 @@ async fn test_student_visa_compliance_single_employee() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -723,7 +723,7 @@ async fn test_student_visa_compliance_multi_employee_batch() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -791,7 +791,7 @@ async fn test_compliance_with_non_student_visa_employee() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -887,7 +887,7 @@ async fn test_compliance_mixed_employee_types() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules };
+    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);

@@ -380,10 +380,54 @@ impl ApiAction {
     }
 }
 
+/// Request payload for ruleset registration
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegisterRulesetRequest {
+    /// Unique identifier for this ruleset (e.g., "org_123_payroll_v2")
+    #[schema(example = "org_123_payroll_v2")]
+    pub ruleset_id: String,
+
+    /// Rules to compile and cache
+    pub rules: Vec<ApiRule>,
+
+    /// TTL for the cached ruleset in seconds (default: 3600)
+    #[schema(example = 3600)]
+    pub ttl_seconds: Option<u64>,
+
+    /// Description of this ruleset
+    #[schema(example = "Payroll rules for organization 123, version 2")]
+    pub description: Option<String>,
+}
+
+/// Response from ruleset registration
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegisterRulesetResponse {
+    /// Unique identifier for the registered ruleset
+    pub ruleset_id: String,
+
+    /// Hash of the compiled ruleset for cache validation
+    pub ruleset_hash: String,
+
+    /// Whether the ruleset was successfully compiled
+    pub compiled: bool,
+
+    /// Number of rules in the ruleset
+    pub rule_count: usize,
+
+    /// Compilation time in milliseconds
+    pub compilation_time_ms: u64,
+
+    /// TTL for this ruleset in seconds
+    pub ttl_seconds: u64,
+
+    /// Timestamp when the ruleset was registered
+    pub registered_at: DateTime<Utc>,
+}
+
 /// Request payload for the evaluate endpoint - YOUR API!
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EvaluateRequest {
-    /// Rules to evaluate with predefined calculators (MANDATORY: must contain at least one rule)
+    /// Option 1: Rules to evaluate with predefined calculators (MANDATORY if ruleset_id not provided)
     #[schema(example = json!([{
         "id": "1",
         "name": "Calculate Overtime", 
@@ -400,7 +444,11 @@ pub struct EvaluateRequest {
             "output_field": "overtime_pay"
         }]
     }]))]
-    pub rules: Vec<ApiRule>,
+    pub rules: Option<Vec<ApiRule>>,
+
+    /// Option 2: Reference to a pre-compiled ruleset (MANDATORY if rules not provided)
+    #[schema(example = "org_123_payroll_v2")]
+    pub ruleset_id: Option<String>,
 
     /// Facts to process (MANDATORY: must contain at least one fact)
     #[schema(example = json!([{
@@ -469,21 +517,66 @@ pub enum ApiActionResult {
     Logged { message: String },
 }
 
-// Validation implementation for EvaluateRequest
-impl EvaluateRequest {
-    /// Validate that the request contains mandatory rules and facts
+// Validation implementation for RegisterRulesetRequest
+impl RegisterRulesetRequest {
     pub fn validate(&self) -> Result<(), String> {
-        if self.rules.is_empty() {
-            return Err("Request must contain at least one rule".to_string());
+        if self.ruleset_id.trim().is_empty() {
+            return Err("Ruleset ID cannot be empty".to_string());
         }
 
-        if self.facts.is_empty() {
-            return Err("Request must contain at least one fact".to_string());
+        if self.rules.is_empty() {
+            return Err("Ruleset must contain at least one rule".to_string());
         }
 
         // Validate each rule
         for (i, rule) in self.rules.iter().enumerate() {
             rule.validate().map_err(|e| format!("Rule {}: {}", i, e))?;
+        }
+
+        if let Some(ttl) = self.ttl_seconds {
+            if ttl == 0 {
+                return Err("TTL must be greater than 0".to_string());
+            }
+            if ttl > 86400 * 7 {
+                // Max 7 days
+                return Err("TTL cannot exceed 7 days (604800 seconds)".to_string());
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// Validation implementation for EvaluateRequest
+impl EvaluateRequest {
+    /// Validate that the request contains mandatory rules/ruleset_id and facts
+    pub fn validate(&self) -> Result<(), String> {
+        // Must have either rules or ruleset_id, but not both
+        match (&self.rules, &self.ruleset_id) {
+            (None, None) => {
+                return Err("Request must contain either 'rules' or 'ruleset_id'".to_string());
+            }
+            (Some(_rules), Some(_)) => {
+                return Err("Request cannot contain both 'rules' and 'ruleset_id'".to_string());
+            }
+            (Some(rules), None) => {
+                if rules.is_empty() {
+                    return Err("Rules array cannot be empty".to_string());
+                }
+                // Validate each rule
+                for (i, rule) in rules.iter().enumerate() {
+                    rule.validate().map_err(|e| format!("Rule {}: {}", i, e))?;
+                }
+            }
+            (None, Some(ruleset_id)) => {
+                if ruleset_id.trim().is_empty() {
+                    return Err("Ruleset ID cannot be empty".to_string());
+                }
+            }
+        }
+
+        if self.facts.is_empty() {
+            return Err("Request must contain at least one fact".to_string());
         }
 
         // Validate facts have non-empty data
