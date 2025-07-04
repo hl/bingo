@@ -1,0 +1,12 @@
+{
+  "test_name": "Formula Calculation",
+  "description": "Tests calculator DSL formula actions for bonus calculations",
+  "category": "calculator",
+  "tags": ["calculator", "formula", "dsl", "payroll"],
+  "timeout_ms": 8000,
+  "expected_duration_ms": 200,
+  "skip_reason": null,
+  "prerequisites": [],
+  "author": "json-test-framework",
+  "created_at": "2024-01-01T00:00:00Z"
+}

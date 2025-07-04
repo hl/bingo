@@ -3,8 +3,8 @@
 //! This module provides comprehensive visualization capabilities for analyzing rule dependencies,
 //! RETE network structure, and rule execution flow patterns.
 
-use crate::rete_nodes::NodeId;
-use crate::types::{ActionType, Condition, Rule, RuleId};
+use super::types::{ActionType, Condition, Rule, RuleId};
+use crate::types::NodeId;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write;
@@ -358,12 +358,6 @@ impl RuleDependencyAnalyzer {
                     for field_name in data.fields.keys() {
                         fields.insert(field_name.clone());
                     }
-                }
-                ActionType::Formula { target_field, .. } => {
-                    fields.insert(target_field.clone());
-                }
-                ActionType::ConditionalSet { target_field, .. } => {
-                    fields.insert(target_field.clone());
                 }
                 _ => {} // Other actions don't write fields
             }
@@ -790,14 +784,109 @@ impl RuleDependencyAnalyzer {
         Ok(mermaid)
     }
 
-    /// Generate SVG format (placeholder)
+    /// Generate SVG format - basic implementation
     fn generate_svg(&self, _options: &VisualizationOptions) -> anyhow::Result<String> {
-        // For now, return a placeholder SVG
-        // In a full implementation, this would generate actual SVG graphics
-        Ok(
-            "<svg><!-- Rule dependency visualization SVG would be generated here --></svg>"
-                .to_string(),
-        )
+        let mut svg = String::new();
+
+        // SVG header
+        writeln!(
+            svg,
+            r#"<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">"#
+        )?;
+        writeln!(svg, r#"  <style>"#)?;
+        writeln!(
+            svg,
+            r#"    .rule-node {{ fill: lightblue; stroke: black; stroke-width: 1; }}"#
+        )?;
+        writeln!(
+            svg,
+            r#"    .rule-text {{ font-family: Arial; font-size: 12px; }}"#
+        )?;
+        writeln!(
+            svg,
+            r#"    .dependency-line {{ stroke: gray; stroke-width: 1; marker-end: url(#arrowhead); }}"#
+        )?;
+        writeln!(svg, r#"  </style>"#)?;
+
+        // Arrow marker definition
+        writeln!(svg, r#"  <defs>"#)?;
+        writeln!(
+            svg,
+            r#"    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">"#
+        )?;
+        writeln!(
+            svg,
+            r#"      <polygon points="0 0, 10 3.5, 0 7" fill="gray" />"#
+        )?;
+        writeln!(svg, r#"    </marker>"#)?;
+        writeln!(svg, r#"  </defs>"#)?;
+
+        // Calculate layout - simple grid layout
+        let rules: Vec<_> = self.dependency_graph.dependencies.keys().collect();
+        let cols = (rules.len() as f64).sqrt().ceil() as usize;
+        let node_width = 120;
+        let node_height = 40;
+        let spacing_x = 150;
+        let spacing_y = 80;
+        let margin = 50;
+
+        let mut positions: HashMap<RuleId, (i32, i32)> = HashMap::new();
+
+        // Position nodes in a grid
+        for (i, &rule_id) in rules.iter().enumerate() {
+            let row = i / cols;
+            let col = i % cols;
+            let x = margin + col as i32 * spacing_x;
+            let y = margin + row as i32 * spacing_y;
+            positions.insert(*rule_id, (x, y));
+        }
+
+        // Draw dependency lines first (so they appear behind nodes)
+        for (&rule_id, dependencies) in &self.dependency_graph.dependencies {
+            if let Some(&(x1, y1)) = positions.get(&rule_id) {
+                for &dep_id in dependencies {
+                    if let Some(&(x2, y2)) = positions.get(&dep_id) {
+                        let start_x = x1 + node_width / 2;
+                        let start_y = y1 + node_height / 2;
+                        let end_x = x2 + node_width / 2;
+                        let end_y = y2 + node_height / 2;
+                        writeln!(
+                            svg,
+                            r#"  <line x1="{}" y1="{}" x2="{}" y2="{}" class="dependency-line" />"#,
+                            start_x, start_y, end_x, end_y
+                        )?;
+                    }
+                }
+            }
+        }
+
+        // Draw rule nodes
+        for (&rule_id, &(x, y)) in &positions {
+            // Draw rectangle
+            writeln!(
+                svg,
+                r#"  <rect x="{}" y="{}" width="{}" height="{}" class="rule-node" />"#,
+                x, y, node_width, node_height
+            )?;
+
+            // Draw rule ID text
+            let text_x = x + node_width / 2;
+            let text_y = y + node_height / 2 + 4; // Center vertically with slight offset
+            writeln!(
+                svg,
+                r#"  <text x="{}" y="{}" text-anchor="middle" class="rule-text">Rule {}</text>"#,
+                text_x, text_y, rule_id
+            )?;
+        }
+
+        // Add title
+        writeln!(
+            svg,
+            r#"  <text x="400" y="30" text-anchor="middle" class="rule-text" style="font-size: 16px; font-weight: bold;">Rule Dependency Graph</text>"#
+        )?;
+
+        writeln!(svg, "</svg>")?;
+        Ok(svg)
     }
 
     /// Generate JSON format for web visualization

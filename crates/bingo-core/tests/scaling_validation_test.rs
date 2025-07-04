@@ -17,6 +17,7 @@
 //! - 500K facts: 10 seconds, 2.5GB memory (CI: ignored - too resource intensive)
 //! - 1M facts: 30 seconds, 4GB memory (CI: ignored - too resource intensive)
 
+use crate::memory::MemoryTracker;
 use bingo_core::*;
 use std::collections::HashMap;
 
@@ -57,7 +58,12 @@ fn test_100k_fact_scaling() {
                 FactValue::String(format!("cat_{}", i % 100)),
             );
 
-            Fact { id: i as u64, data: FactData { fields } }
+            Fact {
+                id: i as u64,
+                external_id: None,
+                timestamp: chrono::Utc::now(),
+                data: FactData { fields },
+            }
         })
         .collect();
 
@@ -122,7 +128,12 @@ fn test_500k_fact_scaling() {
             );
             fields.insert("value".to_string(), FactValue::Float(i as f64 * 1.5));
 
-            Fact { id: i as u64, data: FactData { fields } }
+            Fact {
+                id: i as u64,
+                external_id: None,
+                timestamp: chrono::Utc::now(),
+                data: FactData { fields },
+            }
         })
         .collect();
 
@@ -203,7 +214,12 @@ fn test_1m_fact_scaling() {
                 FactValue::String(format!("region_{}", i % 50)),
             );
 
-            Fact { id: i as u64, data: FactData { fields } }
+            Fact {
+                id: i as u64,
+                external_id: None,
+                timestamp: chrono::Utc::now(),
+                data: FactData { fields },
+            }
         })
         .collect();
 
@@ -292,7 +308,12 @@ fn test_200k_fact_scaling_ci_appropriate() {
                 FactValue::String(format!("region_{}", i % 20)),
             );
 
-            Fact { id: i as u64, data: FactData { fields } }
+            Fact {
+                id: i as u64,
+                external_id: None,
+                timestamp: chrono::Utc::now(),
+                data: FactData { fields },
+            }
         })
         .collect();
 

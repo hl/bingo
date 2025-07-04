@@ -1,211 +1,35 @@
 use crate::cache::CacheStats;
 use crate::types::{Fact, FactId, FactValue};
-use std::collections::HashMap;
 
-/// Abstraction for fact storage that allows swapping allocation strategies
-pub trait FactStore: Send + Sync {
-    /// Insert a fact and return its ID
-    fn insert(&mut self, fact: Fact) -> FactId;
-
-    /// Get a fact by ID
-    fn get(&self, id: FactId) -> Option<&Fact>;
-
-    /// Extend with facts from a Vec (object-safe alternative to generic extend)
-    fn extend_from_vec(&mut self, facts: Vec<Fact>);
-
-    /// Get the number of stored facts
-    fn len(&self) -> usize;
-
-    /// Check if empty
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Clear all facts
-    fn clear(&mut self);
-
-    /// Find facts by field value (optimized lookup)
-    fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<&Fact>;
-
-    /// Find facts by multiple field criteria
-    fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<&Fact>;
-
-    /// Get cache statistics (if caching is enabled)
-    fn cache_stats(&self) -> Option<CacheStats> {
-        None
-    }
-
-    /// Clear cache (if caching is enabled)
-    fn clear_cache(&mut self) {
-        // Default implementation does nothing
-    }
-}
-
-/// Standard Vec-based fact store for baseline implementation
-#[derive(Debug, Default)]
-pub struct VecFactStore {
-    facts: Vec<Fact>,
-    // Hash indexes for common lookup patterns
-    field_indexes: HashMap<String, HashMap<String, Vec<FactId>>>,
-}
-
-impl VecFactStore {
-    /// Create a new Vec-based fact store
-    pub fn new() -> Self {
-        Self { facts: Vec::new(), field_indexes: HashMap::new() }
-    }
-
-    /// Create with pre-allocated capacity
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { facts: Vec::with_capacity(capacity), field_indexes: HashMap::new() }
-    }
-
-    /// Update indexes when a fact is added (only index commonly used fields for performance)
-    fn update_indexes(&mut self, fact: &Fact) {
-        // Only index fields that are commonly used for lookups
-        let indexed_fields = ["entity_id", "id", "user_id", "customer_id", "status", "category"];
-
-        for (field_name, field_value) in &fact.data.fields {
-            if indexed_fields.contains(&field_name.as_str()) {
-                let value_key = self.fact_value_to_index_key(field_value);
-
-                self.field_indexes
-                    .entry(field_name.clone())
-                    .or_default()
-                    .entry(value_key)
-                    .or_default()
-                    .push(fact.id);
-            }
-        }
-    }
-
-    /// Convert FactValue to string key for indexing
-    fn fact_value_to_index_key(&self, value: &FactValue) -> String {
-        value.as_string()
-    }
-
-    /// Get all facts as a slice
-    pub fn facts(&self) -> &[Fact] {
-        &self.facts
-    }
-
-    /// Insert a fact with a predetermined ID (for partitioned stores)
-    pub fn insert_with_id(&mut self, mut fact: Fact, predetermined_id: FactId) -> FactId {
-        fact.id = predetermined_id;
-        self.update_indexes(&fact);
-        self.facts.push(fact);
-        predetermined_id
-    }
-}
-
-impl FactStore for VecFactStore {
-    fn insert(&mut self, fact: Fact) -> FactId {
-        let id = self.facts.len() as FactId;
-
-        // Set the ID based on position, then update indexes
-        let mut indexed_fact = fact;
-        indexed_fact.id = id;
-
-        // Update indexes with the fact that has proper ID
-        self.update_indexes(&indexed_fact);
-
-        self.facts.push(indexed_fact);
-        id
-    }
-
-    fn get(&self, id: FactId) -> Option<&Fact> {
-        // First try the fast path: if ID matches array index, use direct access
-        if let Some(fact) = self.facts.get(id as usize) {
-            if fact.id == id {
-                return Some(fact);
-            }
-        }
-
-        // Fallback: search linearly for the correct fact ID
-        // This is necessary when facts have non-sequential IDs (e.g., in partitioned stores)
-        self.facts.iter().find(|fact| fact.id == id)
-    }
-
-    fn extend_from_vec(&mut self, facts: Vec<Fact>) {
-        for fact in facts {
-            self.insert(fact);
-        }
-    }
-
-    fn len(&self) -> usize {
-        self.facts.len()
-    }
-
-    fn clear(&mut self) {
-        self.facts.clear();
-        self.field_indexes.clear();
-    }
-
-    fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<&Fact> {
-        let value_key = self.fact_value_to_index_key(value);
-
-        if let Some(field_index) = self.field_indexes.get(field) {
-            if let Some(fact_ids) = field_index.get(&value_key) {
-                return fact_ids.iter().filter_map(|&id| self.get(id)).collect();
-            }
-        }
-
-        Vec::new()
-    }
-
-    fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<&Fact> {
-        if criteria.is_empty() {
-            return Vec::new();
-        }
-
-        // Start with facts matching the first criterion
-        let (first_field, first_value) = &criteria[0];
-        let mut candidates = self.find_by_field(first_field, first_value);
-
-        // Filter by remaining criteria
-        for (field, value) in &criteria[1..] {
-            candidates.retain(|fact| {
-                fact.data
-                    .fields
-                    .get(field)
-                    .map(|fact_value| fact_value == value)
-                    .unwrap_or(false)
-            });
-        }
-
-        candidates
-    }
-}
-
-impl VecFactStore {
-    /// Extend with any iterator (convenience method for VecFactStore)
-    pub fn extend<I: IntoIterator<Item = Fact>>(&mut self, facts: I) {
-        self.facts.extend(facts);
-    }
-}
-
-mod arena_store {
+pub mod arena_store {
     use super::*;
     use std::collections::HashMap;
 
     /// Arena-based fact store for high-performance allocation (Phase 2+)
     /// Note: Optimized with direct Vec indexing for maximum performance + thread safety
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     pub struct ArenaFactStore {
         facts: Vec<Option<Fact>>, // Direct indexing: fact.id == Vec index
         field_indexes: HashMap<String, HashMap<String, Vec<FactId>>>,
+        external_id_map: HashMap<String, FactId>, // For external ID lookups
         next_id: FactId,
     }
 
     impl ArenaFactStore {
         pub fn new() -> Self {
-            Self { facts: Vec::new(), field_indexes: HashMap::new(), next_id: 0 }
+            Self {
+                facts: Vec::new(),
+                field_indexes: HashMap::new(),
+                external_id_map: HashMap::new(),
+                next_id: 0,
+            }
         }
 
         pub fn with_capacity(capacity: usize) -> Self {
             Self {
                 facts: Vec::with_capacity(capacity),
                 field_indexes: HashMap::with_capacity(6), // Pre-allocate for common indexed fields
+                external_id_map: HashMap::with_capacity(capacity),
                 next_id: 0,
             }
         }
@@ -215,6 +39,7 @@ mod arena_store {
             Self {
                 facts: Vec::with_capacity(capacity),
                 field_indexes: HashMap::with_capacity(10), // More indexed fields for large datasets
+                external_id_map: HashMap::with_capacity(capacity),
                 next_id: 0,
             }
         }
@@ -260,130 +85,228 @@ mod arena_store {
                 FactValue::Boolean(false) => "false".to_string(),
                 FactValue::Array(_) => "[array]".to_string(),
                 FactValue::Object(_) => "[object]".to_string(),
-                FactValue::Date(date) => date.to_rfc3339(),
+                FactValue::Date(dt) => dt.to_rfc3339(),
                 FactValue::Null => "[null]".to_string(),
             }
         }
-    }
 
-    impl FactStore for ArenaFactStore {
-        fn insert(&mut self, fact: Fact) -> FactId {
-            // Use Vec length as direct ID for O(1) access
-            let id = self.facts.len() as FactId;
+        pub fn insert(&mut self, mut fact: Fact) -> FactId {
+            let id = self.next_id;
+            fact.id = id;
+            self.next_id += 1;
 
-            // Set the fact ID and update indexes
-            let mut indexed_fact = fact;
-            indexed_fact.id = id;
-            self.update_indexes(&indexed_fact);
+            // Update external ID mapping if present
+            if let Some(ref external_id) = fact.external_id {
+                self.external_id_map.insert(external_id.clone(), id);
+            }
 
-            // Direct Vec storage: fact.id == Vec index
-            self.facts.push(Some(indexed_fact));
-            self.next_id = id + 1;
+            // Update indexes
+            self.update_indexes(&fact);
+
+            // Ensure Vec capacity and insert
+            if self.facts.len() <= id as usize {
+                self.facts.resize(id as usize + 1, None);
+            }
+            self.facts[id as usize] = Some(fact);
+
             id
         }
 
-        fn get(&self, id: FactId) -> Option<&Fact> {
-            // O(1) direct access - no HashMap lookup overhead
+        pub fn get_fact(&self, id: FactId) -> Option<&Fact> {
             self.facts.get(id as usize)?.as_ref()
         }
 
-        fn extend_from_vec(&mut self, facts: Vec<Fact>) {
+        pub fn get_by_external_id(&self, external_id: &str) -> Option<&Fact> {
+            let fact_id = *self.external_id_map.get(external_id)?;
+            self.get_fact(fact_id)
+        }
+
+        pub fn get_field_by_id(&self, fact_id: &str, field: &str) -> Option<FactValue> {
+            self.get_by_external_id(fact_id)?.data.fields.get(field).cloned()
+        }
+
+        pub fn extend_from_vec(&mut self, facts: Vec<Fact>) {
             for fact in facts {
                 self.insert(fact);
             }
         }
 
-        fn len(&self) -> usize {
-            // Count actual facts (exclude None slots)
-            self.facts.iter().filter(|fact| fact.is_some()).count()
+        /// Iterate all stored facts (helper for read-only iteration)
+        pub fn iter(&self) -> impl Iterator<Item = &Fact> {
+            self.facts.iter().filter_map(|opt| opt.as_ref())
         }
 
-        fn is_empty(&self) -> bool {
-            self.facts.iter().all(|fact| fact.is_none())
+        /// Return references to facts whose timestamps are within the inclusive time range.
+        pub fn facts_in_time_range(
+            &self,
+            start: chrono::DateTime<chrono::Utc>,
+            end: chrono::DateTime<chrono::Utc>,
+        ) -> Vec<&Fact> {
+            self.iter().filter(|f| f.timestamp >= start && f.timestamp <= end).collect()
         }
 
-        fn clear(&mut self) {
+        pub fn len(&self) -> usize {
+            self.facts.iter().filter(|f| f.is_some()).count()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.len() == 0
+        }
+
+        pub fn clear(&mut self) {
             self.facts.clear();
             self.field_indexes.clear();
+            self.external_id_map.clear();
             self.next_id = 0;
         }
 
-        fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<&Fact> {
+        pub fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<&Fact> {
             let value_key = self.fact_value_to_index_key(value);
 
-            if let Some(field_index) = self.field_indexes.get(field) {
-                if let Some(fact_ids) = field_index.get(&value_key) {
-                    return fact_ids.iter().filter_map(|&id| self.get(id)).collect();
+            if let Some(field_map) = self.field_indexes.get(field) {
+                if let Some(fact_ids) = field_map.get(&value_key) {
+                    return fact_ids.iter().filter_map(|&id| self.get_fact(id)).collect();
                 }
             }
 
-            Vec::new()
+            // Fallback to linear search for non-indexed fields
+            self.facts
+                .iter()
+                .filter_map(|opt_fact| opt_fact.as_ref())
+                .filter(|fact| fact.data.fields.get(field) == Some(value))
+                .collect()
         }
 
-        fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<&Fact> {
-            if criteria.is_empty() {
-                return Vec::new();
+        pub fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<&Fact> {
+            self.facts
+                .iter()
+                .filter_map(|opt_fact| opt_fact.as_ref())
+                .filter(|fact| {
+                    criteria.iter().all(|(field, value)| fact.data.fields.get(field) == Some(value))
+                })
+                .collect()
+        }
+
+        pub fn cache_stats(&self) -> Option<CacheStats> {
+            None
+        }
+
+        pub fn clear_cache(&mut self) {
+            // Default implementation does nothing
+        }
+
+        /// Update an existing fact by ID
+        pub fn update_fact(
+            &mut self,
+            fact_id: FactId,
+            updates: HashMap<String, FactValue>,
+        ) -> bool {
+            if let Some(fact_option) = self.facts.get_mut(fact_id as usize) {
+                if let Some(fact) = fact_option.as_mut() {
+                    // Apply updates to the fact's fields
+                    for (field, value) in updates {
+                        fact.data.fields.insert(field, value);
+                    }
+
+                    // Clone the fact for re-indexing to avoid borrow checker issues
+                    let fact_clone = fact.clone();
+                    let _ = fact; // Explicitly drop the mutable reference
+                    self.update_indexes(&fact_clone);
+                    return true;
+                }
             }
+            false
+        }
 
-            // Start with facts matching the first criterion
-            let (first_field, first_value) = &criteria[0];
-            let mut candidates = self.find_by_field(first_field, first_value);
+        /// Delete a fact by ID
+        pub fn delete_fact(&mut self, fact_id: FactId) -> bool {
+            if let Some(fact_option) = self.facts.get_mut(fact_id as usize) {
+                if let Some(fact) = fact_option.take() {
+                    // Remove from external ID mapping if present
+                    if let Some(ref external_id) = fact.external_id {
+                        self.external_id_map.remove(external_id);
+                    }
 
-            // Filter by remaining criteria
-            for (field, value) in &criteria[1..] {
-                candidates.retain(|fact| {
-                    fact.data
-                        .fields
-                        .get(field)
-                        .map(|fact_value| fact_value == value)
-                        .unwrap_or(false)
-                });
+                    // Remove from field indexes
+                    self.remove_from_indexes(&fact);
+                    return true;
+                }
             }
+            false
+        }
 
-            candidates
+        /// Remove a fact from all field indexes
+        fn remove_from_indexes(&mut self, fact: &Fact) {
+            const INDEXED_FIELDS: &[&str] =
+                &["entity_id", "id", "user_id", "customer_id", "status", "category"];
+
+            for (field_name, field_value) in &fact.data.fields {
+                if INDEXED_FIELDS.iter().any(|&f| f == field_name) {
+                    let value_key = self.fact_value_to_index_key(field_value);
+
+                    if let Some(field_map) = self.field_indexes.get_mut(field_name) {
+                        if let Some(fact_ids) = field_map.get_mut(&value_key) {
+                            fact_ids.retain(|&id| id != fact.id);
+                            // Remove the entry if no facts remain
+                            if fact_ids.is_empty() {
+                                field_map.remove(&value_key);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-pub use arena_store::ArenaFactStore;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::types::{FactData, FactValue};
+    use super::arena_store::ArenaFactStore;
+    use crate::types::{Fact, FactData, FactValue};
     use std::collections::HashMap;
 
     fn create_test_fact(id: u64) -> Fact {
         let mut fields = HashMap::new();
-        fields.insert("test_field".to_string(), FactValue::Integer(id as i64));
-
-        Fact { id, data: FactData { fields } }
+        fields.insert(
+            "test_field".to_string(),
+            FactValue::String("test_value".to_string()),
+        );
+        Fact { id, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields } }
     }
 
     #[test]
-    fn test_vec_fact_store() {
-        let mut store = VecFactStore::new();
+    fn test_arena_fact_store_get_field_by_id() {
+        let mut store = ArenaFactStore::new();
 
-        let fact1 = create_test_fact(1);
-        let fact2 = create_test_fact(2);
+        let mut fact1 = create_test_fact(1);
+        fact1.external_id = Some("fact1_ext_id".to_string());
+        fact1.data.fields.insert(
+            "name".to_string(),
+            FactValue::String("TestName".to_string()),
+        );
+        fact1.data.fields.insert("age".to_string(), FactValue::Integer(30));
 
-        let id1 = store.insert(fact1.clone());
-        let id2 = store.insert(fact2.clone());
+        store.insert(fact1.clone());
 
-        assert_eq!(store.len(), 2);
-        assert_eq!(store.get(id1).unwrap().id, id1); // ID gets overridden to index
-        assert_eq!(store.get(id2).unwrap().id, id2); // ID gets overridden to index
+        // Test successful lookup of a string field
+        let name_field = store.get_field_by_id("fact1_ext_id", "name");
+        assert!(name_field.is_some());
+        assert_eq!(
+            name_field.unwrap(),
+            FactValue::String("TestName".to_string())
+        );
 
-        let facts = vec![create_test_fact(3), create_test_fact(4)];
-        store.extend_from_vec(facts);
+        // Test successful lookup of an integer field
+        let age_field = store.get_field_by_id("fact1_ext_id", "age");
+        assert!(age_field.is_some());
+        assert_eq!(age_field.unwrap(), FactValue::Integer(30));
 
-        assert_eq!(store.len(), 4);
-    }
+        // Test lookup of a non-existent field
+        let non_existent_field = store.get_field_by_id("fact1_ext_id", "non_existent");
+        assert!(non_existent_field.is_none());
 
-    #[test]
-    fn test_vec_fact_store_with_capacity() {
-        let store = VecFactStore::with_capacity(100);
-        assert_eq!(store.len(), 0);
-        assert!(store.is_empty());
+        // Test lookup with a non-existent external ID
+        let non_existent_fact = store.get_field_by_id("non_existent_ext_id", "name");
+        assert!(non_existent_fact.is_none());
     }
 }

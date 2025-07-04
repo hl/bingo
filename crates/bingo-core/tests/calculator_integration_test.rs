@@ -1,146 +1,600 @@
-use bingo_core::*;
+//! Comprehensive integration test for calculator functionality in RETE network
+//!
+//! This test validates that calculator integration works correctly within the
+//! RETE network, including built-in calculators and formula evaluation.
+
+use bingo_core::BingoEngine;
+use bingo_core::types::{Action, ActionType, Condition, Fact, FactData, FactValue, Operator, Rule};
+use chrono::Utc;
 use std::collections::HashMap;
 
-#[test]
-fn test_calculator_basic_expressions() {
-    let mut calculator = CalculatorEngine::new();
+/// Create test facts for calculator testing
+fn create_test_facts() -> Vec<Fact> {
+    vec![
+        create_fact(1, "employee", "John", "hours", 45.0, "rate", 25.0),
+        create_fact(2, "employee", "Jane", "hours", 38.0, "rate", 30.0),
+        create_fact(3, "employee", "Bob", "hours", 50.0, "rate", 20.0),
+        create_fact(4, "product", "Widget", "price", 100.0, "tax_rate", 0.08),
+        create_fact(5, "product", "Gadget", "price", 200.0, "tax_rate", 0.08),
+    ]
+}
 
-    // Create test fact
+fn create_fact(
+    id: u64,
+    category_field: &str,
+    category_value: &str,
+    field1: &str,
+    value1: f64,
+    field2: &str,
+    value2: f64,
+) -> Fact {
     let mut fields = HashMap::new();
-    fields.insert("amount".to_string(), FactValue::Float(100.0));
-    fields.insert("rate".to_string(), FactValue::Float(0.15));
     fields.insert(
-        "status".to_string(),
-        FactValue::String("active".to_string()),
+        category_field.to_string(),
+        FactValue::String(category_value.to_string()),
+    );
+    fields.insert(field1.to_string(), FactValue::Float(value1));
+    fields.insert(field2.to_string(), FactValue::Float(value2));
+    fields.insert("id".to_string(), FactValue::Integer(id as i64));
+
+    Fact {
+        id,
+        external_id: Some(format!("fact-{}", id)),
+        timestamp: Utc::now(),
+        data: FactData { fields },
+    }
+}
+
+#[test]
+fn test_threshold_check_calculator() {
+    let mut engine = BingoEngine::new().unwrap();
+
+    println!("🧪 Testing Threshold Check Calculator");
+
+    // Create a rule that uses threshold_check calculator
+    let rule = Rule {
+        id: 1,
+        name: "Overtime Check".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "employee".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("John".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::CallCalculator {
+                calculator_name: "threshold_check".to_string(),
+                input_mapping: {
+                    let mut mapping = HashMap::new();
+                    mapping.insert("value".to_string(), "hours".to_string());
+                    mapping.insert("threshold".to_string(), "rate".to_string()); // Using rate as threshold for test
+                    mapping
+                },
+                output_field: "overtime_check".to_string(),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
+    // Process facts
+    let facts = create_test_facts();
+    let results = engine.process_facts(facts).unwrap();
+
+    println!(
+        "🎯 Calculator execution results: {} rules fired",
+        results.len()
     );
 
-    let fact = Fact { id: 1, data: FactData { fields } };
+    // Verify that the calculator was executed
+    let calc_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::CalculatorResult {
+                    calculator,
+                    result,
+                    output_field,
+                    parsed_value,
+                } = action
+                {
+                    Some((calculator, result, output_field, parsed_value))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
 
-    let context = EvaluationContext { current_fact: &fact, facts: &[], globals: HashMap::new() };
+    assert!(!calc_results.is_empty(), "Should have calculator results");
 
-    // Test simple arithmetic
-    let result = calculator.eval("100 + 50", &context).unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::Float(value)) => {
-            assert!((value - 150.0).abs() < f64::EPSILON);
-        }
-        CalculatorResult::Value(FactValue::Integer(value)) => {
-            assert_eq!(value, 150);
-        }
-        _ => panic!("Expected numeric result"),
+    for (calculator, result, output_field, parsed_value) in calc_results {
+        println!(
+            "📊 Calculator: {}, Result: {}, Output Field: {}, Parsed: {:?}",
+            calculator, result, output_field, parsed_value
+        );
+        assert_eq!(calculator, "threshold_check");
+        assert_eq!(output_field, "overtime_check");
+        assert!(result == "true" || result == "false");
     }
 
-    // Test variable access
-    let result = calculator.eval("amount * rate", &context).unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::Float(value)) => {
-            assert!((value - 15.0).abs() < f64::EPSILON);
-        }
-        _ => panic!("Expected float result"),
-    }
-
-    // Test string operations
-    let result = calculator.eval("status", &context).unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::String(value)) => {
-            assert_eq!(value, "active");
-        }
-        _ => panic!("Expected string result"),
-    }
+    println!("✅ Threshold check calculator test passed");
 }
 
 #[test]
-fn test_calculator_functions() {
-    let mut calculator = CalculatorEngine::new();
+fn test_limit_validator_calculator() {
+    let mut engine = BingoEngine::new().unwrap();
 
-    // Create test fact
-    let mut fields = HashMap::new();
-    fields.insert("value1".to_string(), FactValue::Float(10.5));
-    fields.insert("value2".to_string(), FactValue::Float(20.2));
+    println!("🧪 Testing Limit Validator Calculator");
 
-    let fact = Fact { id: 1, data: FactData { fields } };
+    // Create a rule that uses limit_validator calculator
+    let rule = Rule {
+        id: 1,
+        name: "Hours Validation".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "employee".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("Jane".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::CallCalculator {
+                calculator_name: "limit_validator".to_string(),
+                input_mapping: {
+                    let mut mapping = HashMap::new();
+                    mapping.insert("value".to_string(), "hours".to_string());
+                    mapping.insert("min".to_string(), "rate".to_string()); // Using rate as min for test
+                    mapping.insert("max".to_string(), "hours".to_string()); // Same as value for test
+                    mapping
+                },
+                output_field: "hours_valid".to_string(),
+            },
+        }],
+    };
 
-    let context = EvaluationContext { current_fact: &fact, facts: &[], globals: HashMap::new() };
+    engine.add_rule(rule).unwrap();
 
-    // Test max function
-    let result = calculator.eval("max(value1, value2)", &context).unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::Float(value)) => {
-            assert!((value - 20.2).abs() < f64::EPSILON);
-        }
-        _ => panic!("Expected float result"),
+    // Process facts
+    let facts = create_test_facts();
+    let results = engine.process_facts(facts).unwrap();
+
+    println!("🎯 Limit validator results: {} rules fired", results.len());
+
+    // Verify that the calculator was executed
+    let calc_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::CalculatorResult {
+                    calculator,
+                    result,
+                    output_field,
+                    parsed_value,
+                } = action
+                {
+                    Some((calculator, result, output_field, parsed_value))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    assert!(!calc_results.is_empty(), "Should have calculator results");
+
+    for (calculator, result, output_field, parsed_value) in calc_results {
+        println!(
+            "📊 Calculator: {}, Result: {}, Output Field: {}, Parsed: {:?}",
+            calculator, result, output_field, parsed_value
+        );
+        assert_eq!(calculator, "limit_validator");
+        assert_eq!(output_field, "hours_valid");
+        assert!(result == "true" || result == "false");
     }
 
-    // Test abs function
-    let result = calculator.eval("abs(-42)", &context).unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::Integer(value)) => {
-            assert_eq!(value, 42);
-        }
-        _ => panic!("Expected integer result"),
-    }
+    println!("✅ Limit validator calculator test passed");
 }
 
 #[test]
-fn test_calculator_conditional_expressions() {
-    let mut calculator = CalculatorEngine::new();
+fn test_weighted_average_calculator() {
+    let mut engine = BingoEngine::new().unwrap();
 
-    // Create test fact
+    println!("🧪 Testing Weighted Average Calculator");
+
+    // Create a fact with array data for weighted average
     let mut fields = HashMap::new();
-    fields.insert("balance".to_string(), FactValue::Float(1000.0));
-    fields.insert("min_balance".to_string(), FactValue::Float(500.0));
+    fields.insert(
+        "type".to_string(),
+        FactValue::String("calculation".to_string()),
+    );
 
-    let fact = Fact { id: 1, data: FactData { fields } };
+    // Create an array of objects with value and weight fields
+    let items = FactValue::Array(vec![
+        FactValue::Object({
+            let mut item = HashMap::new();
+            item.insert("value".to_string(), FactValue::Float(100.0));
+            item.insert("weight".to_string(), FactValue::Float(2.0));
+            item
+        }),
+        FactValue::Object({
+            let mut item = HashMap::new();
+            item.insert("value".to_string(), FactValue::Float(200.0));
+            item.insert("weight".to_string(), FactValue::Float(3.0));
+            item
+        }),
+    ]);
+    fields.insert("items".to_string(), items);
 
-    let context = EvaluationContext { current_fact: &fact, facts: &[], globals: HashMap::new() };
+    let weighted_fact = Fact {
+        id: 100,
+        external_id: Some("weighted-test".to_string()),
+        timestamp: Utc::now(),
+        data: FactData { fields },
+    };
 
-    // Test conditional expression
-    let result = calculator
-        .eval(
-            "if balance > min_balance then balance * 0.02 else 0",
-            &context,
-        )
-        .unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::Float(value)) => {
-            assert!((value - 20.0).abs() < f64::EPSILON);
+    // Create a rule that uses weighted_average calculator
+    let rule = Rule {
+        id: 1,
+        name: "Weighted Average Calculation".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "type".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("calculation".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::CallCalculator {
+                calculator_name: "weighted_average".to_string(),
+                input_mapping: {
+                    let mut mapping = HashMap::new();
+                    mapping.insert("items".to_string(), "items".to_string());
+                    mapping
+                },
+                output_field: "weighted_avg".to_string(),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
+    // Process the weighted fact
+    let results = engine.process_facts(vec![weighted_fact]).unwrap();
+
+    println!("🎯 Weighted average results: {} rules fired", results.len());
+
+    // Verify the weighted average calculation
+    let calc_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::CalculatorResult {
+                    calculator,
+                    result,
+                    output_field,
+                    parsed_value,
+                } = action
+                {
+                    Some((calculator, result, output_field, parsed_value))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    assert!(!calc_results.is_empty(), "Should have calculator results");
+
+    for (calculator, result, output_field, parsed_value) in calc_results {
+        println!(
+            "📊 Calculator: {}, Result: {}, Output Field: {}, Parsed: {:?}",
+            calculator, result, output_field, parsed_value
+        );
+        assert_eq!(calculator, "weighted_average");
+        assert_eq!(output_field, "weighted_avg");
+
+        // Expected calculation: (100*2 + 200*3) / (2+3) = 800/5 = 160.0
+        let expected_avg = 160.0;
+        if let Ok(result_float) = result.parse::<f64>() {
+            assert!(
+                (result_float - expected_avg).abs() < 0.01,
+                "Expected ~{}, got {}",
+                expected_avg,
+                result_float
+            );
         }
-        _ => panic!("Expected float result"),
     }
+
+    println!("✅ Weighted average calculator test passed");
 }
 
 #[test]
-fn test_calculator_compilation_caching() {
-    let mut calculator = CalculatorEngine::new();
+fn test_formula_evaluation() {
+    let mut engine = BingoEngine::new().unwrap();
 
-    // Create test fact
-    let mut fields = HashMap::new();
-    fields.insert("x".to_string(), FactValue::Integer(10));
+    println!("🧪 Testing Formula Evaluation");
 
-    let fact = Fact { id: 1, data: FactData { fields } };
+    // Test simple arithmetic formula
+    let rule = Rule {
+        id: 1,
+        name: "Overtime Pay Calculation".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "employee".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("John".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::Formula {
+                expression: "hours * rate".to_string(),
+                output_field: "gross_pay".to_string(),
+            },
+        }],
+    };
 
-    let context = EvaluationContext { current_fact: &fact, facts: &[], globals: HashMap::new() };
+    engine.add_rule(rule).unwrap();
 
-    // Compile expression manually
-    let expr = calculator.compile("x * 2 + 1").unwrap();
-    assert_eq!(expr.source, "x * 2 + 1");
-    assert_eq!(expr.variables, vec!["x"]);
+    // Process facts
+    let facts = create_test_facts();
+    let results = engine.process_facts(facts).unwrap();
 
-    // Evaluate compiled expression
-    let result = calculator.evaluate(&expr, &context).unwrap();
-    match result {
-        CalculatorResult::Value(FactValue::Integer(value)) => {
-            assert_eq!(value, 21);
+    println!(
+        "🎯 Formula evaluation results: {} rules fired",
+        results.len()
+    );
+
+    // Verify formula results
+    let formula_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::CalculatorResult {
+                    calculator,
+                    result,
+                    output_field,
+                    parsed_value,
+                } = action
+                {
+                    if calculator == "formula" {
+                        Some((result, output_field, parsed_value))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    assert!(!formula_results.is_empty(), "Should have formula results");
+
+    for (result, output_field, parsed_value) in formula_results {
+        println!(
+            "📊 Formula Result: {}, Output Field: {}, Parsed: {:?}",
+            result, output_field, parsed_value
+        );
+        assert_eq!(output_field, "gross_pay");
+
+        // Expected calculation: 45.0 * 25.0 = 1125.0
+        let expected_pay = 1125.0;
+        if let Ok(result_float) = result.parse::<f64>() {
+            assert!(
+                (result_float - expected_pay).abs() < 0.01,
+                "Expected ~{}, got {}",
+                expected_pay,
+                result_float
+            );
         }
-        _ => panic!("Expected integer result"),
     }
 
-    // Test that eval uses caching
-    let result2 = calculator.eval("x * 2 + 1", &context).unwrap();
-    match result2 {
-        CalculatorResult::Value(FactValue::Integer(value)) => {
-            assert_eq!(value, 21);
+    println!("✅ Formula evaluation test passed");
+}
+
+#[test]
+fn test_complex_formula_expressions() {
+    let mut engine = BingoEngine::new().unwrap();
+
+    println!("🧪 Testing Complex Formula Expressions");
+
+    // Test tax calculation formula
+    let rule = Rule {
+        id: 1,
+        name: "Tax Calculation".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "product".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("Widget".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::Formula {
+                expression: "price * tax_rate".to_string(),
+                output_field: "tax_amount".to_string(),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
+    // Process facts
+    let facts = create_test_facts();
+    let results = engine.process_facts(facts).unwrap();
+
+    println!("🎯 Complex formula results: {} rules fired", results.len());
+
+    // Verify complex formula results
+    let formula_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::CalculatorResult {
+                    calculator,
+                    result,
+                    output_field,
+                    parsed_value,
+                } = action
+                {
+                    if calculator == "formula" {
+                        Some((result, output_field, parsed_value))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    assert!(!formula_results.is_empty(), "Should have formula results");
+
+    for (result, output_field, parsed_value) in formula_results {
+        println!(
+            "📊 Formula Result: {}, Output Field: {}, Parsed: {:?}",
+            result, output_field, parsed_value
+        );
+        assert_eq!(output_field, "tax_amount");
+
+        // Expected calculation: 100.0 * 0.08 = 8.0
+        let expected_tax = 8.0;
+        if let Ok(result_float) = result.parse::<f64>() {
+            assert!(
+                (result_float - expected_tax).abs() < 0.01,
+                "Expected ~{}, got {}",
+                expected_tax,
+                result_float
+            );
         }
-        _ => panic!("Expected integer result"),
     }
+
+    println!("✅ Complex formula evaluation test passed");
+}
+
+#[test]
+fn test_calculator_error_handling() {
+    let mut engine = BingoEngine::new().unwrap();
+
+    println!("🧪 Testing Calculator Error Handling");
+
+    // Test with non-existent calculator
+    let rule = Rule {
+        id: 1,
+        name: "Invalid Calculator Test".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "employee".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("John".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::CallCalculator {
+                calculator_name: "non_existent_calculator".to_string(),
+                input_mapping: {
+                    let mut mapping = HashMap::new();
+                    mapping.insert("value".to_string(), "hours".to_string());
+                    mapping
+                },
+                output_field: "invalid_result".to_string(),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
+    // Process facts
+    let facts = create_test_facts();
+    let results = engine.process_facts(facts).unwrap();
+
+    println!("🎯 Error handling results: {} rules fired", results.len());
+
+    // Verify error handling
+    let error_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::Logged { message } = action {
+                    if message.contains("non_existent_calculator") && message.contains("failed") {
+                        Some(message)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    assert!(
+        !error_results.is_empty(),
+        "Should have error handling results"
+    );
+
+    for error_message in error_results {
+        println!("⚠️  Error handled: {}", error_message);
+        assert!(error_message.contains("non_existent_calculator"));
+        assert!(error_message.contains("not found"));
+    }
+
+    println!("✅ Calculator error handling test passed");
+}
+
+#[test]
+fn test_formula_error_handling() {
+    let mut engine = BingoEngine::new().unwrap();
+
+    println!("🧪 Testing Formula Error Handling");
+
+    // Test with invalid formula
+    let rule = Rule {
+        id: 1,
+        name: "Invalid Formula Test".to_string(),
+        conditions: vec![Condition::Simple {
+            field: "employee".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("John".to_string()),
+        }],
+        actions: vec![Action {
+            action_type: ActionType::Formula {
+                expression: "non_existent_field * 2".to_string(),
+                output_field: "invalid_result".to_string(),
+            },
+        }],
+    };
+
+    engine.add_rule(rule).unwrap();
+
+    // Process facts
+    let facts = create_test_facts();
+    let results = engine.process_facts(facts).unwrap();
+
+    println!(
+        "🎯 Formula error handling results: {} rules fired",
+        results.len()
+    );
+
+    // Verify formula error handling
+    let error_results: Vec<_> = results
+        .iter()
+        .filter_map(|r| {
+            r.actions_executed.iter().find_map(|action| {
+                if let bingo_core::rete_nodes::ActionResult::Logged { message } = action {
+                    if message.contains("Formula") && message.contains("failed") {
+                        Some(message)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    assert!(
+        !error_results.is_empty(),
+        "Should have formula error handling results"
+    );
+
+    for error_message in error_results {
+        println!("⚠️  Formula error handled: {}", error_message);
+        assert!(error_message.contains("Formula"));
+        assert!(error_message.contains("failed"));
+    }
+
+    println!("✅ Formula error handling test passed");
 }

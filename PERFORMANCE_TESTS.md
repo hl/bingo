@@ -6,6 +6,14 @@ This document describes the performance and stress tests that are separated from
 
 Performance tests are marked with `#[ignore]` to prevent them from blocking quality checks. These tests require explicit execution with the `--release` flag for accurate performance measurements.
 
+## Current Performance Benchmarks (Release Mode)
+
+**Validated Performance Results:**
+- **100K facts + 1 rule**: 64.5ms (1.55M facts/sec) - 46x faster than 3s target
+- **200K facts + 1 rule**: 116.6ms (1.72M facts/sec) - 51x faster than 6s target
+- **1K facts + 4 rules**: 5.4ms (186K facts/sec) - Complex multi-condition rules
+- **Memory Usage**: 250.5MB for 200K facts (1.25MB per 1K facts)
+
 ## Performance Test Categories
 
 ### Core RETE Network Stress Tests
@@ -69,6 +77,36 @@ cargo test --package bingo-core --test scaling_validation_test --release
 # Heavy performance tests (500K, 1M facts) - manual execution only
 cargo test --package bingo-core --test scaling_validation_test --ignored --release
 ```
+
+## Complex Rule Performance Tests
+
+High-rule-complexity tests that validate performance with calculation-heavy business rules using calculators:
+
+```bash
+# Complex rule scenarios with calculator-based business logic
+cargo test --package bingo-core --test complex_rule_performance_test --release -- --ignored
+
+# Individual complex rule performance tests
+cargo test --release test_100k_facts_200_rules_performance -- --ignored  # 100K facts + 200 calculator rules
+cargo test --release test_200k_facts_200_rules_performance -- --ignored  # 200K facts + 200 calculator rules  
+cargo test --release test_100k_facts_500_rules_performance -- --ignored  # 100K facts + 500 calculator rules
+cargo test --release test_200k_facts_500_rules_performance -- --ignored  # 200K facts + 500 calculator rules
+```
+
+### Complex Rule Performance Targets
+
+Based on calculator-heavy business rule scenarios:
+
+- **100K facts + 200 rules**: ~19s processing time, ~1.9GB memory
+- **200K facts + 200 rules**: ~39s processing time, ~3.5GB memory
+- **100K facts + 500 rules**: ~49s processing time, ~4.1GB memory
+- **200K facts + 500 rules**: ~90s processing time, ~6GB memory
+
+These tests simulate real-world business rule complexity with:
+- Threshold checking for compliance validation
+- Multi-tier limit validation with warning/critical/max levels
+- Time-based calculations for payroll and scheduling
+- Performance scoring and ranking calculations
 
 ## Performance Targets
 

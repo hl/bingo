@@ -1,29 +1,20 @@
-use bingo_core::{BingoEngine, Fact, FactData, FactStore, FactValue, MemoryTracker, VecFactStore};
+use bingo_core::{BingoEngine, Fact, FactData, FactValue, MemoryTracker};
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::collections::HashMap;
 use std::time::Duration;
 
 fn generate_test_facts(count: usize) -> Vec<Fact> {
     (0..count)
-        .map(|i| Fact {
-            id: i as u64,
-            data: FactData {
-                fields: {
-                    let mut map = HashMap::new();
-                    map.insert("entity_id".to_string(), FactValue::Integer(i as i64));
-                    map.insert("value".to_string(), FactValue::Float(i as f64 * 1.5));
-                    map.insert(
-                        "status".to_string(),
-                        FactValue::String("active".to_string()),
-                    );
-                    map.insert(
-                        "category".to_string(),
-                        FactValue::String(format!("cat_{}", i % 10)),
-                    );
-                    map.insert("score".to_string(), FactValue::Float((i % 100) as f64));
-                    map
-                },
-            },
+        .map(|i| {
+            let mut map = HashMap::new();
+            map.insert("entity_id".to_string(), FactValue::Integer(i as i64));
+            map.insert("value".to_string(), FactValue::Float(i as f64 * 1.5));
+            map.insert("status".to_string(), FactValue::String("active".to_string()));
+            map.insert("category".to_string(), FactValue::String(format!("cat_{}", i % 10)));
+            map.insert("score".to_string(), FactValue::Float((i % 100) as f64));
+
+            let data = FactData { fields: map };
+            Fact::new(i as u64, data)
         })
         .collect()
 }
@@ -90,33 +81,6 @@ fn bench_memory_usage(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_fact_store_operations(c: &mut Criterion) {
-    let mut group = c.benchmark_group("fact_store");
-
-    for size in [1_000, 10_000, 100_000].iter() {
-        group.bench_with_input(
-            BenchmarkId::new("vec_fact_store_insert", size),
-            size,
-            |b, &size| {
-                b.iter_batched(
-                    || {
-                        let facts = generate_test_facts(size);
-                        let store = VecFactStore::new();
-                        (facts, store)
-                    },
-                    |(facts, mut store)| {
-                        for fact in facts {
-                            black_box(store.insert(fact));
-                        }
-                    },
-                    criterion::BatchSize::LargeInput,
-                );
-            },
-        );
-    }
-    group.finish();
-}
-
 fn bench_engine_stats(c: &mut Criterion) {
     let mut group = c.benchmark_group("engine_stats");
 
@@ -136,7 +100,6 @@ criterion_group!(
     benches,
     bench_fact_processing,
     bench_memory_usage,
-    bench_fact_store_operations,
     bench_engine_stats
 );
 criterion_main!(benches);

@@ -3,9 +3,12 @@
 //! This module defines JSON-native types that map to OpenAPI specifications
 //! and provide automatic documentation generation through utoipa.
 
+use anyhow;
 use chrono::{DateTime, Utc};
+use fnv::FnvHasher;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use utoipa::ToSchema;
 
 /// A fact in the rules engine using native JSON types
@@ -70,6 +73,202 @@ pub struct ApiRule {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Simple comparison operators using JSON-native terminology
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiSimpleOperator {
+    /// Equality comparison (==)
+    Equal,
+    /// Inequality comparison (!=)
+    NotEqual,
+    /// Greater than comparison (>)
+    GreaterThan,
+    /// Less than comparison (<)
+    LessThan,
+    /// Greater than or equal comparison (>=)
+    GreaterThanOrEqual,
+    /// Less than or equal comparison (<=)
+    LessThanOrEqual,
+    /// String/array contains check
+    Contains,
+}
+
+// ----------------------------------------------------------------------------------------------
+// Lightweight zero-cost conversions to core engine enums.
+// ----------------------------------------------------------------------------------------------
+
+impl From<ApiSimpleOperator> for bingo_core::Operator {
+    fn from(op: ApiSimpleOperator) -> Self {
+        match op {
+            ApiSimpleOperator::Equal => Self::Equal,
+            ApiSimpleOperator::NotEqual => Self::NotEqual,
+            ApiSimpleOperator::GreaterThan => Self::GreaterThan,
+            ApiSimpleOperator::LessThan => Self::LessThan,
+            ApiSimpleOperator::GreaterThanOrEqual => Self::GreaterThanOrEqual,
+            ApiSimpleOperator::LessThanOrEqual => Self::LessThanOrEqual,
+            ApiSimpleOperator::Contains => Self::Contains,
+        }
+    }
+}
+
+impl From<ApiLogicalOperator> for bingo_core::LogicalOperator {
+    fn from(op: ApiLogicalOperator) -> Self {
+        match op {
+            ApiLogicalOperator::And => Self::And,
+            ApiLogicalOperator::Or => Self::Or,
+        }
+    }
+}
+
+impl TryFrom<&ApiCondition> for bingo_core::Condition {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &ApiCondition) -> Result<Self, Self::Error> {
+        use ApiCondition::*;
+        Ok(match value {
+            Simple { field, operator, value: val } => bingo_core::Condition::Simple {
+                field: field.clone(),
+                operator: operator.clone().into(),
+                value: bingo_core::FactValue::try_from(val)?,
+            },
+            Complex { operator, conditions } => {
+                let converted =
+                    conditions.iter().map(Self::try_from).collect::<Result<Vec<_>, _>>()?;
+                bingo_core::Condition::Complex {
+                    operator: operator.clone().into(),
+                    conditions: converted,
+                }
+            }
+        })
+    }
+}
+
+impl TryFrom<&ApiAction> for bingo_core::Action {
+    type Error = anyhow::Error;
+
+    fn try_from(action: &ApiAction) -> Result<Self, Self::Error> {
+        use ApiAction::*;
+        Ok(match action {
+            Log { level: _, message } => bingo_core::Action {
+                action_type: bingo_core::ActionType::Log { message: message.clone() },
+            },
+            SetField { field, value } => bingo_core::Action {
+                action_type: bingo_core::ActionType::SetField {
+                    field: field.clone(),
+                    value: bingo_core::FactValue::try_from(value)?,
+                },
+            },
+            CreateFact { data } => {
+                let mut fields = HashMap::new();
+                for (k, v) in data {
+                    fields.insert(k.clone(), bingo_core::FactValue::try_from(v)?);
+                }
+                bingo_core::Action {
+                    action_type: bingo_core::ActionType::CreateFact {
+                        data: bingo_core::FactData { fields },
+                    },
+                }
+            }
+            CallCalculator { calculator_name, input_mapping, output_field } => bingo_core::Action {
+                action_type: bingo_core::ActionType::CallCalculator {
+                    calculator_name: calculator_name.clone(),
+                    input_mapping: input_mapping.clone(),
+                    output_field: output_field.clone(),
+                },
+            },
+        })
+    }
+}
+
+impl TryFrom<&ApiRule> for bingo_core::Rule {
+    type Error = anyhow::Error;
+
+    fn try_from(rule: &ApiRule) -> Result<Self, Self::Error> {
+        // stable hash for id - same logic as previously but inline fn
+        fn stable_hash(id: &str) -> u64 {
+            use fnv::FnvHasher;
+            use std::hash::{Hash, Hasher as _};
+            let mut h = FnvHasher::default();
+            id.hash(&mut h);
+            h.finish()
+        }
+
+        let conditions = rule
+            .conditions
+            .iter()
+            .map(bingo_core::Condition::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let actions = rule
+            .actions
+            .iter()
+            .map(bingo_core::Action::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(bingo_core::Rule {
+            id: stable_hash(&rule.id),
+            name: rule.name.clone(),
+            conditions,
+            actions,
+        })
+    }
+}
+
+// -------------------------------------------------------------------------------------------------
+// ApiFact ↔ core::Fact conversions
+// -------------------------------------------------------------------------------------------------
+
+impl From<&ApiFact> for bingo_core::Fact {
+    fn from(fact: &ApiFact) -> Self {
+        // Build field map
+        let mut fields = HashMap::new();
+        for (k, v) in &fact.data {
+            let core_val = bingo_core::FactValue::try_from(v)
+                .unwrap_or_else(|_| bingo_core::FactValue::String(v.to_string()));
+            fields.insert(k.clone(), core_val);
+        }
+
+        // Stable hash so repeated external ids stay identical
+        let mut hasher = FnvHasher::default();
+        fact.id.hash(&mut hasher);
+        let id64 = hasher.finish();
+
+        bingo_core::Fact {
+            id: id64,
+            external_id: Some(fact.id.clone()),
+            timestamp: fact.created_at,
+            data: bingo_core::FactData { fields },
+        }
+    }
+}
+
+impl From<&bingo_core::Fact> for ApiFact {
+    fn from(fact: &bingo_core::Fact) -> Self {
+        let data_map = fact
+            .data
+            .fields
+            .iter()
+            .map(|(k, v)| (k.clone(), v.into()))
+            .collect::<HashMap<_, _>>();
+
+        ApiFact {
+            id: fact.external_id.clone().unwrap_or_else(|| fact.id.to_string()),
+            data: data_map,
+            created_at: fact.timestamp,
+        }
+    }
+}
+
+/// Logical operators for combining conditions
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiLogicalOperator {
+    /// Logical AND operation
+    And,
+    /// Logical OR operation
+    Or,
+}
+
 /// A condition that must be met for a rule to fire
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
@@ -83,7 +282,7 @@ pub enum ApiCondition {
 
         /// Comparison operator
         #[schema(example = "greater_than")]
-        operator: String,
+        operator: ApiSimpleOperator,
 
         /// Value to compare against (native JSON type)
         #[schema(example = 100.0)]
@@ -95,7 +294,7 @@ pub enum ApiCondition {
     Complex {
         /// Logical operator connecting sub-conditions
         #[schema(example = "and")]
-        operator: String,
+        operator: ApiLogicalOperator,
 
         /// List of sub-conditions
         conditions: Vec<ApiCondition>,
@@ -116,18 +315,6 @@ pub enum ApiAction {
         /// Value to set (native JSON type)
         #[schema(example = 15.5)]
         value: serde_json::Value,
-    },
-
-    /// Calculate a field using a formula expression
-    #[serde(rename = "formula")]
-    Formula {
-        /// Target field name for the calculated result
-        #[schema(example = "tax_amount")]
-        field: String,
-
-        /// Mathematical expression using calculator DSL
-        #[schema(example = "amount * 0.15")]
-        expression: String,
     },
 
     /// Create a new fact
@@ -211,49 +398,6 @@ pub struct HealthResponse {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Standard API error response
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ApiError {
-    /// Error code
-    #[schema(example = "VALIDATION_ERROR")]
-    pub code: String,
-
-    /// Human-readable error message
-    #[schema(example = "Invalid rule condition: field 'amount' not found")]
-    pub message: String,
-
-    /// Additional error details
-    pub details: Option<serde_json::Value>,
-
-    /// Request ID for tracking
-    pub request_id: Option<String>,
-
-    /// Timestamp when the error occurred
-    pub timestamp: DateTime<Utc>,
-}
-
-impl ApiError {
-    pub fn new(code: &str, message: &str) -> Self {
-        Self {
-            code: code.to_string(),
-            message: message.to_string(),
-            details: None,
-            request_id: None,
-            timestamp: Utc::now(),
-        }
-    }
-
-    pub fn with_details(mut self, details: serde_json::Value) -> Self {
-        self.details = Some(details);
-        self
-    }
-
-    pub fn with_request_id(mut self, request_id: String) -> Self {
-        self.request_id = Some(request_id);
-        self
-    }
-}
-
 // Validation functions for API types
 impl ApiRule {
     /// Validate the rule definition
@@ -288,33 +432,13 @@ impl ApiCondition {
     /// Validate the condition
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            ApiCondition::Simple { field, operator, .. } => {
+            ApiCondition::Simple { field, .. } => {
                 if field.trim().is_empty() {
                     return Err("Field name cannot be empty".to_string());
                 }
-
-                let valid_operators = [
-                    "equal",
-                    "not_equal",
-                    "greater_than",
-                    "less_than",
-                    "greater_than_or_equal",
-                    "less_than_or_equal",
-                    "contains",
-                ];
-
-                if !valid_operators.contains(&operator.as_str()) {
-                    return Err(format!("Invalid operator: {}", operator));
-                }
-
                 Ok(())
             }
-            ApiCondition::Complex { operator, conditions } => {
-                let valid_operators = ["and", "or", "not"];
-                if !valid_operators.contains(&operator.as_str()) {
-                    return Err(format!("Invalid logical operator: {}", operator));
-                }
-
+            ApiCondition::Complex { conditions, .. } => {
                 if conditions.is_empty() {
                     return Err("Complex condition must have sub-conditions".to_string());
                 }
@@ -336,15 +460,6 @@ impl ApiAction {
             ApiAction::SetField { field, .. } => {
                 if field.trim().is_empty() {
                     return Err("Field name cannot be empty".to_string());
-                }
-                Ok(())
-            }
-            ApiAction::Formula { field, expression } => {
-                if field.trim().is_empty() {
-                    return Err("Field name cannot be empty".to_string());
-                }
-                if expression.trim().is_empty() {
-                    return Err("Expression cannot be empty".to_string());
                 }
                 Ok(())
             }
@@ -460,6 +575,53 @@ pub struct EvaluateRequest {
         }
     }]))]
     pub facts: Vec<ApiFact>,
+
+    /// Response format preference (optional)
+    pub response_format: Option<ResponseFormat>,
+
+    /// Streaming configuration (optional)
+    pub streaming_config: Option<StreamingConfig>,
+}
+
+/// Response format options
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseFormat {
+    /// Standard JSON response with all results
+    Standard,
+    /// Streaming NDJSON for large result sets
+    Stream,
+    /// Auto-detect based on result size
+    Auto,
+}
+
+/// Configuration for streaming responses
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StreamingConfig {
+    /// Threshold for switching to streaming mode (number of results)
+    #[schema(example = 1000)]
+    pub result_threshold: Option<usize>,
+
+    /// Chunk size for streaming (number of results per chunk)
+    #[schema(example = 100)]
+    pub chunk_size: Option<usize>,
+
+    /// Include intermediate progress updates
+    #[schema(example = true)]
+    pub include_progress: Option<bool>,
+
+    /// Enable incremental fact processing to avoid memory spikes
+    /// When enabled, facts are processed in batches rather than all at once
+    #[schema(example = true)]
+    pub incremental_processing: Option<bool>,
+
+    /// Batch size for incremental fact processing
+    #[schema(example = 1000)]
+    pub fact_batch_size: Option<usize>,
+
+    /// Memory limit in MB - switch to incremental mode if exceeded
+    #[schema(example = 2048)]
+    pub memory_limit_mb: Option<usize>,
 }
 
 /// Response from the evaluate endpoint - YOUR API!
@@ -468,8 +630,11 @@ pub struct EvaluateResponse {
     /// Unique request identifier for tracking
     pub request_id: String,
 
-    /// Results of rule execution
-    pub results: Vec<ApiRuleExecutionResult>,
+    /// Results of rule execution (for standard response mode)
+    pub results: Option<Vec<ApiRuleExecutionResult>>,
+
+    /// Streaming metadata (for streaming response mode)
+    pub streaming: Option<StreamingMetadata>,
 
     /// Number of rules processed
     pub rules_processed: usize,
@@ -485,6 +650,24 @@ pub struct EvaluateResponse {
 
     /// Engine statistics after processing
     pub stats: EngineStats,
+}
+
+/// Metadata for streaming response mode
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StreamingMetadata {
+    /// Format of the streaming response
+    #[schema(example = "ndjson")]
+    pub format: String,
+
+    /// Total estimated chunks
+    pub estimated_chunks: usize,
+
+    /// Chunk size threshold that triggered streaming
+    pub chunk_size: usize,
+
+    /// Instructions for consuming the stream
+    #[schema(example = "Read newline-delimited JSON from response body")]
+    pub consumption_hint: String,
 }
 
 /// Result of executing a rule - YOUR API!
@@ -506,19 +689,131 @@ pub struct ApiRuleExecutionResult {
 pub enum ApiActionResult {
     /// Field was set to a value
     #[serde(rename = "field_set")]
-    FieldSet { field: String, value: serde_json::Value },
+    FieldSet {
+        /// Name of the field that was modified
+        field: String,
+        /// Value that was set
+        value: serde_json::Value,
+    },
 
     /// Calculator was executed with result - YOUR PREDEFINED CALCULATOR!
     #[serde(rename = "calculator_result")]
-    CalculatorResult { calculator: String, result: String },
+    CalculatorResult {
+        /// Name of the calculator that was executed
+        calculator: String,
+        /// Result returned by the calculator
+        result: String,
+    },
 
     /// Message was logged
     #[serde(rename = "logged")]
-    Logged { message: String },
+    Logged {
+        /// The logged message
+        message: String,
+    },
+
+    /// New fact was created
+    #[serde(rename = "fact_created")]
+    FactCreated {
+        /// ID of the newly created fact
+        fact_id: u64,
+        /// Data contained in the new fact
+        fact_data: serde_json::Value,
+    },
 }
 
+// Conversion from core ActionResult to API ActionResult
+impl From<&bingo_core::ActionResult> for ApiActionResult {
+    fn from(core_result: &bingo_core::ActionResult) -> Self {
+        match core_result {
+            bingo_core::ActionResult::FieldSet { fact_id: _, field, value } => {
+                ApiActionResult::FieldSet { field: field.clone(), value: value.into() }
+            }
+            bingo_core::ActionResult::CalculatorResult {
+                calculator,
+                result,
+                output_field: _,
+                parsed_value: _,
+            } => ApiActionResult::CalculatorResult {
+                calculator: calculator.clone(),
+                result: result.clone(),
+            },
+            bingo_core::ActionResult::Logged { message } => {
+                ApiActionResult::Logged { message: message.clone() }
+            }
+            bingo_core::ActionResult::LazyLogged { template, args } => {
+                let mut result = template.to_string();
+                for (i, arg) in args.iter().enumerate() {
+                    let placeholder = format!("{{{}}}", i);
+                    result = result.replace(&placeholder, arg);
+                }
+                ApiActionResult::Logged { message: result }
+            }
+            bingo_core::ActionResult::FactCreated { fact_id, fact_data } => {
+                let fact_json = serde_json::json!({
+                    "fields": fact_data.fields.iter().map(|(k, v)| {
+                        (k.clone(), v.into())
+                    }).collect::<serde_json::Map<String, serde_json::Value>>()
+                });
+                ApiActionResult::FactCreated { fact_id: *fact_id, fact_data: fact_json }
+            }
+            bingo_core::ActionResult::FactUpdated { fact_id: _, updated_fields: _ } => {
+                // For API simplicity, convert to a generic logged message
+                ApiActionResult::Logged { message: "Fact updated".to_string() }
+            }
+            bingo_core::ActionResult::FactDeleted { fact_id: _ } => {
+                // For API simplicity, convert to a generic logged message
+                ApiActionResult::Logged { message: "Fact deleted".to_string() }
+            }
+            bingo_core::ActionResult::FieldIncremented {
+                fact_id: _,
+                field: _,
+                old_value: _,
+                new_value: _,
+            } => {
+                // For API simplicity, convert to a generic logged message
+                ApiActionResult::Logged { message: "Field incremented".to_string() }
+            }
+            bingo_core::ActionResult::ArrayAppended {
+                fact_id: _,
+                field: _,
+                appended_value: _,
+                new_length: _,
+            } => {
+                // For API simplicity, convert to a generic logged message
+                ApiActionResult::Logged { message: "Array appended".to_string() }
+            }
+            bingo_core::ActionResult::NotificationSent {
+                recipient: _,
+                notification_type: _,
+                subject: _,
+            } => {
+                // For API simplicity, convert to a generic logged message
+                ApiActionResult::Logged { message: "Notification sent".to_string() }
+            }
+        }
+    }
+}
+
+// Conversion from core RuleExecutionResult to API RuleExecutionResult
+impl From<&bingo_core::RuleExecutionResult> for ApiRuleExecutionResult {
+    fn from(core_result: &bingo_core::RuleExecutionResult) -> Self {
+        ApiRuleExecutionResult {
+            rule_id: core_result.rule_id.to_string(),
+            fact_id: core_result.fact_id.to_string(),
+            actions_executed: core_result
+                .actions_executed
+                .iter()
+                .map(|action| action.into())
+                .collect(),
+        }
+    }
+}
+
+/// Helper function to convert FactValue to JSON (to be moved to appropriate module)
 // Validation implementation for RegisterRulesetRequest
 impl RegisterRulesetRequest {
+    /// Validate the ruleset registration request
     pub fn validate(&self) -> Result<(), String> {
         if self.ruleset_id.trim().is_empty() {
             return Err("Ruleset ID cannot be empty".to_string());

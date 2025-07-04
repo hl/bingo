@@ -1,73 +1,40 @@
-# Use Rust 2024 edition compatible image
-FROM rust:1.82-slim-bookworm AS builder
+# ---- Chef ----
+# Use the stable Rust 1.88 toolchain to support the 2024 edition.
+FROM rust:1.88-bookworm as chef
+WORKDIR /app
+RUN cargo install cargo-chef
+COPY . .
+# Compute a recipe to determine the dependency graph.
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Install system dependencies for performance profiling and memory tracking
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+# ---- Planner ----
+# This layer is cached as long as the recipe.json (dependency list) is the same.
+FROM rust:1.88-bookworm as planner
+WORKDIR /app
+COPY --from=chef /app/recipe.json recipe.json
+# Build only the dependencies, which will be cached.
+RUN cargo chef cook --release --recipe-path recipe.json
 
-# Set working directory
-WORKDIR /usr/src/bingo
-
-# Copy Cargo files for dependency caching
-COPY Cargo.toml Cargo.lock ./
-COPY crates/bingo-core/Cargo.toml ./crates/bingo-core/
-COPY crates/bingo-rete/Cargo.toml ./crates/bingo-rete/
-COPY crates/bingo-api/Cargo.toml ./crates/bingo-api/
-
-# Create dummy source files to build dependencies
-RUN mkdir -p crates/bingo-core/src crates/bingo-rete/src crates/bingo-api/src && \
-    echo "fn main() {}" > crates/bingo-api/src/main.rs && \
-    echo "// dummy" > crates/bingo-core/src/lib.rs && \
-    echo "// dummy" > crates/bingo-rete/src/lib.rs && \
-    echo "// dummy" > crates/bingo-api/src/lib.rs
-
-# Build dependencies (cached layer)
-RUN cargo build --release
-
-# Remove dummy source files
-RUN rm -rf crates/*/src
-
-# Copy actual source code
-COPY crates/ ./crates/
-
-# Build the application
+# ---- Builder ----
+# This layer is cached as long as the application source code (excluding dependencies) is the same.
+FROM rust:1.88-bookworm as builder
+WORKDIR /app
+COPY . .
+# Copy over the pre-built dependencies from the planner stage.
+COPY --from=planner /app/target target
+COPY --from=planner /usr/local/cargo /usr/local/cargo
+# Build the application binary.
 RUN cargo build --release --bin bingo
 
-# Runtime stage
-FROM debian:bookworm-slim
+# ---- Runtime ----
+# Use a minimal, non-root image for the final stage for better security.
+FROM debian:bookworm-slim as runtime
+WORKDIR /app
+RUN groupadd --system nonroot && useradd --system --gid nonroot nonroot
+USER nonroot
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the binary from the builder.
+COPY --from=builder /app/target/release/bingo .
 
-# Create non-root user for security
-RUN useradd -r -s /bin/false bingo
-
-# Copy binary from builder stage
-COPY --from=builder /usr/src/bingo/target/release/bingo /usr/local/bin/bingo
-
-# Set proper ownership
-RUN chown bingo:bingo /usr/local/bin/bingo
-
-# Switch to non-root user
-USER bingo
-
-# Expose port (default for private network deployment)
-EXPOSE 8080
-
-# Health check endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Set environment for production
-ENV RUST_LOG=info
-ENV BINGO_HOST=0.0.0.0
-ENV BINGO_PORT=8080
-
-# Run the binary
-CMD ["bingo"]
+# Set the entrypoint.
+ENTRYPOINT ["./bingo"]

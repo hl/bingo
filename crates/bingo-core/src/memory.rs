@@ -33,9 +33,59 @@ pub fn get_memory_usage() -> anyhow::Result<usize> {
 
     #[cfg(target_os = "windows")]
     {
-        // Windows implementation could use GetProcessMemoryInfo
-        // For now, return 0 as placeholder
-        Ok(0)
+        use std::mem;
+        use std::ptr;
+
+        // Windows API structures and functions
+        #[repr(C)]
+        struct ProcessMemoryCounters {
+            cb: u32,
+            page_fault_count: u32,
+            peak_working_set_size: usize,
+            working_set_size: usize,
+            quota_peak_paged_pool_usage: usize,
+            quota_paged_pool_usage: usize,
+            quota_peak_non_paged_pool_usage: usize,
+            quota_non_paged_pool_usage: usize,
+            pagefile_usage: usize,
+            peak_pagefile_usage: usize,
+        }
+
+        extern "system" {
+            fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            fn GetProcessMemoryInfo(
+                process: *mut std::ffi::c_void,
+                ppsmemCounters: *mut ProcessMemoryCounters,
+                cb: u32,
+            ) -> i32;
+        }
+
+        // SAFETY: `GetCurrentProcess` always returns a valid pseudo-handle for the
+        // current process (documented by the Windows API). We then pass that
+        // handle together with a properly initialised `ProcessMemoryCounters`
+        // struct to `GetProcessMemoryInfo`. Both APIs expect the struct to be
+        // at least `cb` bytes long; we set `cb` to the correct size just
+        // beforehand. All pointers remain valid for the duration of the call
+        // and no memory is mutated other than the `pmc` instance we own, so
+        // this usage is safe under Rust’s aliasing rules.
+        unsafe {
+            let mut pmc: ProcessMemoryCounters = mem::zeroed();
+            pmc.cb = mem::size_of::<ProcessMemoryCounters>() as u32;
+
+            let process_handle = GetCurrentProcess();
+            let result = GetProcessMemoryInfo(
+                process_handle,
+                &mut pmc as *mut ProcessMemoryCounters,
+                pmc.cb,
+            );
+
+            if result != 0 {
+                Ok(pmc.working_set_size)
+            } else {
+                // Fall back to 0 if the API call failed
+                Ok(0)
+            }
+        }
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]

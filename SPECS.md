@@ -1,41 +1,8 @@
 # Bingo RETE Rules Engine - Specifications
 
-## Overview
+For a general overview of the project, see the main [README.md](README.md).
 
-Bingo is a high-performance stateless RETE rules engine built in Rust 2024 edition (1.87.0). The system delivers exceptional performance that exceeds enterprise targets by 30-60x margins, processing 1M facts in 693ms with <3GB memory usage.
-
-**Stateless Architecture Design:**
-- **Mandatory Rules and Facts**: Each evaluation request must include both rules and facts (validation enforced)
-- **Per-Request Engine Instances**: Fresh engine instance created for every `/evaluate` request
-- **No Shared State**: Zero lock contention enables perfect horizontal scaling
-- **Rules-with-Facts Pattern**: Rules provided alongside facts in each evaluation request
-- **Hardcoded Calculators**: Built-in calculators compiled into the engine for maximum performance
-- **Unlimited Concurrency**: Stateless design supports unlimited parallel requests
-
-## Performance Characteristics
-
-**Validated Performance:**
-- **100K facts**: 57ms (53x faster than 3s target)
-- **200K facts**: 104ms (58x faster than 6s target)  
-- **500K facts**: 312ms (32x faster than 10s target)
-- **1M facts**: 693ms (43x faster than 30s target)
-
-**System Capabilities:**
-- **Direct Vec Indexing**: O(1) fact access eliminates HashMap overhead
-- **Smart Memory Management**: Adaptive backends with capacity pre-allocation  
-- **Linear Scaling**: Validated performance from 100K to 1M+ facts
-- **Thread Safety**: Full `Send + Sync` compliance throughout
-- **Zero Configuration**: Simplified build system, no feature flags
-- **Comprehensive Testing**: 189+ unit tests + 16 performance tests
-
-## Architecture
-
-- **Language**: Rust 2024 edition (1.87.0) with latest features
-- **Build System**: Simplified - no feature flags, direct dependencies
-- **Performance**: Direct Vec indexing architecture for O(1) access
-- **Memory**: <3GB for 1M facts, <500MB for CI environments
-- **Thread Safety**: Full `Send + Sync` compliance for modern concurrency
-- **Testing**: Quality/performance test separation for CI optimization
+This document provides a high-level summary of the engine's specifications and links to more detailed documents.
 
 ## Technical Specifications
 
@@ -56,16 +23,10 @@ Bingo is a high-performance stateless RETE rules engine built in Rust 2024 editi
 - **Scalable Architecture**: Linear scaling from 100K to 1M+ facts
 - **Enterprise Ready**: Deterministic node IDs, comprehensive error handling
 
-#### Calculator DSL
-- **Business-Friendly Syntax**: Intuitive expressions for domain experts
-- **Complete Language**: Arithmetic, logic, strings, functions, conditionals
-- **Type Safety**: Comprehensive validation and error reporting
-- **Integration**: Seamless embedding in JSON rules via actions
-
 #### Stateless JSON API with OpenAPI
-- **Primary Endpoint**: `/evaluate` endpoint for rules-with-facts processing (rules and facts mandatory)
+- **Primary Endpoint**: `/evaluate` endpoint supporting both ad-hoc (rules + facts) and cached (`ruleset_id` + facts) evaluation.
 - **Stateless Endpoints**: `/health` and `/engine/stats` for monitoring (no persistent state)
-- **OpenAPI 3.0**: Auto-generated documentation with Swagger UI reflecting stateless architecture
+- **OpenAPI 3.0**: Auto-generated documentation reflecting stateless architecture
 - **Type-Safe**: Native JSON types with mandatory field validation
 - **Production Ready**: Error handling, logging, structured responses, request validation
 - **Perfect Concurrency**: No shared state enables unlimited parallel requests
@@ -81,16 +42,17 @@ Bingo is a high-performance stateless RETE rules engine built in Rust 2024 editi
 ### Core Functionality
 - **Stateless Processing**: Process business rules against structured data with per-request engines
 - **Mandatory Input Validation**: Rules and facts must be provided in each evaluation request (enforced)
-- **Rules-with-Facts Pattern**: JSON rules with calculator DSL sent alongside facts in every request
+- **Rules-with-Facts Pattern**: JSON rules sent alongside facts in every request
 - **Per-Request Scaling**: Handle large datasets (1M+ facts per request) with fresh engine instances
 - **Single Evaluation Endpoint**: `/evaluate` HTTP endpoint for complete stateless rule processing
 - **Built-in Calculators**: Hardcoded calculators compiled into engine for maximum performance
 
 ### Performance Requirements
-- **Performance**: 1M facts processed in <1 second
-- **Memory**: <3GB RSS for 1M facts
-- **Throughput**: 1.4M+ facts/second sustained
-- **Scalability**: Linear scaling characteristics
+- **Simple Rules**: 1M facts processed in <7 seconds
+- **Complex Rules**: 100K-200K facts with 200-500 calculator rules in 18-90 seconds
+- **Memory**: <3GB RSS for 1M facts (simple rules), 3-12GB for complex scenarios
+- **Throughput**: 150K+ facts/second for simple rules, 2K-5K facts/second for complex rules
+- **Scalability**: Linear scaling characteristics across rule complexity levels
 - **Observability**: Comprehensive tracing and metrics
 - **Reliability**: Memory-safe Rust implementation
 
@@ -104,9 +66,10 @@ Bingo is a high-performance stateless RETE rules engine built in Rust 2024 editi
 
 ### Built-in Calculators
 - **threshold_checker**: Validate values against thresholds with compliance reporting
-- **limit_validator**: Multi-tier validation with warning/critical/max levels
-- **hours_between_datetime**: Calculate hours between datetime values
+- **limit_validator**: Multi-tier validation with warning/critical/max levels  
+- **time_difference**: Flexible time difference calculations with multiple units and break deductions
 - **Extensible**: Framework for adding domain-specific calculators
+- **Performance Tested**: All calculators validated in complex rule scenarios (200-500 rule tests)
 
 ### Error Handling
 - **Structured Errors**: Comprehensive error types with context
@@ -129,7 +92,9 @@ Bingo is a high-performance stateless RETE rules engine built in Rust 2024 editi
 - **Memory Safety**: Leverage Rust guarantees with smart allocation strategies
 
 ### Performance Considerations
-- **Release Mode**: Performance tests require `--release` for accuracy
+- **Release Mode**: Performance tests require `--release` for accuracy (10x performance difference)
 - **CI Resource Awareness**: Heavy tests marked `#[ignore]` for CI environments
-- **Linear Scaling**: Performance characteristics scale predictably
-- **Memory Efficiency**: Sub-3GB usage for enterprise scale workloads
+- **Linear Scaling**: Performance characteristics scale predictably across rule complexity
+- **Memory Efficiency**: Sub-3GB usage for simple rules, 3-12GB for complex calculator scenarios
+- **Rule Complexity Impact**: Processing time scales with rule count and calculator usage
+- **Complex Rule Tests**: Dedicated test suite for 200-500 calculator rule scenarios

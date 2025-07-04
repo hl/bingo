@@ -149,7 +149,7 @@ impl FieldIndexer {
 
     /// Convert FactValue to index key (consistent across all implementations)
     fn fact_value_to_index_key(&self, value: &FactValue) -> String {
-        value.as_string()
+        value.as_string_direct()
     }
 
     /// Estimate memory usage of the indexes (rough calculation)
@@ -215,7 +215,7 @@ mod tests {
     fn create_test_fact(id: FactId, field_name: &str, field_value: FactValue) -> Fact {
         let mut fields = HashMap::new();
         fields.insert(field_name.to_string(), field_value);
-        Fact { id, data: FactData { fields } }
+        Fact { id, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields } }
     }
 
     #[test]
@@ -264,7 +264,12 @@ mod tests {
             "category".to_string(),
             FactValue::String("premium".to_string()),
         );
-        let fact1 = Fact { id: 1, data: FactData { fields: fields1 } };
+        let fact1 = Fact {
+            id: 1,
+            external_id: None,
+            timestamp: chrono::Utc::now(),
+            data: FactData { fields: fields1 },
+        };
 
         let mut fields2 = HashMap::new();
         fields2.insert(
@@ -275,7 +280,12 @@ mod tests {
             "category".to_string(),
             FactValue::String("basic".to_string()),
         );
-        let fact2 = Fact { id: 2, data: FactData { fields: fields2 } };
+        let fact2 = Fact {
+            id: 2,
+            external_id: None,
+            timestamp: chrono::Utc::now(),
+            data: FactData { fields: fields2 },
+        };
 
         let mut fields3 = HashMap::new();
         fields3.insert(
@@ -286,7 +296,12 @@ mod tests {
             "category".to_string(),
             FactValue::String("premium".to_string()),
         );
-        let fact3 = Fact { id: 3, data: FactData { fields: fields3 } };
+        let fact3 = Fact {
+            id: 3,
+            external_id: None,
+            timestamp: chrono::Utc::now(),
+            data: FactData { fields: fields3 },
+        };
 
         indexer.index_fact(&fact1);
         indexer.index_fact(&fact2);

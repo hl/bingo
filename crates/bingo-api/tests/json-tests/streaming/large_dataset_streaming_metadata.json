@@ -1,0 +1,12 @@
+{
+  "test_name": "Large Dataset Streaming",
+  "description": "Tests NDJSON streaming response format with progress updates",
+  "category": "streaming",
+  "tags": ["streaming", "ndjson", "progress", "large-data"],
+  "timeout_ms": 10000,
+  "expected_duration_ms": 500,
+  "skip_reason": null,
+  "prerequisites": [],
+  "author": "json-test-framework",
+  "created_at": "2024-01-01T00:00:00Z"
+}

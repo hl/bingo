@@ -1,0 +1,12 @@
+{
+  "test_name": "Invalid Rule Format Error Handling",
+  "description": "Tests API error handling for invalid rule formats and operators",
+  "category": "edge-cases",
+  "tags": ["error-handling", "validation", "edge-case", "negative-test"],
+  "timeout_ms": 3000,
+  "expected_duration_ms": 100,
+  "skip_reason": null,
+  "prerequisites": [],
+  "author": "json-test-framework",
+  "created_at": "2024-01-01T00:00:00Z"
+}

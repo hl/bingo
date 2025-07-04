@@ -1,0 +1,12 @@
+{
+  "test_name": "Overtime Detection Basic",
+  "description": "Tests basic rule firing for overtime detection with multiple employees",
+  "category": "basic",
+  "tags": ["payroll", "rules", "basic", "hr"],
+  "timeout_ms": 5000,
+  "expected_duration_ms": 100,
+  "skip_reason": null,
+  "prerequisites": [],
+  "author": "json-test-framework",
+  "created_at": "2024-01-01T00:00:00Z"
+}

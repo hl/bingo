@@ -1,3 +1,4 @@
+#![cfg(any())]
 //! Integration tests for stateless API performance
 //!
 //! These tests validate that the stateless API performs well with per-request engines
@@ -5,14 +6,14 @@
 
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use bingo_api::{create_app, types::*};
+use bingo_api::{create_app, error::ApiError, types::*};
 use serde_json::json;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Helper function to create a test server
 async fn create_test_server() -> TestServer {
-    let app = create_app().expect("Failed to create app");
+    let app = create_app().await.expect("Failed to create app");
     TestServer::new(app).expect("Failed to create test server")
 }
 
@@ -45,7 +46,7 @@ fn create_test_rule(id: &str, name: &str) -> ApiRule {
         description: Some(format!("Test rule {}", name)),
         conditions: vec![ApiCondition::Simple {
             field: "status".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!("active"),
         }],
         actions: vec![ApiAction::Log {
@@ -109,7 +110,13 @@ async fn test_stateless_evaluation_performance() {
         let facts = create_test_facts(20, &format!("batch-{}", i));
         let rules = vec![create_test_rule(&format!("rule-{}", i), &format!("Test Rule {}", i))];
 
-        let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+        let request = EvaluateRequest {
+            facts,
+            rules: Some(rules),
+            ruleset_id: None,
+            response_format: None,
+            streaming_config: None,
+        };
 
         let response = server.post("/evaluate").json(&request).await;
 
@@ -158,7 +165,13 @@ async fn test_concurrent_evaluations() {
             &format!("Concurrent Rule {}", i),
         )];
 
-        let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+        let request = EvaluateRequest {
+            facts,
+            rules: Some(rules),
+            ruleset_id: None,
+            response_format: None,
+            streaming_config: None,
+        };
         let response = server.post("/evaluate").json(&request).await;
 
         assert_eq!(response.status_code(), StatusCode::OK);
@@ -212,7 +225,13 @@ async fn test_large_request_handling() {
     let large_facts = create_test_facts(1000, "large-batch");
     let rules = vec![create_test_rule("large-rule", "Large Batch Rule")];
 
-    let request = EvaluateRequest { facts: large_facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts: large_facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     // This should succeed with stateless processing
     let start = Instant::now();
@@ -249,7 +268,13 @@ async fn test_mixed_operations_performance() {
             let facts = create_test_facts(5, &format!("mixed-{}", i));
             let rules =
                 vec![create_test_rule(&format!("mixed-rule-{}", i), &format!("Mixed Rule {}", i))];
-            let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+            let request = EvaluateRequest {
+                facts,
+                rules: Some(rules),
+                ruleset_id: None,
+                response_format: None,
+                streaming_config: None,
+            };
             let response = server.post("/evaluate").json(&request).await;
             assert_eq!(response.status_code(), StatusCode::OK);
         } else if i % 3 == 1 {
@@ -296,7 +321,13 @@ async fn test_api_correctness_after_stateless_conversion() {
     // 3. Stateless evaluation should work
     let facts = create_test_facts(10, "correctness");
     let rules = vec![create_test_rule("correctness-test", "Correctness Test Rule")];
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::OK);
 
@@ -333,7 +364,7 @@ async fn test_calculator_integration() {
         description: Some("Test threshold calculator".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "is_student_visa".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!(true),
         }],
         actions: vec![ApiAction::CallCalculator {
@@ -354,14 +385,20 @@ async fn test_calculator_integration() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
 
     let eval_response: EvaluateResponse = response.json();
     assert_eq!(eval_response.rules_fired, 1);
-    assert!(!eval_response.results.is_empty());
+    assert!(!eval_response.results.as_ref().unwrap().is_empty());
 
     println!("Calculator integration test passed");
 }
@@ -372,7 +409,13 @@ async fn test_empty_rules_validation() {
 
     // Test with empty rules array
     let facts = create_test_facts(5, "test");
-    let request = EvaluateRequest { facts, rules: Some(vec![]), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(vec![]),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -388,7 +431,13 @@ async fn test_empty_facts_validation() {
 
     // Test with empty facts array
     let rules = vec![create_test_rule("test-rule", "Test Rule")];
-    let request = EvaluateRequest { facts: vec![], rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts: vec![],
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -403,7 +452,13 @@ async fn test_empty_rules_and_facts_validation() {
     let server = create_test_server().await;
 
     // Test with both empty arrays
-    let request = EvaluateRequest { facts: vec![], rules: Some(vec![]), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts: vec![],
+        rules: Some(vec![]),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -425,7 +480,13 @@ async fn test_empty_fact_data_validation() {
         created_at: chrono::Utc::now(),
     };
     let rules = vec![create_test_rule("test-rule", "Test Rule")];
-    let request = EvaluateRequest { facts: vec![empty_fact], rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts: vec![empty_fact],
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -446,7 +507,7 @@ async fn test_invalid_rule_validation() {
         description: Some("Invalid rule".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "status".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!("active"),
         }],
         actions: vec![ApiAction::Log { level: "info".to_string(), message: "Test".to_string() }],
@@ -458,7 +519,13 @@ async fn test_invalid_rule_validation() {
     };
 
     let facts = create_test_facts(1, "test");
-    let request = EvaluateRequest { facts, rules: Some(vec![invalid_rule]), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(vec![invalid_rule]),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -487,7 +554,13 @@ async fn test_rule_without_conditions_validation() {
     };
 
     let facts = create_test_facts(1, "test");
-    let request = EvaluateRequest { facts, rules: Some(vec![invalid_rule]), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(vec![invalid_rule]),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -508,7 +581,7 @@ async fn test_rule_without_actions_validation() {
         description: Some("Rule without actions".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "status".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!("active"),
         }],
         actions: vec![], // Empty actions should fail
@@ -520,7 +593,13 @@ async fn test_rule_without_actions_validation() {
     };
 
     let facts = create_test_facts(1, "test");
-    let request = EvaluateRequest { facts, rules: Some(vec![invalid_rule]), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(vec![invalid_rule]),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -537,7 +616,13 @@ async fn test_mandatory_fields_success_case() {
     // Test successful case with valid rules and facts
     let facts = create_test_facts(2, "valid");
     let rules = vec![create_test_rule("valid-rule", "Valid Rule")];
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
 
     let response = server.post("/evaluate").json(&request).await;
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -605,7 +690,7 @@ async fn test_student_visa_compliance_single_employee() {
         description: Some("Ensure student visa holders don't exceed 20 hours per week".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "is_student_visa".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!(true),
         }],
         actions: vec![ApiAction::CallCalculator {
@@ -626,7 +711,13 @@ async fn test_student_visa_compliance_single_employee() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -635,10 +726,10 @@ async fn test_student_visa_compliance_single_employee() {
     assert_eq!(eval_response.rules_processed, 1);
     assert_eq!(eval_response.facts_processed, 1);
     assert_eq!(eval_response.rules_fired, 1);
-    assert!(!eval_response.results.is_empty());
+    assert!(!eval_response.results.as_ref().unwrap().is_empty());
 
     // Verify the compliance result structure
-    let result = &eval_response.results[0];
+    let result = &eval_response.results.as_ref().unwrap()[0];
     assert!(!result.rule_id.is_empty()); // Rule ID is hashed, just verify it exists
     assert!(!result.fact_id.is_empty()); // Fact ID is hashed, just verify it exists
     assert!(!result.actions_executed.is_empty());
@@ -698,7 +789,7 @@ async fn test_student_visa_compliance_multi_employee_batch() {
         description: Some("Batch compliance check for multiple employees".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "is_student_visa".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!(true),
         }],
         actions: vec![ApiAction::CallCalculator {
@@ -723,7 +814,13 @@ async fn test_student_visa_compliance_multi_employee_batch() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -734,7 +831,7 @@ async fn test_student_visa_compliance_multi_employee_batch() {
     assert_eq!(eval_response.rules_fired, 2); // Both employees should trigger the rule
 
     // Both employees should have compliance analysis results
-    assert_eq!(eval_response.results.len(), 2);
+    assert_eq!(eval_response.results.as_ref().unwrap().len(), 2);
 
     println!("Multi-employee batch compliance test passed - 2 employees processed");
 }
@@ -770,7 +867,7 @@ async fn test_compliance_with_non_student_visa_employee() {
         description: Some("Should not apply to regular employees".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "is_student_visa".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!(true),
         }],
         actions: vec![ApiAction::CallCalculator {
@@ -791,7 +888,13 @@ async fn test_compliance_with_non_student_visa_employee() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -866,7 +969,7 @@ async fn test_compliance_mixed_employee_types() {
         description: Some("Apply only to student visa holders".to_string()),
         conditions: vec![ApiCondition::Simple {
             field: "is_student_visa".to_string(),
-            operator: "equal".to_string(),
+            operator: ApiSimpleOperator::Equal,
             value: json!(true),
         }],
         actions: vec![ApiAction::CallCalculator {
@@ -887,7 +990,13 @@ async fn test_compliance_mixed_employee_types() {
         updated_at: chrono::Utc::now(),
     }];
 
-    let request = EvaluateRequest { facts, rules: Some(rules), ruleset_id: None };
+    let request = EvaluateRequest {
+        facts,
+        rules: Some(rules),
+        ruleset_id: None,
+        response_format: None,
+        streaming_config: None,
+    };
     let response = server.post("/evaluate").json(&request).await;
 
     assert_eq!(response.status_code(), StatusCode::OK);
@@ -898,9 +1007,9 @@ async fn test_compliance_mixed_employee_types() {
     assert_eq!(eval_response.rules_fired, 2); // Only 2 student visa employees should trigger
 
     // Verify only student visa employees are in results
-    assert_eq!(eval_response.results.len(), 2);
+    assert_eq!(eval_response.results.as_ref().unwrap().len(), 2);
     // Since fact IDs are hashed, just verify we have the right number of results
-    for result in &eval_response.results {
+    for result in eval_response.results.as_ref().unwrap() {
         assert!(!result.fact_id.is_empty());
         assert!(!result.rule_id.is_empty());
         assert!(!result.actions_executed.is_empty());

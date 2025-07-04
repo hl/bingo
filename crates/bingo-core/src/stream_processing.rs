@@ -4,7 +4,7 @@
 //! and event processing, including windowed aggregations, temporal pattern matching,
 //! and out-of-order event handling.
 
-use crate::types::{Fact, FactValue};
+use super::types::{Fact, FactValue};
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -76,6 +76,14 @@ pub enum AggregationFunction {
     Max { field: String },
     /// Collect distinct values
     Distinct { field: String },
+    /// Standard deviation of numeric field values
+    StandardDeviation { field: String },
+    /// Variance of numeric field values
+    Variance { field: String },
+    /// Percentile of numeric field values (0.0 to 100.0)
+    Percentile { field: String, percentile: f64 },
+    /// Median (50th percentile) of numeric field values
+    Median { field: String },
     /// Custom aggregation with calculator expression
     Custom { field: String, expression: String },
 }
@@ -215,9 +223,110 @@ impl WindowInstance {
                 }
                 FactValue::Integer(distinct_values.len() as i64)
             }
+            AggregationFunction::StandardDeviation { field } => {
+                let mut values = Vec::new();
+                for fact in &self.facts {
+                    if let Some(value) = fact.data.fields.get(field) {
+                        match value {
+                            FactValue::Integer(i) => values.push(*i as f64),
+                            FactValue::Float(f) => values.push(*f),
+                            _ => continue,
+                        }
+                    }
+                }
+
+                if values.is_empty() {
+                    FactValue::Float(0.0)
+                } else {
+                    let mean = values.iter().sum::<f64>() / values.len() as f64;
+                    let variance = values.iter().map(|v| (*v - mean).powi(2)).sum::<f64>()
+                        / values.len() as f64;
+                    FactValue::Float(variance.sqrt())
+                }
+            }
+            AggregationFunction::Variance { field } => {
+                let mut values = Vec::new();
+                for fact in &self.facts {
+                    if let Some(value) = fact.data.fields.get(field) {
+                        match value {
+                            FactValue::Integer(i) => values.push(*i as f64),
+                            FactValue::Float(f) => values.push(*f),
+                            _ => continue,
+                        }
+                    }
+                }
+
+                if values.is_empty() {
+                    FactValue::Float(0.0)
+                } else {
+                    let mean = values.iter().sum::<f64>() / values.len() as f64;
+                    let variance = values.iter().map(|v| (*v - mean).powi(2)).sum::<f64>()
+                        / values.len() as f64;
+                    FactValue::Float(variance)
+                }
+            }
+            AggregationFunction::Percentile { field, percentile } => {
+                let mut values = Vec::new();
+                for fact in &self.facts {
+                    if let Some(value) = fact.data.fields.get(field) {
+                        match value {
+                            FactValue::Integer(i) => values.push(*i as f64),
+                            FactValue::Float(f) => values.push(*f),
+                            _ => continue,
+                        }
+                    }
+                }
+
+                if values.is_empty() {
+                    FactValue::Float(0.0)
+                } else {
+                    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let rank_f = (percentile / 100.0) * (values.len() as f64 - 1.0);
+                    let lower = rank_f.floor() as usize;
+                    let upper = rank_f.ceil() as usize;
+
+                    let result = if upper == lower || lower >= values.len() {
+                        values[lower.min(values.len() - 1)]
+                    } else {
+                        let weight = rank_f - lower as f64;
+                        values[lower] * (1.0 - weight) + values[upper] * weight
+                    };
+
+                    FactValue::Float(result)
+                }
+            }
+            AggregationFunction::Median { field } => {
+                let mut values = Vec::new();
+                for fact in &self.facts {
+                    if let Some(value) = fact.data.fields.get(field) {
+                        match value {
+                            FactValue::Integer(i) => values.push(*i as f64),
+                            FactValue::Float(f) => values.push(*f),
+                            _ => continue,
+                        }
+                    }
+                }
+
+                if values.is_empty() {
+                    FactValue::Float(0.0)
+                } else {
+                    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let mid = values.len() / 2;
+
+                    let median = if values.len() % 2 == 0 {
+                        // Even number of values - average of two middle values
+                        (values[mid - 1] + values[mid]) / 2.0
+                    } else {
+                        // Odd number of values - middle value
+                        values[mid]
+                    };
+
+                    FactValue::Float(median)
+                }
+            }
             AggregationFunction::Custom { field: _, expression: _ } => {
-                // TODO: Implement custom aggregation using calculator
-                // For now, return count as fallback
+                // Custom aggregation requires calculator integration
+                // Currently returns count as default implementation
                 FactValue::Integer(self.facts.len() as i64)
             }
         };
@@ -651,7 +760,7 @@ mod tests {
             FactValue::Integer(timestamp as i64),
         );
 
-        Fact { id, data: FactData { fields } }
+        Fact { id, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields } }
     }
 
     #[test]
@@ -725,6 +834,55 @@ mod tests {
             .compute_aggregation(&AggregationFunction::Max { field: "value".to_string() })
             .unwrap();
         assert_eq!(max, FactValue::Integer(30));
+
+        // Test standard deviation
+        let stddev = window
+            .compute_aggregation(&AggregationFunction::StandardDeviation {
+                field: "value".to_string(),
+            })
+            .unwrap();
+        // Standard deviation of [10, 20, 30] is sqrt(((10-20)² + (20-20)² + (30-20)²)/3) = sqrt(200/3) ≈ 8.165
+        if let FactValue::Float(std_val) = stddev {
+            assert!((std_val - 8.16496580927726).abs() < 0.001);
+        } else {
+            panic!("Expected float for standard deviation");
+        }
+
+        // Test variance
+        let variance = window
+            .compute_aggregation(&AggregationFunction::Variance { field: "value".to_string() })
+            .unwrap();
+        // Variance of [10, 20, 30] is ((10-20)² + (20-20)² + (30-20)²)/3 = 200/3 ≈ 66.667
+        if let FactValue::Float(var_val) = variance {
+            assert!((var_val - 66.66666666666667).abs() < 0.001);
+        } else {
+            panic!("Expected float for variance");
+        }
+
+        // Test percentile (75th percentile)
+        let p75 = window
+            .compute_aggregation(&AggregationFunction::Percentile {
+                field: "value".to_string(),
+                percentile: 75.0,
+            })
+            .unwrap();
+        // 75th percentile of [10, 20, 30] should be 25.0
+        if let FactValue::Float(p75_val) = p75 {
+            assert!((p75_val - 25.0).abs() < 0.001);
+        } else {
+            panic!("Expected float for percentile");
+        }
+
+        // Test median
+        let median = window
+            .compute_aggregation(&AggregationFunction::Median { field: "value".to_string() })
+            .unwrap();
+        // Median of [10, 20, 30] should be 20.0
+        if let FactValue::Float(median_val) = median {
+            assert!((median_val - 20.0).abs() < 0.001);
+        } else {
+            panic!("Expected float for median");
+        }
     }
 
     #[test]
@@ -755,6 +913,104 @@ mod tests {
         let windows = processor.get_completed_windows("sliding_test");
         // Should have multiple overlapping windows
         assert!(windows.len() > 1);
+    }
+
+    #[test]
+    fn test_advanced_aggregation_functions() {
+        let mut window = WindowInstance::new(
+            "advanced_test".to_string(),
+            Timestamp::from_millis(0),
+            Timestamp::from_millis(10000),
+        );
+
+        // Add test data with more variety for advanced statistics
+        window.add_fact(create_test_fact(1, 5, 1000)); // Lower outlier
+        window.add_fact(create_test_fact(2, 10, 2000));
+        window.add_fact(create_test_fact(3, 15, 3000));
+        window.add_fact(create_test_fact(4, 20, 4000));
+        window.add_fact(create_test_fact(5, 25, 5000));
+        window.add_fact(create_test_fact(6, 35, 6000)); // Higher outlier
+
+        // Test distinct values
+        let distinct = window
+            .compute_aggregation(&AggregationFunction::Distinct { field: "value".to_string() })
+            .unwrap();
+        assert_eq!(distinct, FactValue::Integer(6)); // All values are distinct
+
+        // Test standard deviation with more diverse data
+        let stddev = window
+            .compute_aggregation(&AggregationFunction::StandardDeviation {
+                field: "value".to_string(),
+            })
+            .unwrap();
+        // Standard deviation of [5, 10, 15, 20, 25, 35]
+        // Mean = 110/6 ≈ 18.33
+        // Variance = sum of (x - mean)² / n ≈ 106.67
+        // StdDev = sqrt(106.67) ≈ 10.33
+        if let FactValue::Float(std_val) = stddev {
+            // Standard deviation of [5, 10, 15, 20, 25, 35] = 9.86...
+            assert!((std_val - 9.860132971832694).abs() < 0.01);
+        } else {
+            panic!("Expected float for standard deviation");
+        }
+
+        // Test variance
+        let variance = window
+            .compute_aggregation(&AggregationFunction::Variance { field: "value".to_string() })
+            .unwrap();
+        if let FactValue::Float(var_val) = variance {
+            // Variance of [5, 10, 15, 20, 25, 35] = 97.22...
+            assert!((var_val - 97.22222222222223).abs() < 0.01);
+        } else {
+            panic!("Expected float for variance");
+        }
+
+        // Test different percentiles
+        let p25 = window
+            .compute_aggregation(&AggregationFunction::Percentile {
+                field: "value".to_string(),
+                percentile: 25.0,
+            })
+            .unwrap();
+        if let FactValue::Float(p25_val) = p25 {
+            assert!((p25_val - 11.25).abs() < 0.01);
+        }
+
+        let p50 = window
+            .compute_aggregation(&AggregationFunction::Percentile {
+                field: "value".to_string(),
+                percentile: 50.0,
+            })
+            .unwrap();
+        if let FactValue::Float(p50_val) = p50 {
+            assert!((p50_val - 17.5).abs() < 0.01);
+        }
+
+        let p90 = window
+            .compute_aggregation(&AggregationFunction::Percentile {
+                field: "value".to_string(),
+                percentile: 90.0,
+            })
+            .unwrap();
+        if let FactValue::Float(p90_val) = p90 {
+            assert!((p90_val - 30.0).abs() < 0.01);
+        }
+
+        // Test median (should be same as 50th percentile)
+        let median = window
+            .compute_aggregation(&AggregationFunction::Median { field: "value".to_string() })
+            .unwrap();
+        if let FactValue::Float(median_val) = median {
+            assert!((median_val - 17.5).abs() < 0.01); // (15 + 20) / 2
+        }
+
+        // Test edge cases with empty field
+        let empty_result = window
+            .compute_aggregation(&AggregationFunction::StandardDeviation {
+                field: "nonexistent".to_string(),
+            })
+            .unwrap();
+        assert_eq!(empty_result, FactValue::Float(0.0));
     }
 
     #[test]

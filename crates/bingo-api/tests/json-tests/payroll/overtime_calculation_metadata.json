@@ -1,0 +1,12 @@
+{
+  "test_name": "Overtime Calculation",
+  "description": "Validates that the engine correctly calculates overtime hours and creates a new overtime fact when the threshold is exceeded.",
+  "category": "payroll",
+  "tags": [
+    "payroll",
+    "aggregation",
+    "create_fact"
+  ],
+  "author": "test-framework",
+  "timeout_ms": 5000
+}

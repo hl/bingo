@@ -1,62 +1,38 @@
-# Bingo Rules Engine: Gemini Development Guide
+# AI Contributor Guide
 
-This document provides guidance for Gemini and other AI assistants working with the Bingo codebase.
+This document provides specific guidelines for AI assistants when working on the Bingo codebase.
 
-## Project Overview
+## General Operating Principles
 
-Bingo is a production-ready, high-performance RETE rules engine built in Rust (2024 edition). It is engineered for extreme speed and memory efficiency, capable of processing over 1 million facts in under 7 seconds, far exceeding typical enterprise performance targets. The engine features a sophisticated, multi-layered architecture that provides both a high-performance core and a user-friendly abstraction layer.
+*   **Adhere to Conventions:** Always analyze existing code, tests, and configuration to understand and strictly follow project conventions (formatting, naming, architectural patterns, etc.).
+*   **Verify Library/Framework Usage:** Never assume a library or framework is available or appropriate. Verify its established usage within the project (e.g., `Cargo.toml`, imports, neighboring files) before using it.
+*   **Mimic Style & Structure:** Ensure all changes align with the existing style, structure, framework choices, typing, and architectural patterns of the surrounding code.
+*   **Idiomatic Changes:** Understand the local context (imports, functions/classes) to ensure changes integrate naturally and idiomatically.
+*   **Comments:** Add comments sparingly. Focus on *why* something is done for complex logic, not *what*. Do not edit comments separate from code changes. Never use comments to communicate with the user or describe changes.
+*   **Proactiveness:** Fulfill user requests thoroughly, including reasonable, directly implied follow-up actions.
+*   **Confirm Ambiguity/Expansion:** Do not take significant actions beyond the clear scope of the request without user confirmation. If asked *how* to do something, explain first.
+*   **Explaining Changes:** Do not summarize changes after completion unless specifically asked.
 
-**Key Architectural Principles:**
-- **Performance First:** The design prioritizes speed and memory efficiency through advanced techniques like direct Vec indexing, arena allocation, and data-parallelism.
-- **Dual Accessibility:** The engine is designed for two primary audiences: developers who need maximum control via the core Rust API, and business users who can define complex logic using a simple, sandboxed Calculator DSL.
-- **Production Grade:** The system is built with comprehensive observability (structured logging, metrics), a robust testing suite, and a stable, versioned API.
+## Software Engineering Tasks Workflow
 
-## Development Commands
+When performing tasks like bug fixes, feature additions, refactoring, or code explanation:
 
-### Primary Quality & Testing Workflow
+1.  **Understand:** Thoroughly understand the request and codebase context.
+2.  **Plan:** Formulate a clear, grounded plan. Briefly share it with the user if it aids understanding. Incorporate self-verification (e.g., unit tests, debug statements).
+3.  **Implement:** Execute the plan, strictly following project conventions.
+4.  **Verify (Tests):** If applicable, verify changes using project-specific testing procedures. Identify test commands from `README`, build configs, or existing patterns. Never assume standard commands.
+5.  **Verify (Standards):** After code changes, run project-specific build, linting, and type-checking commands (e.g., `cargo check`, `cargo clippy`, `cargo test`). If unsure, ask the user for these commands.
 
-To ensure the repository is in a clean state, run the full suite of quality checks and tests. **There is a zero-tolerance policy for any failing checks.**
+## Tone and Style (CLI Interaction)
 
-```bash
-# Run format check, clippy, workspace check, and all tests in release mode
-cargo fmt --check && cargo clippy -- -D warnings && cargo check --workspace && cargo test --lib && cargo test --release
-```
+*   **Concise & Direct:** Professional, direct, and concise.
+*   **Minimal Output:** Aim for minimal text output per response.
+*   **Clarity over Brevity:** Prioritize clarity for essential explanations or clarifications.
+*   **No Chitchat:** Avoid conversational filler. Get straight to action/answer.
+*   **Formatting:** Use GitHub-flavored Markdown.
+*   **Handling Inability:** Briefly state inability (1-2 sentences), offer alternatives if appropriate.
 
-### Individual Commands
+## Security and Safety Rules
 
-- **Build for Production:** `cargo build --release`
-- **Run All Unit Tests:** `cargo test --lib`
-- **Run Performance Tests:** `cargo test --release`
-- **Run Heavy Performance Tests (Manual Only):** `cargo test --ignored --release`
-- **Check Formatting:** `cargo fmt --check`
-- **Linting (Strict):** `cargo clippy -- -D warnings`
-- **Full Project Check:** `cargo check --workspace`
-
-### Running the Application
-
-- **Start Web Server:** `cargo run --bin bingo`
-  - API will be available at `http://127.0.0.1:3000`.
-  - Interactive Swagger documentation at `http://127.0.0.1:3000/swagger-ui/`.
-- **Show Engine Explanation:** `cargo run --bin bingo explain`
-
-## Architecture & Code Structure
-
-- `crates/bingo-api`: The public-facing HTTP API built with Axum. This crate handles web requests, serialization, and provides OpenAPI documentation. It is the entry point for all external interactions.
-- `crates/bingo-core`: The heart of the engine. This crate contains:
-  - `engine.rs`: The main `BingoEngine` struct, which serves as the primary public API for the core library.
-  - `rete_network.rs`: The orchestrator for the RETE algorithm, managing all nodes, memory, caches, and trackers. **This is the most complex part of the system.**
-  - `rete_nodes.rs`: The implementation of the individual RETE nodes (Alpha, Beta, Terminal).
-  - `fact_store.rs`: A critical abstraction (`FactStore` trait) with multiple backend implementations (`VecFactStore`, `ArenaFactStore`, `CachedFactStore`, `PartitionedFactStore`) for optimized fact storage.
-  - `calculator/`: The full implementation of the Calculator DSL, including the parser, AST, and evaluator.
-- `crates/bingo-rete`: A legacy crate containing foundational data structures. Its functionality has been largely integrated into `bingo-core`.
-
-## Recent Refactoring (June 2025)
-
-The codebase recently underwent a significant refactoring to improve concurrency and resolve critical bugs. Key changes include:
-
-1.  **Thread-Safe Engine:** The `BingoEngine` and `ReteNetwork` were refactored to use `&self` for fact processing instead of `&mut self`. This was achieved by wrapping all mutable state in thread-safe locking primitives (`RwLock`, `Mutex`), allowing the API to process multiple requests concurrently.
-2.  **True Parallelism:** The `process_facts_parallel` method in `engine.rs` was rewritten to use `rayon` to execute the RETE network evaluation across multiple threads for large fact sets.
-3.  **Stable ID Generation:** The unstable `DefaultHasher` was replaced with a stable FNV-1a hash for converting string-based API rule and fact IDs into the `u64` IDs used by the core engine. This ensures state consistency across server restarts.
-4.  **Fact ID Preservation:** The API now correctly preserves fact IDs through the request-response cycle, allowing clients to correlate output with input.
-
-These changes have resolved the most significant architectural bottlenecks and correctness issues.
+*   **Explain Critical Commands:** Before executing commands that modify the system, explain their purpose and impact. Remind user to consider sandboxing for critical commands.
+*   **Security First:** Never introduce code that exposes secrets, API keys, or sensitive info.

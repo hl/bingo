@@ -1,6 +1,8 @@
+use anyhow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fmt;
 
 // Built-in Calculator Error Handling
@@ -49,11 +51,26 @@ pub enum CalculatorFieldType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Fact {
     pub id: FactId,
+    pub external_id: Option<String>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
     pub data: FactData,
+}
+
+impl Fact {
+    /// Get a field value from this fact
+    pub fn get_field(&self, field: &str) -> Option<&FactValue> {
+        self.data.fields.get(field)
+    }
+
+    /// Convenience constructor used mainly in tests
+    pub fn new(id: FactId, data: FactData) -> Self {
+        Self { id, external_id: None, timestamp: chrono::Utc::now(), data }
+    }
 }
 
 /// Unique identifier for facts
 pub type FactId = u64;
+pub type NodeId = u64;
 
 /// The actual data content of a fact
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -72,6 +89,98 @@ pub enum FactValue {
     Object(HashMap<String, FactValue>),
     Date(DateTime<Utc>),
     Null,
+}
+
+// -------------------------------------------------------------------------------------------------
+// Conversions between internal `FactValue` and `serde_json::Value`.
+// These allow the API layer to reuse the same data structures without the verbose
+// hand-written mapping code that previously existed in `bingo-api/src/types.rs`.
+// The implementation purposefully keeps the mapping logic close to the data type it
+// concerns, making it considerably easier to maintain and discover.
+// -------------------------------------------------------------------------------------------------
+
+impl From<FactValue> for serde_json::Value {
+    fn from(value: FactValue) -> Self {
+        match value {
+            FactValue::String(s) => serde_json::Value::String(s),
+            FactValue::Integer(i) => serde_json::Value::Number(serde_json::Number::from(i)),
+            FactValue::Float(f) => serde_json::Number::from_f64(f)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null),
+            FactValue::Boolean(b) => serde_json::Value::Bool(b),
+            FactValue::Array(arr) => {
+                let vec: Vec<serde_json::Value> = arr.into_iter().map(|v| v.into()).collect();
+                serde_json::Value::Array(vec)
+            }
+            FactValue::Object(map) => {
+                let json_map = map
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect::<serde_json::Map<String, serde_json::Value>>();
+                serde_json::Value::Object(json_map)
+            }
+            FactValue::Date(dt) => serde_json::Value::String(dt.to_rfc3339()),
+            FactValue::Null => serde_json::Value::Null,
+        }
+    }
+}
+
+impl From<&FactValue> for serde_json::Value {
+    fn from(value: &FactValue) -> Self {
+        match value {
+            FactValue::String(s) => serde_json::Value::String(s.clone()),
+            FactValue::Integer(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
+            FactValue::Float(f) => serde_json::Number::from_f64(*f)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null),
+            FactValue::Boolean(b) => serde_json::Value::Bool(*b),
+            FactValue::Array(arr) => {
+                let vec: Vec<serde_json::Value> = arr.iter().map(|v| v.into()).collect();
+                serde_json::Value::Array(vec)
+            }
+            FactValue::Object(map) => {
+                let json_map = map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.into()))
+                    .collect::<serde_json::Map<String, serde_json::Value>>();
+                serde_json::Value::Object(json_map)
+            }
+            FactValue::Date(dt) => serde_json::Value::String(dt.to_rfc3339()),
+            FactValue::Null => serde_json::Value::Null,
+        }
+    }
+}
+
+impl TryFrom<&serde_json::Value> for FactValue {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &serde_json::Value) -> Result<Self, Self::Error> {
+        Ok(match value {
+            serde_json::Value::String(s) => FactValue::String(s.clone()),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    FactValue::Integer(i)
+                } else if let Some(f) = n.as_f64() {
+                    FactValue::Float(f)
+                } else {
+                    return Err(anyhow::anyhow!("Unsupported number value: {}", n));
+                }
+            }
+            serde_json::Value::Bool(b) => FactValue::Boolean(*b),
+            serde_json::Value::Array(arr) => {
+                let inner = arr.iter().map(FactValue::try_from).collect::<Result<Vec<_>, _>>()?;
+                FactValue::Array(inner)
+            }
+            serde_json::Value::Object(map) => {
+                let mut inner = HashMap::new();
+                for (k, v) in map {
+                    inner.insert(k.clone(), FactValue::try_from(v)?);
+                }
+                FactValue::Object(inner)
+            }
+            serde_json::Value::Null => FactValue::Null,
+        })
+    }
 }
 
 impl std::hash::Hash for FactValue {
@@ -271,6 +380,11 @@ impl FactValue {
         }
     }
 
+    /// Convert to string directly (alias for as_string)
+    pub fn as_string_direct(&self) -> String {
+        self.as_string()
+    }
+
     /// Create array from elements
     pub fn array(elements: Vec<FactValue>) -> Self {
         FactValue::Array(elements)
@@ -296,6 +410,16 @@ impl FactValue {
     /// Create null value
     pub fn null() -> Self {
         FactValue::Null
+    }
+
+    /// Convenience accessor returning an `f64` representation if this value is numeric.
+    /// Returns `None` when the variant is not `Integer` or `Float`.
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            FactValue::Integer(i) => Some(*i as f64),
+            FactValue::Float(f) => Some(*f),
+            _ => None,
+        }
     }
 }
 
@@ -468,6 +592,7 @@ pub enum Operator {
 pub enum LogicalOperator {
     And,
     Or,
+    Not,
 }
 
 /// Actions to take when a rule fires
@@ -491,31 +616,50 @@ pub enum ActionType {
     },
 
     // Calculator-generated actions (Phase 3+)
-    Formula {
-        target_field: String,
-        expression: String,
-        source_calculator: Option<String>,
-    },
     CallCalculator {
         calculator_name: String,
         input_mapping: HashMap<String, String>,
         output_field: String,
     },
-    ConditionalSet {
-        target_field: String,
-        conditions: Vec<(Condition, FactValue)>,
-        source_calculator: Option<String>,
-    },
 
-    // Stream processing actions (Phase 4+)
-    EmitWindow {
-        window_name: String,
-        fields: HashMap<String, FactValue>,
-    },
     TriggerAlert {
         alert_type: String,
         message: String,
         severity: AlertSeverity,
+        metadata: HashMap<String, FactValue>,
+    },
+
+    // Formula-based calculations using simple expression DSL
+    Formula {
+        expression: String,
+        output_field: String,
+    },
+
+    // Advanced fact manipulation actions
+    UpdateFact {
+        fact_id_field: String,               // Field containing the fact ID to update
+        updates: HashMap<String, FactValue>, // Fields to update
+    },
+
+    DeleteFact {
+        fact_id_field: String, // Field containing the fact ID to delete
+    },
+
+    IncrementField {
+        field: String,
+        increment: FactValue, // Amount to increment (Integer or Float)
+    },
+
+    AppendToArray {
+        field: String,
+        value: FactValue, // Value to append to the array
+    },
+
+    SendNotification {
+        recipient: String,
+        subject: String,
+        message: String,
+        notification_type: NotificationType,
         metadata: HashMap<String, FactValue>,
     },
 }
@@ -527,6 +671,18 @@ pub enum AlertSeverity {
     Medium,
     High,
     Critical,
+}
+
+/// Notification types for SendNotification action
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum NotificationType {
+    Email,
+    Sms,
+    Push,
+    Webhook,
+    Slack,
+    Teams,
+    InApp,
 }
 
 /// Aggregation types supported by the engine
@@ -681,4 +837,199 @@ pub struct SourceLocation {
     pub line: usize,
     pub column: usize,
     pub length: usize,
+}
+
+/// RETE network node types (simplified for BSSN)
+#[derive(Debug, Clone)]
+pub struct AlphaNode {
+    pub id: NodeId,
+    pub condition: Condition,
+}
+
+impl AlphaNode {
+    pub fn new(id: NodeId, condition: Condition) -> Self {
+        Self { id, condition }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BetaNode {
+    pub id: NodeId,
+    pub rule_ids: Vec<RuleId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TerminalNode {
+    pub id: NodeId,
+    pub rule_id: RuleId,
+    pub actions: Vec<Action>,
+}
+
+impl TerminalNode {
+    pub fn new(id: NodeId, rule_id: RuleId, actions: Vec<Action>) -> Self {
+        Self { id, rule_id, actions }
+    }
+}
+
+// ============================================================================
+// Missing Types for Compilation
+// ============================================================================
+
+/// Token for parsing/debugging
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Token {
+    pub value: String,
+    pub position: usize,
+}
+
+/// Pipeline execution context
+#[derive(Debug, Clone)]
+pub struct PipelineContext {
+    pub pipeline_id: String,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub stages_executed: Vec<String>,
+    pub total_facts_processed: usize,
+    pub total_rules_fired: usize,
+    pub errors: Vec<String>,
+    pub global_variables: HashMap<String, FactValue>,
+}
+
+/// Processing pipeline definition
+#[derive(Debug, Clone)]
+pub struct ProcessingPipeline {
+    pub id: String,
+    pub name: String,
+    pub stages: Vec<PipelineStage>,
+    pub global_context: HashMap<String, FactValue>,
+}
+
+/// Single stage in processing pipeline
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PipelineStage {
+    pub id: String,
+    pub stage_type: String,
+    pub rules: Vec<Rule>,
+    pub dependencies: Vec<String>,
+}
+
+/// Result of pipeline execution
+#[derive(Debug, Clone)]
+pub struct PipelineExecutionResult {
+    pub context: PipelineContext,
+    pub stage_results: HashMap<String, StageExecutionResult>,
+    pub total_facts_processed: usize,
+    pub total_facts_created: usize,
+    pub final_facts: Vec<Fact>,
+    pub created_facts: Vec<Fact>,
+}
+
+/// Result of single stage execution
+#[derive(Debug, Clone)]
+pub struct StageExecutionResult {
+    pub stage_id: String,
+    pub stage: PipelineStage,
+    pub duration_ms: u64,
+    pub facts_processed: usize,
+    pub rules_fired: usize,
+    pub facts_created: usize,
+    pub facts_modified: usize,
+    pub created_facts: Vec<Fact>,
+    pub errors: Vec<String>,
+}
+
+/// Calculator inputs
+#[derive(Debug, Clone)]
+pub struct CalculatorInputs {
+    pub fields: HashMap<String, FactValue>,
+}
+
+/// Calculator hash map pool for optimization
+#[derive(Debug, Clone)]
+pub struct CalculatorHashMapPool {
+    pub pool: Vec<HashMap<String, FactValue>>,
+    hits: usize,
+    misses: usize,
+}
+
+impl Default for CalculatorHashMapPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CalculatorHashMapPool {
+    pub fn new() -> Self {
+        Self { pool: Vec::new(), hits: 0, misses: 0 }
+    }
+
+    pub fn get(&mut self) -> HashMap<String, FactValue> {
+        if let Some(mut map) = self.pool.pop() {
+            map.clear(); // Clear the map for reuse
+            self.hits += 1;
+            map
+        } else {
+            self.misses += 1;
+            HashMap::new()
+        }
+    }
+
+    pub fn return_map(&mut self, map: HashMap<String, FactValue>) {
+        self.pool.push(map);
+    }
+
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let pool_size = self.pool.len();
+        (self.hits, self.misses, pool_size)
+    }
+
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            (self.hits as f64 / total as f64) * 100.0
+        }
+    }
+}
+
+/// Calculator result cache
+#[derive(Debug, Clone)]
+pub struct CalculatorResultCache {
+    pub cache: HashMap<String, FactValue>,
+    hits: usize,
+    misses: usize,
+}
+
+impl CalculatorResultCache {
+    pub fn new(_capacity: usize) -> Self {
+        Self { cache: HashMap::new(), hits: 0, misses: 0 }
+    }
+
+    pub fn get(&mut self, calculator: &str, inputs: &CalculatorInputs) -> Option<String> {
+        let key = format!("{}:{:?}", calculator, inputs.fields);
+        if let Some(value) = self.cache.get(&key) {
+            self.hits += 1;
+            Some(value.as_string())
+        } else {
+            self.misses += 1;
+            None
+        }
+    }
+
+    pub fn put(&mut self, calculator: &str, inputs: &CalculatorInputs, result: String) {
+        let key = format!("{}:{:?}", calculator, inputs.fields);
+        self.cache.insert(key, FactValue::String(result));
+    }
+
+    pub fn stats(&self) -> (usize, usize, usize, f64) {
+        let size = self.cache.len();
+        let total = self.hits + self.misses;
+        let hit_rate = if total == 0 {
+            0.0
+        } else {
+            (self.hits as f64 / total as f64) * 100.0
+        };
+        (self.hits, self.misses, size, hit_rate)
+    }
 }

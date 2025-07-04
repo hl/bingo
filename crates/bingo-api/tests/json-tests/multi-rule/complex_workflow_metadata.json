@@ -1,0 +1,12 @@
+{
+  "test_name": "Complex Multi-Rule Workflow",
+  "description": "Tests multiple rules firing in sequence with different priorities",
+  "category": "multi-rule",
+  "tags": ["multi-rule", "workflow", "priority", "complex"],
+  "timeout_ms": 5000,
+  "expected_duration_ms": 150,
+  "skip_reason": null,
+  "prerequisites": [],
+  "author": "json-test-framework",
+  "created_at": "2024-01-01T00:00:00Z"
+}

@@ -1,0 +1,60 @@
+# Bingo Rules Engine Configuration
+# This file defines operational limits and behavior for the Bingo rules engine
+
+[environment]
+# Environment type: "development", "production", or "custom"
+# When set to "custom", all values below will be used
+# When set to "development" or "production", predefined profiles are used
+type = "development"
+
+[limits]
+# Maximum request body size in MB
+# For payroll systems with large datasets, this should be substantial
+# Recommended: 50MB for basic use, 100-200MB for payroll systems
+max_body_size_mb = 200
+
+# Maximum concurrent requests allowed
+max_concurrent_requests = 200
+
+# Request timeout in seconds
+request_timeout_seconds = 300
+
+[rate_limiting]
+# Maximum requests per minute per IP address
+requests_per_minute = 600
+
+# Enable request rate monitoring and logging
+enable_rate_monitoring = false
+
+[performance]
+# Enable incremental processing for large datasets
+enable_incremental_processing = true
+
+# Threshold for automatic incremental processing (number of facts)
+incremental_threshold_facts = 10000
+
+# Memory limit for triggering incremental processing (MB)
+incremental_memory_limit_mb = 500
+
+[security]
+# Enable request validation and security limits
+enable_security_validation = true
+
+# Maximum nesting depth for JSON payloads
+max_json_nesting_depth = 10
+
+# Maximum number of rules in a single request
+max_rules_per_request = 1000
+
+[caching]
+# Enable engine result caching
+enable_engine_cache = true
+
+# Engine cache TTL in minutes
+engine_cache_ttl_minutes = 60
+
+# Enable ruleset caching
+enable_ruleset_cache = true
+
+# Ruleset cache TTL in minutes
+ruleset_cache_ttl_minutes = 120

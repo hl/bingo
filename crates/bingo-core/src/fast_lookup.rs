@@ -203,7 +203,7 @@ mod tests {
         let mut fields = HashMap::new();
         fields.insert(field_name.to_string(), field_value);
 
-        Fact { id, data: FactData { fields } }
+        Fact { id, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields } }
     }
 
     #[test]

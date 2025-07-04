@@ -1,14 +1,17 @@
-use crate::fact_store::{ArenaFactStore, FactStore};
-use crate::rete_network::{ReteNetwork, RuleExecutionResult};
-use crate::types::*;
+use crate::calculator_integration::CalculatorRegistry;
+use crate::fact_store::arena_store::ArenaFactStore;
+use crate::rete_network::ReteNetwork;
+use crate::rete_nodes::RuleExecutionResult;
+use crate::types::{EngineStats, Fact, FactValue, Rule};
 use anyhow::Result;
 use tracing::{info, instrument};
 
 /// Main engine for processing rules and facts - simplified for API use
 pub struct BingoEngine {
     rules: Vec<Rule>,
-    fact_store: Box<dyn FactStore>,
+    fact_store: ArenaFactStore,
     rete_network: ReteNetwork,
+    calculator_registry: CalculatorRegistry,
 }
 
 impl BingoEngine {
@@ -17,10 +20,11 @@ impl BingoEngine {
     pub fn new() -> Result<Self> {
         info!("Creating new Bingo engine");
 
-        let fact_store = Box::new(ArenaFactStore::new());
+        let fact_store = ArenaFactStore::new();
         let rete_network = ReteNetwork::new();
+        let calculator_registry = CalculatorRegistry::new();
 
-        Ok(Self { rules: Vec::new(), fact_store, rete_network })
+        Ok(Self { rules: Vec::new(), fact_store, rete_network, calculator_registry })
     }
 
     /// Create an engine with capacity hint for facts
@@ -31,10 +35,11 @@ impl BingoEngine {
             "Creating Bingo engine with capacity hint"
         );
 
-        let fact_store = Box::new(ArenaFactStore::with_capacity(fact_count_hint));
+        let fact_store = ArenaFactStore::with_capacity(fact_count_hint);
         let rete_network = ReteNetwork::new();
+        let calculator_registry = CalculatorRegistry::new();
 
-        Ok(Self { rules: Vec::new(), fact_store, rete_network })
+        Ok(Self { rules: Vec::new(), fact_store, rete_network, calculator_registry })
     }
 
     /// Add a rule to the engine
@@ -74,10 +79,24 @@ impl BingoEngine {
         }
 
         // Process through RETE network
-        let results = self.rete_network.process_facts(&facts, self.fact_store.as_ref())?;
+        let network_results = self.rete_network.process_facts(
+            &facts,
+            &mut self.fact_store,
+            &self.calculator_registry,
+        )?;
 
-        info!(rules_fired = results.len(), "Completed fact processing");
-        Ok(results)
+        // Retrieve any facts created during rule execution and add them to the fact store
+        let created_facts = self.rete_network.take_created_facts();
+        for created_fact in &created_facts {
+            self.fact_store.insert(created_fact.clone());
+        }
+
+        info!(
+            rules_fired = network_results.len(),
+            facts_created = created_facts.len(),
+            "Completed fact processing"
+        );
+        Ok(network_results)
     }
 
     /// Simple API: process rules and facts, return results
@@ -117,6 +136,44 @@ impl BingoEngine {
         }
     }
 
+    /// Get action result pool statistics for monitoring performance optimizations
+    pub fn get_action_result_pool_stats(&self) -> (usize, usize, usize, f64) {
+        let (pool_size, active_items) = self.rete_network.get_action_result_pool_stats();
+        (pool_size, active_items, 0, 0.0) // Add missing fields for full tuple
+    }
+
+    /// Get comprehensive memory pool statistics for performance monitoring
+    pub fn get_memory_pool_stats(&self) -> crate::memory_pools::MemoryPoolStats {
+        self.rete_network.get_memory_pool_stats()
+    }
+
+    /// Get overall memory pool efficiency percentage
+    pub fn get_memory_pool_efficiency(&self) -> f64 {
+        self.rete_network.get_memory_pool_efficiency()
+    }
+
+    /// Get serialization performance statistics
+    pub fn get_serialization_stats(&self) -> crate::serialization::SerializationStats {
+        crate::serialization::get_serialization_stats()
+    }
+
+    /// Get lazy aggregation performance statistics
+    pub fn get_lazy_aggregation_stats(
+        &self,
+    ) -> crate::lazy_aggregation::LazyAggregationManagerStats {
+        self.rete_network.get_lazy_aggregation_stats()
+    }
+
+    /// Invalidate all lazy aggregation caches (call when fact store changes significantly)
+    pub fn invalidate_lazy_aggregation_caches(&self) {
+        self.rete_network.invalidate_lazy_aggregation_caches();
+    }
+
+    /// Clean up inactive lazy aggregations to free memory
+    pub fn cleanup_lazy_aggregations(&self) {
+        self.rete_network.cleanup_lazy_aggregations();
+    }
+
     /// Get the number of rules loaded
     pub fn rule_count(&self) -> usize {
         self.rules.len()
@@ -134,6 +191,8 @@ impl BingoEngine {
 
         self.rules.clear();
         self.fact_store.clear();
+        // Invalidate lazy aggregation caches before recreating the network
+        self.rete_network.invalidate_lazy_aggregation_caches();
         self.rete_network = ReteNetwork::new();
     }
 
@@ -143,7 +202,10 @@ impl BingoEngine {
         info!(rule_id = rule.id, "Updating rule in engine");
 
         // Remove the old rule if it exists
-        self.remove_rule(rule.id)?;
+        self.rete_network.remove_rule(rule.id)?;
+        if let Some(index) = self.rules.iter().position(|r| r.id == rule.id) {
+            self.rules.remove(index);
+        }
 
         // Add the new rule
         self.add_rule(rule)
@@ -154,17 +216,38 @@ impl BingoEngine {
     pub fn remove_rule(&mut self, rule_id: u64) -> Result<()> {
         info!(rule_id = rule_id, "Removing rule from engine");
 
-        // Remove from rules vector
-        self.rules.retain(|rule| rule.id != rule_id);
-
-        // For simplicity, rebuild the entire network when removing rules
-        // In a more sophisticated implementation, we'd selectively remove nodes
-        self.rete_network = ReteNetwork::new();
-        for rule in &self.rules {
-            self.rete_network.add_rule(rule.clone())?;
+        // Delegate removal to the RETE network for efficient node pruning
+        // instead of rebuilding the entire network.
+        self.rete_network.remove_rule(rule_id)?;
+        if let Some(index) = self.rules.iter().position(|r| r.id == rule_id) {
+            self.rules.remove(index);
         }
 
         Ok(())
+    }
+
+    /// Get all facts created during processing (for pipeline orchestration)
+    pub fn get_created_facts(&self) -> &[Fact] {
+        self.rete_network.get_created_facts()
+    }
+
+    /// Clear all created facts (useful for multi-stage processing)
+    pub fn clear_created_facts(&mut self) {
+        self.rete_network.clear_created_facts();
+    }
+
+    // ============================================================================
+    // Fact Lookup API (for advanced rule logic)
+    // ============================================================================
+
+    /// Look up a fact by its external string ID
+    pub fn lookup_fact_by_id(&self, external_id: &str) -> Option<&Fact> {
+        self.fact_store.get_by_external_id(external_id)
+    }
+
+    /// Get a specific field value from a fact by its external string ID
+    pub fn get_field_by_id(&self, external_id: &str, field: &str) -> Option<&FactValue> {
+        self.lookup_fact_by_id(external_id).and_then(|fact| fact.get_field(field))
     }
 }
 

@@ -1,6 +1,4 @@
-use bingo_core::*;
-
-use bingo_core::fact_store::ArenaFactStore;
+use bingo_core::{ArenaFactStore, BingoEngine, Fact, FactData, FactValue, MemoryTracker};
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -36,7 +34,8 @@ fn generate_large_fact_set(count: usize) -> Vec<Fact> {
                 FactValue::String(format!("region_{}", i % 50)),
             );
 
-            Fact { id: i as u64, data: FactData { fields } }
+            let data = FactData { fields };
+            Fact::new(i as u64, data)
         })
         .collect()
 }
@@ -67,50 +66,6 @@ fn bench_million_fact_scaling(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_arena_vs_vec_performance(c: &mut Criterion) {
-    let mut group = c.benchmark_group("arena_vs_vec");
-    group.measurement_time(Duration::from_secs(20));
-    group.sample_size(5);
-
-    let fact_count = 500_000;
-
-    // Benchmark Vec-based fact store
-    group.bench_function("vec_fact_store_500k", |b| {
-        b.iter_batched(
-            || {
-                let facts = generate_large_fact_set(fact_count);
-                let store = VecFactStore::with_capacity(fact_count);
-                (facts, store)
-            },
-            |(facts, mut store)| {
-                for fact in facts {
-                    black_box(store.insert(fact));
-                }
-            },
-            criterion::BatchSize::LargeInput,
-        );
-    });
-
-    // Benchmark Arena-based fact store
-    group.bench_function("arena_fact_store_500k", |b| {
-        b.iter_batched(
-            || {
-                let facts = generate_large_fact_set(fact_count);
-                let store = ArenaFactStore::with_capacity(fact_count);
-                (facts, store)
-            },
-            |(facts, mut store)| {
-                for fact in facts {
-                    black_box(store.insert(fact));
-                }
-            },
-            criterion::BatchSize::LargeInput,
-        );
-    });
-
-    group.finish();
-}
-
 fn bench_large_fact_indexing(c: &mut Criterion) {
     let mut group = c.benchmark_group("large_fact_indexing");
     group.measurement_time(Duration::from_secs(15));
@@ -119,7 +74,7 @@ fn bench_large_fact_indexing(c: &mut Criterion) {
     let fact_count = 1_000_000;
 
     // Pre-populate store with 1M facts
-    let mut store = VecFactStore::with_capacity(fact_count);
+    let mut store = ArenaFactStore::with_capacity(fact_count);
     let facts = generate_large_fact_set(fact_count);
 
     for fact in facts {
@@ -207,7 +162,6 @@ fn bench_memory_efficiency(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_million_fact_scaling,
-    bench_arena_vs_vec_performance,
     bench_large_fact_indexing,
     bench_memory_efficiency
 );

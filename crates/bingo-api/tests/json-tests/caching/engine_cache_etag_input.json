@@ -1,0 +1,41 @@
+{
+  "facts": [
+    {
+      "id": "cache-test-001",
+      "data": {
+        "user_id": 1001,
+        "action": "login",
+        "timestamp": "2024-01-01T10:00:00Z"
+      },
+      "created_at": "2024-01-01T10:00:00Z"
+    }
+  ],
+  "rules": [
+    {
+      "id": "login-rule",
+      "name": "Login Tracking",
+      "description": "Track user login events",
+      "conditions": [
+        {
+          "field": "action",
+          "operator": "equal",
+          "value": "login"
+        }
+      ],
+      "actions": [
+        {
+          "type": "set_field",
+          "field": "logged_in",
+          "value": true
+        }
+      ],
+      "priority": 100,
+      "enabled": true,
+      "tags": ["auth", "tracking"],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "response_format": "json",
+  "headers": {}
+}

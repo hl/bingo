@@ -28,7 +28,12 @@ fn test_simplified_api_workflow() {
     fact_fields.insert("hours_worked".to_string(), FactValue::Integer(45));
     fact_fields.insert("employee_id".to_string(), FactValue::Integer(12345));
 
-    let fact = Fact { id: 1, data: FactData { fields: fact_fields } };
+    let fact = Fact {
+        id: 1,
+        external_id: None,
+        timestamp: chrono::Utc::now(),
+        data: FactData { fields: fact_fields },
+    };
 
     // ✅ YOUR API: Process rules + facts → get response
     let results = engine.evaluate(vec![rule], vec![fact]).expect("Failed to evaluate rules");

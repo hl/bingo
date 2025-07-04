@@ -1,8 +1,9 @@
 [workspace]
 members = [
     "crates/bingo-core", 
-    "crates/bingo-rete",
-    "crates/bingo-api"
+    "crates/bingo-api",
+    "crates/bingo-calculator",
+    "crates/bingo-prelude"
 ]
 resolver = "2"
 
@@ -16,11 +17,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-opentelemetry = "0.21"
 opentelemetry = "0.21"
 opentelemetry_sdk = "0.21"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Web framework
-axum = { version = "0.7", features = ["json", "tracing"] }
+axum = { version = "0.7", features = ["json", "tracing", "macros"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["trace", "cors", "limit"] }
+
+# Caching
+redis = { version = "0.25", features = ["tokio-comp", "json"] }
+deadpool-redis = "0.14"
+async-trait = "0.1"
 
 # Performance and memory
 bumpalo = { version = "3.0", features = ["collections"] }

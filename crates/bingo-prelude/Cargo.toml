@@ -1,0 +1,8 @@
+[package]
+name = "bingo-prelude"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bingo-core = { path = "../bingo-core" }
+bingo-calculator = { path = "../bingo-calculator" }

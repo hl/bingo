@@ -1,0 +1,32 @@
+{
+  "validation_rules": {
+    "status_code": 200,
+    "content_type": "application/x-ndjson",
+    "headers": {
+      "x-streaming-format": "exists",
+      "x-total-facts": "numeric",
+      "x-processing-mode": "exists"
+    },
+    "response_structure": {
+      "results": "array",
+      "progress_updates": "array",
+      "streaming": "boolean"
+    },
+    "allow_additional_fields": true
+  },
+  "exact_matches": {
+    "streaming": true
+  },
+  "range_validations": {},
+  "array_validations": {
+    "results": {
+      "min_length": 2,
+      "max_length": 10
+    },
+    "progress_updates": {
+      "min_length": 0,
+      "max_length": 5
+    }
+  },
+  "pattern_validations": {}
+}

@@ -183,5 +183,3 @@ jobs:
 
     - name: Run explain command
       run: cargo run --release --bin bingo explain
-
-

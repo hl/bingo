@@ -1,0 +1,27 @@
+{
+  "validation_rules": {
+    "status_code": 200,
+    "response_structure": {
+      "new_facts": "array"
+    }
+  },
+  "array_validations": {
+    "new_facts": {
+      "min_length": 1,
+      "max_length": 1,
+      "item_structure": {
+        "data": {
+          "entity_type": "compliance_violation",
+          "employee_id": "string",
+          "violation_type": "weekly_hour_limit",
+          "violation_amount": "number"
+        }
+      },
+      "item_exact_matches": [
+        {
+          "data.violation_amount": 4.5
+        }
+      ]
+    }
+  }
+}

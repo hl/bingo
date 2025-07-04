@@ -2,17 +2,31 @@
 
 ## Overview
 
-The Bingo Rules Engine provides comprehensive compliance checking capabilities through its simplified `/evaluate` API endpoint. This guide demonstrates how to implement student visa compliance checking and other compliance scenarios using the engine's predefined calculators.
+The Bingo Rules Engine provides comprehensive compliance checking capabilities. This guide demonstrates how to implement a multi-stage compliance process, using student visa work restrictions as an example. The engine can process raw, event-level facts (like individual shifts) and perform the necessary calculations and aggregations to determine compliance.
+
+## Glossary
+
+| Term | Definition |
+| --- | --- |
+| **Work Week** | A fixed seven-day period used for aggregation (e.g., Monday-Sunday). |
+| **Compliance Fact** | A fact representing a specific entity to be checked (e.g., an employee with their compliance configuration). |
+| **Event Fact** | A fact representing a single event in time (e.g., a work shift). |
 
 ## Student Visa Compliance Example
 
 ### Scenario
-When an employee is a student visa holder, they are not allowed to work more than 20 hours per week (Monday-Sunday). The system needs to:
-- Calculate hours worked from shift start/end times
-- Aggregate weekly totals per employee
-- Flag compliance violations with detailed reporting
+An employee on a student visa has a **compliance rule** that they are not allowed to work more than a specified number of hours per week (e.g., 20 hours, defined as Monday-Sunday). The system must process all their individual shifts within a given period to determine if a violation has occurred by comparing the sum of their shift hours against their configured limit.
+
+### Staged Compliance Process
+
+The engine handles this by breaking the problem into stages using rule priorities:
+
+1.  **Shift Calculation (Priority 200):** First, a high-priority rule calculates the duration of each individual shift fact.
+2.  **Compliance Check (Priority 100):** Next, a lower-priority rule runs on the employee fact. It aggregates the `calculated_hours` from all the relevant shift facts and compares the total against the employee's configured `weekly_hours_limit`.
 
 ### API Request Format
+
+This example shows how to structure the rules and facts to execute this staged process in a single call.
 
 **Endpoint:** `POST /evaluate`
 
@@ -20,258 +34,145 @@ When an employee is a student visa holder, they are not allowed to work more tha
 {
   "rules": [
     {
-      "id": "student_visa_compliance",
-      "name": "Student Visa Weekly Hours Compliance",
-      "description": "Ensure student visa holders don't exceed 20 hours per week",
+      "id": "calculate_shift_hours",
+      "name": "Calculate Hours for Each Shift",
+      "description": "Calculates the duration in hours for any fact representing a shift.",
       "conditions": [
-        {
-          "type": "simple",
-          "field": "is_student_visa",
-          "operator": "equal",
-          "value": true
-        }
+        { "field": "entity_type", "operator": "equal", "value": "shift" }
       ],
       "actions": [
         {
           "type": "call_calculator",
-          "calculator_name": "threshold_checker",
+          "calculator_name": "time_between_datetime",
           "input_mapping": {
-            "value": "weekly_hours",
-            "threshold": "weekly_limit",
-            "operator": "LessThanOrEqual"
+            "start_field": "start_datetime",
+            "end_field": "finish_datetime",
+            "unit": "hours"
           },
-          "output_field": "compliance_status"
+          "output_field": "calculated_hours"
         }
       ],
-      "enabled": true,
-      "tags": ["compliance", "student_visa", "legal"],
-      "priority": 100,
-      "created_at": "2024-01-01T00:00:00Z",
-      "updated_at": "2024-01-01T00:00:00Z"
-    }
-  ],
-  "facts": [
+      "priority": 200
+    },
     {
-      "id": "emp_123_week_2024_25",
-      "data": {
-        "employee_id": "emp_123",
-        "name": "Alice Johnson",
-        "is_student_visa": true,
-        "weekly_hours": 24.5,
-        "weekly_limit": 20.0,
-        "week_start": "2024-06-17",
-        "week_end": "2024-06-23",
-        "shifts": [
-          {
-            "shift_id": "shift_001",
-            "start_datetime": "2024-06-17T09:00:00Z",
-            "finish_datetime": "2024-06-17T17:00:00Z",
-            "hours": 8.0,
-            "type": "worked_shift"
-          },
-          {
-            "shift_id": "shift_002",
-            "start_datetime": "2024-06-18T10:00:00Z",
-            "finish_datetime": "2024-06-18T18:00:00Z",
-            "hours": 8.0,
-            "type": "worked_shift"
-          },
-          {
-            "shift_id": "shift_003",
-            "start_datetime": "2024-06-19T09:00:00Z",
-            "finish_datetime": "2024-06-19T17:30:00Z",
-            "hours": 8.5,
-            "type": "planned_shift"
-          }
-        ]
-      },
-      "created_at": "2024-06-19T00:00:00Z"
-    }
-  ]
-}
-```
-
-### Expected Response
-
-```json
-{
-  "request_id": "req_12345",
-  "results": [
-    {
-      "rule_id": "student_visa_compliance",
-      "fact_id": "emp_123_week_2024_25",
-      "actions_executed": [
-        {
-          "type": "calculator_result",
-          "calculator": "threshold_checker",
-          "result": "Object({\"passes\": Boolean(false), \"value\": Float(24.5), \"threshold\": Float(20.0), \"operator\": String(\"LessThanOrEqual\"), \"violation_amount\": Float(4.5), \"status\": String(\"non_compliant\")})"
-        }
-      ]
-    }
-  ],
-  "rules_processed": 1,
-  "facts_processed": 1,
-  "rules_fired": 1,
-  "processing_time_ms": 2,
-  "stats": {
-    "total_facts": 1,
-    "total_rules": 1,
-    "network_nodes": 2,
-    "memory_usage_bytes": 1024
-  }
-}
-```
-
-## Multi-Employee Batch Processing
-
-You can process multiple employees in a single request:
-
-```json
-{
-  "rules": [
-    {
-      "id": "student_visa_compliance",
+      "id": "student_visa_compliance_check",
       "name": "Student Visa Weekly Hours Compliance",
-      "description": "Batch compliance check for multiple employees",
+      "description": "Aggregates shift hours and checks them against the employee's weekly limit.",
       "conditions": [
-        {
-          "type": "simple",
-          "field": "is_student_visa",
-          "operator": "equal",
-          "value": true
-        }
+        { "field": "entity_type", "operator": "equal", "value": "employee" },
+        { "field": "is_student_visa", "operator": "equal", "value": true }
       ],
       "actions": [
         {
           "type": "call_calculator",
           "calculator_name": "limit_validator",
           "input_mapping": {
-            "value": "weekly_hours",
-            "warning_threshold": "warning_limit",
-            "critical_threshold": "critical_limit",
-            "max_threshold": "legal_limit"
+            "value": {
+              "source_type": "aggregate",
+              "source_field": "calculated_hours",
+              "filter": "entity_type == 'shift' && employee_id == current_fact.employee_id"
+            },
+            "warning_threshold": "weekly_hours_warning",
+            "critical_threshold": null,
+            "max_threshold": "weekly_hours_limit"
           },
-          "output_field": "compliance_analysis"
+          "output_field": "compliance_result"
         }
       ],
-      "enabled": true,
-      "tags": ["compliance", "batch"],
-      "priority": 100,
-      "created_at": "2024-01-01T00:00:00Z",
-      "updated_at": "2024-01-01T00:00:00Z"
+      "priority": 100
     }
   ],
   "facts": [
     {
-      "id": "emp_001_week_25",
+      "id": "emp_123",
       "data": {
-        "employee_id": "emp_001",
+        "entity_type": "employee",
+        "employee_id": "emp_123",
         "name": "Alice Johnson",
         "is_student_visa": true,
-        "weekly_hours": 18.0,
-        "warning_limit": 16.0,
-        "critical_limit": 18.0,
-        "legal_limit": 20.0
-      },
-      "created_at": "2024-06-19T00:00:00Z"
+        "weekly_hours_limit": 20.0,
+        "weekly_hours_warning": 18.0
+      }
     },
     {
-      "id": "emp_002_week_25",
+      "id": "shift_001",
       "data": {
-        "employee_id": "emp_002",
-        "name": "Bob Smith",
-        "is_student_visa": true,
-        "weekly_hours": 22.5,
-        "warning_limit": 16.0,
-        "critical_limit": 18.0,
-        "legal_limit": 20.0
-      },
-      "created_at": "2024-06-19T00:00:00Z"
+        "entity_type": "shift",
+        "employee_id": "emp_123",
+        "start_datetime": "2024-06-17T09:00:00Z",
+        "finish_datetime": "2024-06-17T17:00:00Z"
+      }
+    },
+    {
+      "id": "shift_002",
+      "data": {
+        "entity_type": "shift",
+        "employee_id": "emp_123",
+        "start_datetime": "2024-06-18T10:00:00Z",
+        "finish_datetime": "2024-06-18T18:00:00Z"
+      }
+    },
+    {
+      "id": "shift_003",
+      "data": {
+        "entity_type": "shift",
+        "employee_id": "emp_123",
+        "start_datetime": "2024-06-19T09:00:00Z",
+        "finish_datetime": "2024-06-19T17:30:00Z"
+      }
     }
   ]
+}
+```
+*Note: The `aggregate` source type in the `student_visa_compliance_check` rule is a conceptual representation of how the engine would need to aggregate data from other facts. The exact implementation may vary.*
+
+### Expected Response
+
+The response shows the result of the compliance check for the employee fact, which is the one that aggregates the data.
+
+```json
+{
+  "request_id": "req_12345",
+  "results": [
+    {
+      "rule_id": "student_visa_compliance_check",
+      "fact_id": "emp_123",
+      "actions_executed": [
+        {
+          "type": "calculator_result",
+          "calculator": "limit_validator",
+          "result": {
+            "severity": "breach",
+            "status": "Value 24.5 has breached maximum threshold 20",
+            "value": 24.5,
+            "utilization_percent": 122.5
+          }
+        }
+      ]
+    }
+  ],
+  "rules_processed": 2,
+  "facts_processed": 4,
+  "rules_fired": 4
 }
 ```
 
 ## Available Predefined Calculators
 
-The Bingo engine includes several built-in calculators for compliance scenarios:
+### 1. time_between_datetime
+**Purpose:** Calculate duration between two datetime values in specified units.
+**Input fields:** `start_field`, `end_field`, `unit` (optional, e.g., "hours", "minutes", defaults to "hours").
+**Output:** Duration as a float.
 
-### 1. threshold_checker
-**Purpose:** Simple threshold compliance validation
-**Use cases:** Hours limits, budget limits, quantity thresholds
+### 2. threshold_checker
+**Purpose:** Simple threshold compliance validation.
+**Input fields:** `value`, `threshold`, `operator`.
+**Output:** Object with `passes`, `status`, `violation_amount`.
 
-**Input fields:**
-- `value` (required): The value to check
-- `threshold` (required): The limit to check against
-- `operator` (optional): Comparison operator (default: "LessThanOrEqual")
-
-**Output:** Object with `passes`, `status`, `violation_amount`, etc.
-
-### 2. limit_validator
-**Purpose:** Multi-tier validation with warning/critical/breach levels
-**Use cases:** Progressive alerting, tiered compliance monitoring
-
-**Input fields:**
-- `value` (required): The value to validate
-- `warning_threshold` (optional): Warning level
-- `critical_threshold` (optional): Critical level
-- `max_threshold` (optional): Maximum allowed value
-
-**Output:** Object with `severity`, `status`, `utilization_percent`, etc.
-
-### 3. hours_between_datetime
-**Purpose:** Calculate hours between two datetime values
-**Use cases:** Shift duration calculations, time-based compliance
-
-**Input fields:**
-- `start_datetime`: Start time (ISO 8601 format)
-- `end_datetime`: End time (ISO 8601 format)
-
-**Output:** Hours as floating point number
-
-## Common Compliance Patterns
-
-### 1. Weekly Hours Validation
-```json
-{
-  "type": "call_calculator",
-  "calculator_name": "threshold_checker",
-  "input_mapping": {
-    "value": "weekly_hours",
-    "threshold": "max_weekly_hours",
-    "operator": "LessThanOrEqual"
-  },
-  "output_field": "weekly_compliance"
-}
-```
-
-### 2. Progressive Alert System
-```json
-{
-  "type": "call_calculator",
-  "calculator_name": "limit_validator",
-  "input_mapping": {
-    "value": "current_hours",
-    "warning_threshold": "warning_hours",
-    "critical_threshold": "critical_hours",
-    "max_threshold": "legal_limit"
-  },
-  "output_field": "alert_status"
-}
-```
-
-### 3. Time-based Calculations
-```json
-{
-  "type": "call_calculator",
-  "calculator_name": "hours_between_datetime",
-  "input_mapping": {
-    "start_datetime": "shift_start",
-    "end_datetime": "shift_end"
-  },
-  "output_field": "shift_duration"
-}
-```
+### 3. limit_validator
+**Purpose:** Multi-tier validation with warning/critical/breach levels.
+**Input fields:** `value`, `warning_threshold`, `critical_threshold`, `max_threshold`.
+**Output:** Object with `severity`, `status`, `utilization_percent`.
 
 ## API Testing
 
@@ -287,45 +188,16 @@ curl -X POST http://localhost:3000/evaluate \
   -d '{"rules": [...], "facts": [...]}'
 ```
 
-### OpenAPI Documentation
-- **Swagger UI:** http://localhost:3000/swagger-ui/
-- **ReDoc:** http://localhost:3000/redoc/
-- **OpenAPI JSON:** http://localhost:3000/api-docs/openapi.json
-
 ## Performance Characteristics
 
 The Bingo compliance engine delivers exceptional performance:
 
 - **100K facts**: ~635ms processing time
-- **1M facts**: ~6.59s processing time (4.5x faster than 30s target)
+- **1M facts**: ~6.59s processing time
 - **Memory efficient**: <3GB for enterprise-scale workloads
-- **Linear scaling**: Predictable performance growth
 
 ## Best Practices
 
-1. **Batch Processing**: Submit multiple facts in a single request for efficiency
-2. **Rule Reuse**: Design rules to be reusable across different compliance scenarios
-3. **Field Naming**: Use consistent field names across facts for easier rule writing
-4. **Error Handling**: Always check the response for calculation errors
-5. **Performance**: For large datasets, consider breaking into smaller batches
-
-## Error Handling
-
-The API returns structured errors:
-
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid threshold value",
-    "details": {
-      "field": "weekly_limit",
-      "value": -5,
-      "constraint": "must_be_positive"
-    },
-    "request_id": "req_12345"
-  }
-}
-```
-
-This consolidated compliance engine guide provides everything needed to implement robust compliance checking using the Bingo Rules Engine's simplified API.
+1.  **De-normalized Facts**: Provide facts in a de-normalized format. Instead of nesting shifts inside an employee object, provide them as separate, top-level facts with a common `employee_id` for easier processing.
+2.  **Rule Priorities**: Use `priority` to control the order of execution, ensuring calculations and enrichments happen before validation rules.
+3.  **Batching**: Submit all related facts (e.g., an employee and all their shifts for the period) in a single request to allow the engine to perform aggregations correctly.

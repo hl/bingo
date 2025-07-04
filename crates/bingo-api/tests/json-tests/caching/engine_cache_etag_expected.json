@@ -1,0 +1,36 @@
+{
+  "validation_rules": {
+    "status_code": 200,
+    "content_type": "application/json",
+    "headers": {
+      "etag": "exists",
+      "cache-control": "exists",
+      "last-modified": "exists"
+    },
+    "response_structure": {
+      "request_id": "string",
+      "results": "array", 
+      "rules_processed": "number",
+      "facts_processed": "number",
+      "rules_fired": "number",
+      "processing_time_ms": "number",
+      "stats": "object"
+    },
+    "allow_additional_fields": true
+  },
+  "exact_matches": {
+    "facts_processed": 1,
+    "rules_processed": 1,
+    "rules_fired": 1
+  },
+  "range_validations": {
+    "processing_time_ms": {"min": 0, "max": 100, "inclusive": true}
+  },
+  "array_validations": {
+    "results": {
+      "min_length": 1,
+      "max_length": 1
+    }
+  },
+  "pattern_validations": {}
+}

@@ -1,0 +1,92 @@
+{
+  "facts": [
+    {
+      "id": "EMP001",
+      "data": {
+        "entity_type": "employee",
+        "employee_number": "EMP001",
+        "overtime_threshold": 40.0
+      }
+    },
+    {
+      "id": "shift_1",
+      "data": {
+        "entity_type": "shift",
+        "employee_number": "EMP001",
+        "hours_worked": 9.0
+      }
+    },
+    {
+      "id": "shift_2",
+      "data": {
+        "entity_type": "shift",
+        "employee_number": "EMP001",
+        "hours_worked": 9.0
+      }
+    },
+    {
+      "id": "shift_3",
+      "data": {
+        "entity_type": "shift",
+        "employee_number": "EMP001",
+        "hours_worked": 9.0
+      }
+    },
+    {
+      "id": "shift_4",
+      "data": {
+        "entity_type": "shift",
+        "employee_number": "EMP001",
+        "hours_worked": 9.0
+      }
+    },
+    {
+      "id": "shift_5",
+      "data": {
+        "entity_type": "shift",
+        "employee_number": "EMP001",
+        "hours_worked": 9.0
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "calculate-overtime",
+      "priority": 100,
+      "conditions": [
+        {
+          "field": "entity_type",
+          "operator": "equal",
+          "value": "employee"
+        }
+      ],
+      "actions": [
+        {
+          "type": "call_calculator",
+          "calculator_name": "threshold_checker",
+          "input_mapping": {
+            "value": {
+              "source_type": "aggregate",
+              "source_field": "hours_worked",
+              "filter": "entity_type == 'shift' && employee_number == current_fact.employee_number"
+            },
+            "threshold": "overtime_threshold",
+            "operator": "GreaterThan"
+          },
+          "output_field": "overtime_check"
+        },
+        {
+          "type": "create_fact",
+          "condition": "{{overtime_check.passes}}",
+          "fact_id": "overtime_{{current_fact.employee_number}}",
+          "fact_data": {
+            "entity_type": "overtime",
+            "employee_number": "{{current_fact.employee_number}}",
+            "hours": "{{overtime_check.violation_amount}}",
+            "total_hours": "{{overtime_check.value}}"
+          }
+        }
+      ]
+    }
+  ]
+}

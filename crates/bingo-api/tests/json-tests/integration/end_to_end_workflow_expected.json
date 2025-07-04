@@ -1,0 +1,40 @@
+{
+  "step_validations": {
+    "register_ruleset": {
+      "validation_rules": {
+        "status_code": 201,
+        "content_type": "application/json",
+        "response_structure": {
+          "ruleset_id": "string",
+          "compiled": "boolean"
+        }
+      },
+      "exact_matches": {
+        "ruleset_id": "integration-test-ruleset",
+        "compiled": true
+      }
+    },
+    "evaluate_with_cached_ruleset": {
+      "validation_rules": {
+        "status_code": 200,
+        "content_type": "application/json",
+        "response_structure": {
+          "request_id": "string",
+          "results": "array",
+          "rules_processed": "number",
+          "facts_processed": "number"
+        }
+      },
+      "exact_matches": {
+        "facts_processed": 1,
+        "rules_processed": 1
+      },
+      "array_validations": {
+        "results": {
+          "min_length": 1,
+          "max_length": 1
+        }
+      }
+    }
+  }
+}

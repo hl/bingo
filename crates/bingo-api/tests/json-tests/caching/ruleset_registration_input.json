@@ -1,0 +1,32 @@
+{
+  "ruleset_id": "payroll-rules-v1",
+  "rules": [
+    {
+      "id": "overtime-rule",
+      "name": "Overtime Detection",
+      "description": "Detect employees who worked overtime",
+      "conditions": [
+        {
+          "type": "simple",
+          "field": "hours_worked",
+          "operator": "greater_than",
+          "value": 40.0
+        }
+      ],
+      "actions": [
+        {
+          "type": "set_field",
+          "field": "overtime",
+          "value": true
+        }
+      ],
+      "priority": 100,
+      "enabled": true,
+      "tags": ["payroll", "overtime"],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "ttl_seconds": 3600,
+  "description": "Standard payroll rules for overtime calculation"
+}

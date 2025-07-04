@@ -1,0 +1,106 @@
+{
+  "facts": [
+    {
+      "id": "order-001",
+      "data": {
+        "order_id": 1001,
+        "customer_type": "premium",
+        "order_amount": 250.0,
+        "region": "US",
+        "items_count": 3
+      },
+      "created_at": "2024-01-01T10:00:00Z"
+    },
+    {
+      "id": "order-002",
+      "data": {
+        "order_id": 1002,
+        "customer_type": "standard",
+        "order_amount": 75.0,
+        "region": "EU",
+        "items_count": 1
+      },
+      "created_at": "2024-01-01T10:05:00Z"
+    }
+  ],
+  "rules": [
+    {
+      "id": "discount-rule",
+      "name": "Premium Discount",
+      "description": "Apply discount for premium customers",
+      "conditions": [
+        {
+          "field": "customer_type",
+          "operator": "equal",
+          "value": "premium"
+        },
+        {
+          "field": "order_amount",
+          "operator": "greater_than",
+          "value": 100.0
+        }
+      ],
+      "actions": [
+        {
+          "type": "set_field",
+          "field": "discount_rate",
+          "value": 0.15
+        }
+      ],
+      "priority": 200,
+      "enabled": true,
+      "tags": ["discount", "premium"],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "shipping-rule",
+      "name": "Free Shipping",
+      "description": "Free shipping for large orders",
+      "conditions": [
+        {
+          "field": "order_amount",
+          "operator": "greater_than",
+          "value": 200.0
+        }
+      ],
+      "actions": [
+        {
+          "type": "set_field",
+          "field": "free_shipping",
+          "value": true
+        }
+      ],
+      "priority": 150,
+      "enabled": true,
+      "tags": ["shipping", "promotion"],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": "tax-rule",
+      "name": "Regional Tax",
+      "description": "Apply regional tax rates",
+      "conditions": [
+        {
+          "field": "region",
+          "operator": "equal",
+          "value": "US"
+        }
+      ],
+      "actions": [
+        {
+          "type": "set_field",
+          "field": "tax_rate",
+          "value": 0.08
+        }
+      ],
+      "priority": 100,
+      "enabled": true,
+      "tags": ["tax", "regional"],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "response_format": "json"
+}

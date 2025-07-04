@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn test_ruleset_registration_and_caching() {
-    let app = create_app().unwrap();
+    let app = create_app().await.unwrap();
     let server = TestServer::new(app).unwrap();
 
     // Test ruleset registration
@@ -106,6 +106,8 @@ async fn test_ruleset_registration_and_caching() {
     let response = server.get("/cache/stats").await;
     assert_eq!(response.status_code(), 200);
     let body: serde_json::Value = response.json();
-    assert_eq!(body["cache"]["total_entries"], 1);
-    assert_eq!(body["cache"]["cache_hits"], 1);
+    assert_eq!(body["ruleset_cache"]["total_entries"], 1);
+    assert_eq!(body["ruleset_cache"]["cache_hits"], 1); // Ruleset cache hit is 1 because it's retrieved from ruleset cache
+    assert_eq!(body["engine_cache"]["total_entries"], 1);
+    assert_eq!(body["engine_cache"]["cache_hits"], 0);
 }

@@ -3,8 +3,7 @@
 //! This module provides comprehensive debugging capabilities for the RETE network,
 //! including execution traces, performance profiling, and rule analysis tools.
 
-use crate::rete_nodes::{NodeId, Token};
-use crate::types::{Fact, RuleId};
+use crate::types::{Fact, FactValue, NodeId, RuleId, Token};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -255,7 +254,7 @@ pub struct ActionExecution {
 }
 
 /// Result of action execution
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ActionResult {
     /// Action succeeded
     Success,
@@ -263,6 +262,8 @@ pub enum ActionResult {
     Failed(String),
     /// Action was skipped
     Skipped(String),
+    /// A field was set on a fact
+    FieldSet { fact_id: u64, field: String, value: FactValue },
 }
 
 /// External call made during action execution
@@ -318,8 +319,6 @@ pub struct TracePerformance {
     /// Time spent in action execution
     pub action_execution_time: Duration,
     /// Number of nodes traversed
-    pub nodes_traversed: usize,
-    /// Number of token operations
     pub token_operations: usize,
     /// Cache hit ratio
     pub cache_hit_ratio: f64,
@@ -611,7 +610,7 @@ impl DebugManager {
     fn calculate_trace_performance(&mut self, trace_id: TraceId) {
         if let Some(trace) = self.traces.get_mut(&trace_id) {
             let mut performance = TracePerformance {
-                nodes_traversed: trace.execution_path.len(),
+                token_operations: trace.execution_path.len(),
                 total_time: trace
                     .completed_at
                     .unwrap_or(SystemTime::now())
@@ -725,7 +724,7 @@ impl DebugManager {
         &mut self,
         session_id: DebugSessionId,
         node_id: NodeId,
-        token: &Token,
+        _token: &Token,
     ) -> bool {
         if let Some(session) = self.sessions.get_mut(&session_id) {
             if let Some(breakpoint) = session.breakpoints.get_mut(&node_id) {
@@ -735,9 +734,7 @@ impl DebugManager {
 
                 let should_break = match &breakpoint.condition {
                     BreakpointCondition::Always => true,
-                    BreakpointCondition::FactId(fact_id) => {
-                        token.fact_ids.iter().any(|&id| id == *fact_id)
-                    }
+                    BreakpointCondition::FactId(_fact_id) => false, // Simplified: tokens don't have fact_id
                     BreakpointCondition::RuleFired(_rule_id) => {
                         // This would be checked when rule fires
                         false
@@ -911,7 +908,6 @@ impl Default for TracePerformance {
             terminal_time: Duration::default(),
             condition_evaluation_time: Duration::default(),
             action_execution_time: Duration::default(),
-            nodes_traversed: 0,
             token_operations: 0,
             cache_hit_ratio: 0.0,
         }

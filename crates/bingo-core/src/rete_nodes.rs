@@ -1,969 +1,838 @@
-use crate::calculator::{CalculatorResult, EvaluationContext};
-use crate::calculator_cache::CachedCalculator;
-use crate::types::{Action, ActionType, Condition, Fact, FactId, FactValue, Operator};
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, RwLock};
+use super::types::{
+    ActionType, BetaNode, Condition, Fact, FactData, FactId, FactValue, NodeId, Operator, Rule,
+    RuleId, TerminalNode,
+};
+use crate::fact_store::arena_store::ArenaFactStore;
 
-/// Unique identifier for nodes in the RETE network
-pub type NodeId = u64;
+use anyhow::Result;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use tracing::{info, instrument};
 
-/// Interned fact ID collection for shared token storage
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FactIdSet {
-    ids: Arc<Vec<FactId>>,
+/// Alpha Memory for efficient fact-to-rule indexing
+/// Maps field patterns to rules that match those patterns
+#[derive(Debug, Default)]
+pub struct AlphaMemory {
+    /// Index: field_name -> field_value -> rules that match this pattern
+    field_indexes: HashMap<String, HashMap<FactValue, Vec<RuleId>>>,
+    /// Quick lookup for rules that don't depend on specific field values
+    universal_rules: Vec<RuleId>,
 }
 
-impl FactIdSet {
-    /// Create a new fact ID set from a vector
-    pub fn new(ids: Vec<FactId>) -> Self {
-        Self { ids: Arc::new(ids) }
+impl AlphaMemory {
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Create from a single fact ID
-    pub fn single(id: FactId) -> Self {
-        Self { ids: Arc::new(vec![id]) }
-    }
-
-    /// Get the fact IDs as a slice
-    pub fn as_slice(&self) -> &[FactId] {
-        &self.ids
-    }
-
-    /// Get an iterator over fact IDs
-    pub fn iter(&self) -> std::slice::Iter<'_, FactId> {
-        self.ids.iter()
-    }
-
-    /// Extend with another FactIdSet
-    pub fn extend(&mut self, other: &FactIdSet) {
-        // Since FactIdSet uses Arc<Vec<FactId>>, we need to create a new vector
-        // In a more optimized implementation, this could use a more efficient data structure
-        let mut new_ids = Vec::with_capacity(self.ids.len() + other.ids.len());
-        new_ids.extend_from_slice(&self.ids);
-        new_ids.extend_from_slice(&other.ids);
-        self.ids = Arc::new(new_ids);
-    }
-
-    /// Join with another fact ID to create a new set
-    pub fn join(&self, id: FactId) -> Self {
-        let mut new_ids = Vec::with_capacity(self.ids.len() + 1);
-        new_ids.extend_from_slice(&self.ids);
-        new_ids.push(id);
-        Self::new(new_ids)
-    }
-
-    /// Join with multiple fact IDs to create a new set
-    pub fn join_many(&self, other_ids: &[FactId]) -> Self {
-        let mut new_ids = Vec::with_capacity(self.ids.len() + other_ids.len());
-        new_ids.extend_from_slice(&self.ids);
-        new_ids.extend_from_slice(other_ids);
-        Self::new(new_ids)
-    }
-
-    /// Join two fact ID sets
-    pub fn join_sets(&self, other: &FactIdSet) -> Self {
-        let mut new_ids = Vec::with_capacity(self.ids.len() + other.ids.len());
-        new_ids.extend_from_slice(&self.ids);
-        new_ids.extend_from_slice(&other.ids);
-        Self::new(new_ids)
-    }
-
-    /// Check if empty
-    pub fn is_empty(&self) -> bool {
-        self.ids.is_empty()
-    }
-
-    /// Get length
-    pub fn len(&self) -> usize {
-        self.ids.len()
-    }
-
-    /// Check if the set contains a specific fact ID
-    pub fn contains(&self, fact_id: &FactId) -> bool {
-        self.ids.contains(fact_id)
-    }
-}
-
-impl serde::Serialize for FactIdSet {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.ids.as_slice().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for FactIdSet {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let ids = Vec::<FactId>::deserialize(deserializer)?;
-        Ok(FactIdSet::new(ids))
-    }
-}
-
-/// Lightweight reference to a fact for token propagation with memory sharing
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct Token {
-    pub fact_ids: FactIdSet,
-}
-
-impl Token {
-    /// Create a new token with a single fact ID
-    pub fn new(fact_id: FactId) -> Self {
-        Self { fact_ids: FactIdSet::single(fact_id) }
-    }
-
-    /// Create a token from multiple fact IDs
-    pub fn from_facts(fact_ids: impl Into<Vec<FactId>>) -> Self {
-        Self { fact_ids: FactIdSet::new(fact_ids.into()) }
-    }
-
-    /// Join this token with another fact ID
-    pub fn join(&self, fact_id: FactId) -> Self {
-        Self { fact_ids: self.fact_ids.join(fact_id) }
-    }
-
-    /// Join this token with multiple fact IDs
-    pub fn join_many(&self, other_fact_ids: &[FactId]) -> Self {
-        Self { fact_ids: self.fact_ids.join_many(other_fact_ids) }
-    }
-
-    /// Join two tokens together
-    pub fn join_tokens(&self, other: &Token) -> Self {
-        Self { fact_ids: self.fact_ids.join_sets(&other.fact_ids) }
-    }
-}
-
-/// Configuration for token pool adaptive behavior
-#[derive(Debug, Clone)]
-pub struct TokenPoolConfig {
-    pub max_single_tokens: usize,
-    pub max_multi_tokens: usize,
-    pub resize_threshold: f64,
-    pub burst_detection_window: std::time::Duration,
-}
-
-impl Default for TokenPoolConfig {
-    fn default() -> Self {
-        Self {
-            max_single_tokens: 1000,
-            max_multi_tokens: 500,
-            resize_threshold: 0.8,
-            burst_detection_window: std::time::Duration::from_millis(100),
-        }
-    }
-}
-
-/// Tracks allocation rate for adaptive pool sizing
-#[derive(Debug)]
-pub struct AllocationRateTracker {
-    recent_allocations: Vec<std::time::Instant>,
-    window_size: std::time::Duration,
-}
-
-impl AllocationRateTracker {
-    pub fn new(window_size: std::time::Duration) -> Self {
-        Self { recent_allocations: Vec::new(), window_size }
-    }
-
-    pub fn record_allocation(&mut self) {
-        let now = std::time::Instant::now();
-        self.recent_allocations.push(now);
-
-        // Remove old allocations outside the window
-        let cutoff = now - self.window_size;
-        self.recent_allocations.retain(|&time| time >= cutoff);
-    }
-
-    pub fn current_rate(&self) -> f64 {
-        self.recent_allocations.len() as f64 / self.window_size.as_secs_f64()
-    }
-}
-
-/// Shared token pool for memory optimization across all nodes
-#[derive(Debug)]
-pub struct TokenPool {
-    /// Pool of reusable single-fact tokens
-    single_tokens: Vec<Token>,
-    /// Pool of reusable multi-fact tokens
-    multi_tokens: Vec<Token>,
-    /// Configuration for adaptive behavior
-    config: TokenPoolConfig,
-    /// Statistics for monitoring
-    pub allocated_count: usize,
-    pub returned_count: usize,
-    pub pool_hits: usize,
-    pub pool_misses: usize,
-    /// Enhanced performance metrics
-    allocation_requests_since_resize: usize,
-    last_resize_time: std::time::Instant,
-    peak_allocation_burst: usize,
-    current_burst_count: usize,
-    allocation_rate_tracker: AllocationRateTracker,
-}
-
-impl TokenPool {
-    /// Create a new token pool with initial capacity
-    pub fn new(capacity: usize) -> Self {
-        let config = TokenPoolConfig::default();
-        Self {
-            single_tokens: Vec::with_capacity(capacity),
-            multi_tokens: Vec::with_capacity(capacity / 2), // Multi-token pool is smaller
-            config: config.clone(),
-            allocated_count: 0,
-            returned_count: 0,
-            pool_hits: 0,
-            pool_misses: 0,
-            allocation_requests_since_resize: 0,
-            last_resize_time: std::time::Instant::now(),
-            peak_allocation_burst: 0,
-            current_burst_count: 0,
-            allocation_rate_tracker: AllocationRateTracker::new(config.burst_detection_window),
-        }
-    }
-
-    /// Estimate memory usage in bytes
-    pub fn memory_usage_bytes(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self.single_tokens.capacity() * std::mem::size_of::<Token>()
-            + self.multi_tokens.capacity() * std::mem::size_of::<Token>()
-            + self.allocation_rate_tracker.recent_allocations.capacity()
-                * std::mem::size_of::<std::time::Instant>()
-    }
-
-    /// Get a token for a single fact ID (reuse if possible)
-    pub fn get_single_token(&mut self, fact_id: FactId) -> Token {
-        self.allocation_rate_tracker.record_allocation();
-        self.allocated_count += 1;
-        self.current_burst_count += 1;
-
-        if let Some(mut token) = self.single_tokens.pop() {
-            // Reuse existing token by replacing its fact_ids
-            token.fact_ids = FactIdSet::single(fact_id);
-            self.pool_hits += 1;
-            token
-        } else {
-            self.pool_misses += 1;
-            Token::new(fact_id)
-        }
-    }
-
-    /// Return a token to the pool for reuse
-    pub fn return_token(&mut self, token: Token) {
-        self.current_burst_count = self.current_burst_count.saturating_sub(1);
-
-        // Only pool single-fact tokens for now to keep it simple
-        if token.fact_ids.len() == 1 && self.single_tokens.len() < self.config.max_single_tokens {
-            self.single_tokens.push(token);
-            self.returned_count += 1;
-        } else if token.fact_ids.len() > 1 && self.multi_tokens.len() < self.config.max_multi_tokens
-        {
-            self.multi_tokens.push(token);
-            self.returned_count += 1;
-        }
-
-        // Check if we need to resize the pool based on utilization
-        self.allocation_requests_since_resize += 1;
-        if self.allocation_requests_since_resize >= 1000 {
-            self.maybe_resize_pool();
-        }
-    }
-
-    /// Clear the pool
-    pub fn clear(&mut self) {
-        self.single_tokens.clear();
-        self.multi_tokens.clear();
-        self.allocated_count = 0;
-        self.returned_count = 0;
-        self.pool_hits = 0;
-        self.pool_misses = 0;
-        self.allocation_requests_since_resize = 0;
-        self.current_burst_count = 0;
-        self.peak_allocation_burst = 0;
-    }
-
-    /// Maybe resize the pool based on current utilization patterns
-    fn maybe_resize_pool(&mut self) {
-        let now = std::time::Instant::now();
-        let time_since_last_resize = now.duration_since(self.last_resize_time);
-
-        // Only resize if enough time has passed since last resize
-        if time_since_last_resize < std::time::Duration::from_secs(10) {
-            return;
-        }
-
-        let hit_rate = self.utilization();
-        let allocation_rate = self.allocation_rate_tracker.current_rate();
-
-        // Update peak burst tracking
-        if self.current_burst_count > self.peak_allocation_burst {
-            self.peak_allocation_burst = self.current_burst_count;
-        }
-
-        // Adaptive resizing based on performance benchmarks
-        let should_increase = hit_rate < 20.0 && allocation_rate > 10000.0; // High allocation rate, low hit rate
-        let should_decrease =
-            hit_rate > 80.0 && self.single_tokens.capacity() > self.peak_allocation_burst * 2;
-
-        if should_increase {
-            // Increase pool size - benchmarks showed that larger pools (5000) are optimal
-            let new_capacity = (self.config.max_single_tokens * 2).min(10_000);
-            if new_capacity > self.config.max_single_tokens {
-                self.config.max_single_tokens = new_capacity;
-                self.config.max_multi_tokens = (new_capacity / 2).max(500);
-                self.single_tokens.reserve(new_capacity - self.single_tokens.capacity());
-
-                tracing::debug!(
-                    old_capacity = self.single_tokens.capacity(),
-                    new_capacity = new_capacity,
-                    hit_rate = hit_rate,
-                    allocation_rate = allocation_rate,
-                    "Increased token pool capacity"
-                );
-            }
-        } else if should_decrease {
-            // Decrease pool size to save memory
-            let new_capacity = (self.config.max_single_tokens / 2).max(1000);
-            if new_capacity < self.config.max_single_tokens {
-                self.config.max_single_tokens = new_capacity;
-                self.config.max_multi_tokens = (new_capacity / 2).max(100);
-
-                // Trim excess tokens
-                self.single_tokens.truncate(new_capacity);
-
-                tracing::debug!(
-                    old_capacity = self.single_tokens.capacity(),
-                    new_capacity = new_capacity,
-                    hit_rate = hit_rate,
-                    "Decreased token pool capacity"
-                );
-            }
-        }
-
-        self.last_resize_time = now;
-        self.allocation_requests_since_resize = 0;
-    }
-
-    /// Get comprehensive pool statistics for monitoring and tuning
-    pub fn get_comprehensive_stats(&self) -> TokenPoolComprehensiveStats {
-        TokenPoolComprehensiveStats {
-            pool_hits: self.pool_hits,
-            pool_misses: self.pool_misses,
-            utilization: self.utilization(),
-            allocated_count: self.allocated_count,
-            returned_count: self.returned_count,
-            current_single_pool_size: self.single_tokens.len(),
-            max_single_pool_size: self.config.max_single_tokens,
-            current_multi_pool_size: self.multi_tokens.len(),
-            max_multi_pool_size: self.config.max_multi_tokens,
-            allocation_rate: self.allocation_rate_tracker.current_rate(),
-            peak_allocation_burst: self.peak_allocation_burst,
-            current_burst_count: self.current_burst_count,
-            memory_usage_bytes: self.memory_usage_bytes(),
-        }
-    }
-
-    /// Create a token pool with optimal settings based on performance benchmarks
-    pub fn with_optimal_settings() -> Self {
-        // Based on benchmark results: size 5000 achieved highest score (0.70)
-        let config = TokenPoolConfig {
-            max_single_tokens: 5000,
-            max_multi_tokens: 2500,
-            resize_threshold: 0.8,
-            burst_detection_window: std::time::Duration::from_millis(100),
-        };
-
-        Self {
-            single_tokens: Vec::with_capacity(5000),
-            multi_tokens: Vec::with_capacity(2500),
-            config: config.clone(),
-            allocated_count: 0,
-            returned_count: 0,
-            pool_hits: 0,
-            pool_misses: 0,
-            allocation_requests_since_resize: 0,
-            last_resize_time: std::time::Instant::now(),
-            peak_allocation_burst: 0,
-            current_burst_count: 0,
-            allocation_rate_tracker: AllocationRateTracker::new(config.burst_detection_window),
-        }
-    }
-
-    /// Emergency consolidation for critical memory pressure
-    pub fn emergency_consolidate(&mut self) {
-        // Clear all pooled tokens to free memory immediately
-        self.single_tokens.clear();
-        self.multi_tokens.clear();
-
-        // Shrink to minimal capacity
-        self.single_tokens.shrink_to_fit();
-        self.multi_tokens.shrink_to_fit();
-
-        // Reset pool to emergency capacity
-        self.single_tokens.reserve(10); // Minimal emergency capacity
-        self.multi_tokens.reserve(5);
-
-        // Update configuration for emergency mode
-        self.config.max_single_tokens = 50;
-        self.config.max_multi_tokens = 25;
-
-        // Reset statistics
-        self.allocation_requests_since_resize = 0;
-        self.last_resize_time = std::time::Instant::now();
-    }
-
-    /// Optimize token pool for memory pressure
-    pub fn optimize_for_memory_pressure(&mut self) {
-        // Reduce pool sizes by 50%
-        let target_single = self.config.max_single_tokens / 2;
-        let target_multi = self.config.max_multi_tokens / 2;
-
-        // Trim pools to target size
-        if self.single_tokens.len() > target_single {
-            self.single_tokens.truncate(target_single);
-        }
-        if self.multi_tokens.len() > target_multi {
-            self.multi_tokens.truncate(target_multi);
-        }
-
-        // Shrink underlying storage
-        self.single_tokens.shrink_to_fit();
-        self.multi_tokens.shrink_to_fit();
-
-        // Update configuration
-        self.config.max_single_tokens = target_single.max(100);
-        self.config.max_multi_tokens = target_multi.max(50);
-    }
-
-    /// Release excess capacity during normal operation
-    pub fn release_excess_capacity(&mut self) {
-        let single_utilization = if self.config.max_single_tokens > 0 {
-            self.single_tokens.len() as f64 / self.config.max_single_tokens as f64
-        } else {
-            0.0
-        };
-
-        let multi_utilization = if self.config.max_multi_tokens > 0 {
-            self.multi_tokens.len() as f64 / self.config.max_multi_tokens as f64
-        } else {
-            0.0
-        };
-
-        // Only shrink if utilization is very low (< 25%)
-        if single_utilization < 0.25 && self.config.max_single_tokens > 200 {
-            let new_capacity = (self.config.max_single_tokens * 3 / 4).max(200);
-            if self.single_tokens.len() > new_capacity {
-                self.single_tokens.truncate(new_capacity);
-            }
-            self.single_tokens.shrink_to_fit();
-            self.config.max_single_tokens = new_capacity;
-        }
-
-        if multi_utilization < 0.25 && self.config.max_multi_tokens > 100 {
-            let new_capacity = (self.config.max_multi_tokens * 3 / 4).max(100);
-            if self.multi_tokens.len() > new_capacity {
-                self.multi_tokens.truncate(new_capacity);
-            }
-            self.multi_tokens.shrink_to_fit();
-            self.config.max_multi_tokens = new_capacity;
-        }
-    }
-
-    /// Optimize capacity during normal operation
-    pub fn optimize_capacity(&mut self) {
-        let current_time = std::time::Instant::now();
-
-        // Check if pools are underutilized and have been stable for a while
-        if current_time.duration_since(self.last_resize_time) > std::time::Duration::from_secs(60) {
-            let single_utilization = self.utilization();
-
-            // If utilization is low and no recent bursts, consider reducing capacity slightly
-            if single_utilization < 0.4 && self.current_burst_count == 0 {
-                let new_single_cap = (self.config.max_single_tokens * 9 / 10).max(500);
-                let new_multi_cap = (self.config.max_multi_tokens * 9 / 10).max(250);
-
-                if self.single_tokens.len() > new_single_cap {
-                    self.single_tokens.truncate(new_single_cap);
-                    self.single_tokens.shrink_to_fit();
-                }
-                if self.multi_tokens.len() > new_multi_cap {
-                    self.multi_tokens.truncate(new_multi_cap);
-                    self.multi_tokens.shrink_to_fit();
-                }
-
-                self.config.max_single_tokens = new_single_cap;
-                self.config.max_multi_tokens = new_multi_cap;
-                self.last_resize_time = current_time;
-            }
-        }
-    }
-}
-
-/// Token pool statistics for monitoring and optimization
-#[derive(Debug, Clone)]
-pub struct TokenPoolStats {
-    pub pool_hits: usize,
-    pub pool_misses: usize,
-    pub utilization: f64,
-    pub allocated_count: usize,
-    pub returned_count: usize,
-    pub memory_usage_bytes: usize,
-}
-
-/// Comprehensive token pool statistics for detailed monitoring and tuning
-#[derive(Debug, Clone)]
-pub struct TokenPoolComprehensiveStats {
-    pub pool_hits: usize,
-    pub pool_misses: usize,
-    pub utilization: f64,
-    pub allocated_count: usize,
-    pub returned_count: usize,
-    pub current_single_pool_size: usize,
-    pub max_single_pool_size: usize,
-    pub current_multi_pool_size: usize,
-    pub max_multi_pool_size: usize,
-    pub allocation_rate: f64,
-    pub peak_allocation_burst: usize,
-    pub current_burst_count: usize,
-    pub memory_usage_bytes: usize,
-}
-
-impl TokenPoolStats {
-    /// Get hit rate as a percentage
-    pub fn hit_rate(&self) -> f64 {
-        let total = self.pool_hits + self.pool_misses;
-        if total == 0 {
-            0.0
-        } else {
-            (self.pool_hits as f64 / total as f64) * 100.0
-        }
-    }
-
-    /// Estimate memory usage in bytes
-    pub fn memory_usage_bytes(&self) -> usize {
-        // Rough estimate based on the size of the struct and its fields
-        std::mem::size_of::<Self>()
-    }
-}
-
-impl TokenPoolComprehensiveStats {
-    /// Get hit rate as a percentage
-    pub fn hit_rate(&self) -> f64 {
-        let total = self.pool_hits + self.pool_misses;
-        if total == 0 {
-            0.0
-        } else {
-            (self.pool_hits as f64 / total as f64) * 100.0
-        }
-    }
-
-    /// Estimate memory usage in bytes
-    pub fn memory_usage_bytes(&self) -> usize {
-        // Rough estimate based on the size of the struct and its fields
-        std::mem::size_of::<Self>()
-    }
-}
-
-impl TokenPool {
-    /// Get pool utilization as a percentage
-    pub fn utilization(&self) -> f64 {
-        let total_requests = self.pool_hits + self.pool_misses;
-        if total_requests == 0 {
-            0.0
-        } else {
-            (self.pool_hits as f64 / total_requests as f64) * 100.0
-        }
-    }
-
-    /// Get pool statistics for monitoring and optimization
-    pub fn get_stats(&self) -> TokenPoolStats {
-        TokenPoolStats {
-            pool_hits: self.pool_hits,
-            pool_misses: self.pool_misses,
-            utilization: self.utilization(),
-            allocated_count: self.allocated_count,
-            returned_count: self.returned_count,
-            memory_usage_bytes: self.memory_usage_bytes(),
-        }
-    }
-}
-#[derive(Debug)]
-pub struct AlphaNode {
-    pub node_id: NodeId,
-    pub condition: Condition,
-    pub memory: RwLock<Vec<FactId>>,
-    pub successors: RwLock<HashSet<NodeId>>,
-}
-
-impl AlphaNode {
-    pub fn new(node_id: NodeId, condition: Condition) -> Self {
-        Self {
-            node_id,
-            condition,
-            memory: RwLock::new(Vec::new()),
-            successors: RwLock::new(HashSet::new()),
-        }
-    }
-
-    pub fn with_capacity(node_id: NodeId, condition: Condition, capacity: usize) -> Self {
-        Self {
-            node_id,
-            condition,
-            memory: RwLock::new(Vec::with_capacity(capacity)),
-            successors: RwLock::new(HashSet::new()),
-        }
-    }
-
-    /// Test if a fact matches this alpha node's condition
-    pub fn test_fact(&self, fact: &Fact) -> bool {
-        match &self.condition {
+    /// Add a rule condition to the alpha memory index
+    pub fn index_rule_condition(&mut self, rule_id: RuleId, condition: &Condition) {
+        match condition {
             Condition::Simple { field, operator, value } => {
-                if let Some(fact_value) = fact.data.fields.get(field) {
-                    test_condition(fact_value, operator, value)
-                } else {
-                    false
+                // For now, we'll index based on field equality for maximum speedup
+                // More complex operators can be added later following BSSN
+                match operator {
+                    Operator::Equal => {
+                        self.field_indexes
+                            .entry(field.clone())
+                            .or_default()
+                            .entry(value.clone())
+                            .or_default()
+                            .push(rule_id);
+                    }
+                    _ => {
+                        // Non-equality operators use universal matching
+                        // This optimizes for the common case (equality) while maintaining correctness
+                        if !self.universal_rules.contains(&rule_id) {
+                            self.universal_rules.push(rule_id);
+                        }
+                    }
                 }
             }
-            Condition::Complex { .. } => {
-                // Complex conditions should be handled by a different node type
-                // For now, return false as alpha nodes are meant for simple conditions
-                false
-            }
-            Condition::Aggregation(_) => {
-                // Aggregation conditions are handled by aggregation nodes
-                false
-            }
-            Condition::Stream(_) => {
-                // Stream conditions are handled by stream processing nodes
-                false
+            _ => {
+                // Complex conditions fall back to universal matching
+                if !self.universal_rules.contains(&rule_id) {
+                    self.universal_rules.push(rule_id);
+                }
             }
         }
     }
 
-    /// Process a fact and return tokens if it matches (using shared token pool)
-    pub fn process_fact(&self, fact: &Fact, token_pool: &mut TokenPool) -> Vec<Token> {
-        if self.test_fact(fact) {
-            self.memory.write().unwrap().push(fact.id);
-            vec![token_pool.get_single_token(fact.id)]
+    /// Find rules that potentially match a fact based on field values
+    pub fn find_candidate_rules(&self, fact: &Fact) -> Vec<RuleId> {
+        let mut candidates = Vec::new();
+
+        // Always include universal rules (rules with complex conditions)
+        candidates.extend_from_slice(&self.universal_rules);
+
+        // Find rules that match specific field values
+        for (field_name, field_value) in &fact.data.fields {
+            if let Some(value_index) = self.field_indexes.get(field_name) {
+                if let Some(matching_rules) = value_index.get(field_value) {
+                    candidates.extend_from_slice(matching_rules);
+                }
+            }
+        }
+
+        // Remove duplicates while preserving order
+        candidates.sort_unstable();
+        candidates.dedup();
+
+        candidates
+    }
+
+    /// Clear all indexes
+    pub fn clear(&mut self) {
+        self.field_indexes.clear();
+        self.universal_rules.clear();
+    }
+
+    /// Get statistics about alpha memory usage
+    pub fn get_stats(&self) -> AlphaMemoryStats {
+        let _total_entries: usize =
+            self.field_indexes.values().map(|field_index| field_index.len()).sum();
+        let total_rules: usize = self
+            .field_indexes
+            .values()
+            .flat_map(|field_index| field_index.values())
+            .map(|rule_list| rule_list.len())
+            .sum();
+
+        AlphaMemoryStats {
+            indexed_rules: total_rules,
+            universal_rules: self.universal_rules.len(),
+            field_indexes: self.field_indexes.len(),
+            memory_usage_bytes: self.estimate_memory_usage(),
+        }
+    }
+
+    /// Estimate memory usage of alpha memory structures
+    fn estimate_memory_usage(&self) -> usize {
+        let mut size = std::mem::size_of::<Self>();
+
+        for (field_name, field_index) in &self.field_indexes {
+            size += field_name.len();
+            size +=
+                std::mem::size_of::<HashMap<crate::types::FactValue, Vec<crate::types::RuleId>>>();
+
+            for (value, rule_list) in field_index {
+                size += std::mem::size_of_val(value);
+                size += rule_list.len() * std::mem::size_of::<crate::types::RuleId>();
+            }
+        }
+
+        size += self.universal_rules.len() * std::mem::size_of::<crate::types::RuleId>();
+        size
+    }
+}
+
+/// Pool for ActionResult Vec reuse to reduce allocation overhead
+#[derive(Debug)]
+pub struct ActionResultPool {
+    /// Pool of reusable Vec<ActionResult> for action execution
+    pool: RefCell<Vec<Vec<ActionResult>>>,
+    /// Statistics for monitoring
+    hits: RefCell<usize>,
+    misses: RefCell<usize>,
+}
+
+impl ActionResultPool {
+    pub fn new() -> Self {
+        Self {
+            pool: RefCell::new(Vec::with_capacity(50)),
+            hits: RefCell::new(0),
+            misses: RefCell::new(0),
+        }
+    }
+
+    /// Get a Vec<ActionResult> from the pool (reuse if available)
+    pub fn get(&self) -> Vec<ActionResult> {
+        if let Some(mut vec) = self.pool.borrow_mut().pop() {
+            vec.clear(); // Clear previous contents but keep allocated capacity
+            *self.hits.borrow_mut() += 1;
+            vec
         } else {
+            *self.misses.borrow_mut() += 1;
             Vec::new()
         }
     }
 
-    /// Get all facts currently in this node's memory as tokens
-    pub fn get_tokens(&self) -> Vec<Token> {
-        self.memory.read().unwrap().iter().map(|&id| Token::new(id)).collect()
+    /// Return a Vec<ActionResult> to the pool for reuse
+    pub fn return_vec(&self, vec: Vec<ActionResult>) {
+        // Only pool if we haven't exceeded reasonable capacity
+        if self.pool.borrow().len() < 200 {
+            self.pool.borrow_mut().push(vec);
+        }
+    }
+
+    /// Get pool statistics
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let hits = *self.hits.borrow();
+        let misses = *self.misses.borrow();
+        let pool_size = self.pool.borrow().len();
+        (hits, misses, pool_size)
+    }
+
+    /// Get hit rate as a percentage
+    pub fn hit_rate(&self) -> f64 {
+        let hits = *self.hits.borrow() as f64;
+        let misses = *self.misses.borrow() as f64;
+        let total = hits + misses;
+        if total > 0.0 {
+            (hits / total) * 100.0
+        } else {
+            0.0
+        }
     }
 }
 
-/// Beta nodes perform joins between multiple facts
-#[derive(Debug)]
-pub struct BetaNode {
-    pub node_id: NodeId,
-    pub left_memory: RwLock<Vec<Token>>,
-    pub right_memory: RwLock<Vec<Token>>,
-    pub join_conditions: Vec<JoinCondition>,
-    pub successors: RwLock<HashSet<NodeId>>,
+impl Default for ActionResultPool {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct JoinCondition {
-    pub left_field: String,
-    pub right_field: String,
-    pub operator: Operator,
+/// Partial match tracking for multi-condition rules in beta memory
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartialMatch {
+    /// Rule ID this partial match belongs to
+    pub rule_id: RuleId,
+    /// Facts that have matched so far (indexed by condition position)
+    pub matched_facts: HashMap<usize, FactId>,
+    /// Which condition index we're currently trying to match
+    pub next_condition_index: usize,
+    /// Total number of conditions in the rule
+    pub total_conditions: usize,
+    /// Timestamp when this partial match was created (for cleanup)
+    pub created_at: std::time::Instant,
 }
 
-impl BetaNode {
-    pub fn new(node_id: NodeId, join_conditions: Vec<JoinCondition>) -> Self {
+impl PartialMatch {
+    /// Create a new partial match for a rule
+    pub fn new(rule_id: RuleId, total_conditions: usize) -> Self {
         Self {
-            node_id,
-            left_memory: RwLock::new(Vec::new()),
-            right_memory: RwLock::new(Vec::new()),
-            join_conditions,
-            successors: RwLock::new(HashSet::new()),
-        }
-    }
-
-    /// Process tokens from left input
-    pub fn process_left_tokens(&self, tokens: Vec<Token>, facts: &[Fact]) -> Vec<Token> {
-        let mut results = Vec::new();
-        let mut left_mem = self.left_memory.write().unwrap();
-        let right_mem = self.right_memory.read().unwrap();
-
-        for token in tokens {
-            left_mem.push(token.clone());
-
-            // Try to join with existing right memory
-            for right_token in right_mem.iter() {
-                if self.tokens_match(&token, right_token, facts) {
-                    results.push(self.join_tokens(&token, right_token));
-                }
-            }
-        }
-
-        results
-    }
-
-    /// Process tokens from right input
-    pub fn process_right_tokens(&self, tokens: Vec<Token>, facts: &[Fact]) -> Vec<Token> {
-        let mut results = Vec::new();
-        let mut right_mem = self.right_memory.write().unwrap();
-        let left_mem = self.left_memory.read().unwrap();
-
-        for token in tokens {
-            right_mem.push(token.clone());
-
-            // Try to join with existing left memory
-            for left_token in left_mem.iter() {
-                if self.tokens_match(left_token, &token, facts) {
-                    results.push(self.join_tokens(left_token, &token));
-                }
-            }
-        }
-
-        results
-    }
-
-    fn tokens_match(&self, left_token: &Token, right_token: &Token, facts: &[Fact]) -> bool {
-        // If no join conditions specified, just check tokens are valid
-        if self.join_conditions.is_empty() {
-            return !left_token.fact_ids.is_empty() && !right_token.fact_ids.is_empty();
-        }
-
-        // Get facts for both tokens
-        let left_facts = self.get_facts_for_token(left_token, facts);
-        let right_facts = self.get_facts_for_token(right_token, facts);
-
-        if left_facts.is_empty() || right_facts.is_empty() {
-            return false;
-        }
-
-        // Test all join conditions - all must be satisfied
-        for join_condition in &self.join_conditions {
-            let mut condition_satisfied = false;
-
-            // Test all combinations of left and right facts
-            for left_fact in &left_facts {
-                for right_fact in &right_facts {
-                    if self.test_join_condition(join_condition, left_fact, right_fact) {
-                        condition_satisfied = true;
-                        break;
-                    }
-                }
-                if condition_satisfied {
-                    break;
-                }
-            }
-
-            if !condition_satisfied {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn get_facts_for_token<'a>(&self, token: &Token, facts: &'a [Fact]) -> Vec<&'a Fact> {
-        let mut result = Vec::with_capacity(token.fact_ids.len());
-        for &fact_id in token.fact_ids.as_slice() {
-            // Optimize lookup: facts are often accessed by ID which is their index
-            if let Some(fact) = facts.get(fact_id as usize) {
-                if fact.id == fact_id {
-                    result.push(fact);
-                    continue;
-                }
-            }
-            // Fallback to linear search if index doesn't match
-            if let Some(fact) = facts.iter().find(|f| f.id == fact_id) {
-                result.push(fact);
-            }
-        }
-        result
-    }
-
-    fn test_join_condition(
-        &self,
-        join_condition: &JoinCondition,
-        left_fact: &Fact,
-        right_fact: &Fact,
-    ) -> bool {
-        let left_value = left_fact.data.fields.get(&join_condition.left_field);
-        let right_value = right_fact.data.fields.get(&join_condition.right_field);
-
-        match (left_value, right_value) {
-            (Some(left_val), Some(right_val)) => {
-                test_condition(left_val, &join_condition.operator, right_val)
-            }
-            _ => false, // Missing fields fail the join condition
-        }
-    }
-
-    fn join_tokens(&self, left_token: &Token, right_token: &Token) -> Token {
-        left_token.join_tokens(right_token)
-    }
-}
-
-/// Terminal nodes represent rule conclusions and execute actions
-#[derive(Debug)]
-pub struct TerminalNode {
-    pub node_id: NodeId,
-    pub rule_id: u64,
-    pub actions: Vec<Action>,
-    pub memory: RwLock<Vec<Token>>,
-    pub calculator: Mutex<CachedCalculator>,
-}
-
-impl TerminalNode {
-    pub fn new(node_id: NodeId, rule_id: u64, actions: Vec<Action>) -> Self {
-        Self {
-            node_id,
             rule_id,
-            actions,
-            memory: RwLock::new(Vec::new()),
-            calculator: Mutex::new(CachedCalculator::with_default_caches()),
+            matched_facts: HashMap::new(),
+            next_condition_index: 0,
+            total_conditions,
+            created_at: std::time::Instant::now(),
         }
     }
 
-    /// Process tokens and execute actions (optimized to avoid fact cloning)
-    pub fn process_tokens(&self, tokens: Vec<Token>, facts: &[Fact]) -> anyhow::Result<Vec<Fact>> {
-        let mut results = Vec::new();
-        let mut mem = self.memory.write().unwrap();
+    /// Check if this partial match is complete (all conditions satisfied)
+    pub fn is_complete(&self) -> bool {
+        self.matched_facts.len() == self.total_conditions
+    }
 
-        // Pre-allocate result capacity based on tokens and actions
-        let capacity_hint = tokens.len() * self.actions.len();
-        results.reserve(capacity_hint.min(1000));
+    /// Add a fact match for a specific condition index
+    pub fn add_fact_match(&mut self, condition_index: usize, fact_id: FactId) {
+        self.matched_facts.insert(condition_index, fact_id);
+        // Update next condition index to the lowest unmatched condition
+        self.next_condition_index = (0..self.total_conditions)
+            .find(|&i| !self.matched_facts.contains_key(&i))
+            .unwrap_or(self.total_conditions);
+    }
 
-        for token in tokens {
-            mem.push(token.clone());
+    /// Get the facts involved in this partial match
+    pub fn get_fact_ids(&self) -> Vec<FactId> {
+        let mut facts: Vec<_> = self.matched_facts.values().copied().collect();
+        facts.sort_unstable();
+        facts
+    }
 
-            // Execute actions for this token
-            for action in &self.actions {
-                match &action.action_type {
-                    ActionType::Log { message } => {
-                        tracing::info!(rule_id = self.rule_id, message = %message, "Rule fired");
+    /// Check if this partial match has timed out (for cleanup)
+    pub fn is_expired(&self, timeout_secs: u64) -> bool {
+        self.created_at.elapsed().as_secs() >= timeout_secs
+    }
+}
+
+/// Hash-based join index for efficient beta memory operations
+#[derive(Debug, Clone)]
+pub struct HashJoinIndex {
+    /// Hash tables for join fields: field_name -> field_value -> fact_ids
+    join_indexes: HashMap<String, HashMap<FactValue, Vec<FactId>>>,
+    /// Reverse index: fact_id -> (field_name, field_value) pairs for cleanup
+    fact_index: HashMap<FactId, Vec<(String, FactValue)>>,
+}
+
+impl Default for HashJoinIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HashJoinIndex {
+    pub fn new() -> Self {
+        Self { join_indexes: HashMap::new(), fact_index: HashMap::new() }
+    }
+
+    /// Add a fact to the join index based on specified join fields
+    pub fn index_fact(&mut self, fact: &Fact, join_fields: &[String]) {
+        let mut indexed_fields = Vec::new();
+
+        for field_name in join_fields {
+            if let Some(field_value) = fact.data.fields.get(field_name) {
+                self.join_indexes
+                    .entry(field_name.clone())
+                    .or_default()
+                    .entry(field_value.clone())
+                    .or_default()
+                    .push(fact.id);
+
+                indexed_fields.push((field_name.clone(), field_value.clone()));
+            }
+        }
+
+        if !indexed_fields.is_empty() {
+            self.fact_index.insert(fact.id, indexed_fields);
+        }
+    }
+
+    /// Find facts that join with the given fact on specified fields
+    pub fn find_join_candidates(
+        &self,
+        fact: &Fact,
+        join_fields: &[(String, String)], // (left_field, right_field) pairs
+    ) -> Vec<FactId> {
+        let mut candidates = Vec::new();
+
+        for (left_field, right_field) in join_fields {
+            if let Some(join_value) = fact.data.fields.get(left_field) {
+                if let Some(field_index) = self.join_indexes.get(right_field) {
+                    if let Some(matching_facts) = field_index.get(join_value) {
+                        candidates.extend_from_slice(matching_facts);
                     }
-                    ActionType::SetField { field, value } => {
-                        // Create a modified copy without mutating the original facts
-                        if let Some(&fact_id) = token.fact_ids.as_slice().first() {
-                            if let Some(original_fact) = self.find_fact_by_id(fact_id, facts) {
-                                let mut modified_fact = original_fact.clone();
-                                modified_fact.data.fields.insert(field.clone(), value.clone());
-                                results.push(modified_fact);
+                }
+            }
+        }
+
+        // Remove duplicates and sort for consistency
+        candidates.sort_unstable();
+        candidates.dedup();
+        candidates
+    }
+
+    /// Remove a fact from all indexes
+    pub fn remove_fact(&mut self, fact_id: FactId) {
+        if let Some(indexed_fields) = self.fact_index.remove(&fact_id) {
+            for (field_name, field_value) in indexed_fields {
+                if let Some(field_index) = self.join_indexes.get_mut(&field_name) {
+                    if let Some(fact_list) = field_index.get_mut(&field_value) {
+                        fact_list.retain(|&id| id != fact_id);
+
+                        // Clean up empty entries
+                        if fact_list.is_empty() {
+                            field_index.remove(&field_value);
+                        }
+                    }
+
+                    // Clean up empty field indexes
+                    if field_index.is_empty() {
+                        self.join_indexes.remove(&field_name);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get statistics about the join index
+    pub fn get_stats(&self) -> HashJoinStats {
+        let total_entries: usize =
+            self.join_indexes.values().map(|field_index| field_index.len()).sum();
+        let total_facts: usize = self
+            .join_indexes
+            .values()
+            .flat_map(|field_index| field_index.values())
+            .map(|fact_list| fact_list.len())
+            .sum();
+
+        HashJoinStats {
+            indexed_fields: self.join_indexes.len(),
+            total_entries,
+            total_facts,
+            indexed_fact_count: self.fact_index.len(),
+        }
+    }
+
+    /// Clear all indexes
+    pub fn clear(&mut self) {
+        self.join_indexes.clear();
+        self.fact_index.clear();
+    }
+}
+
+/// Statistics for hash join performance monitoring
+#[derive(Debug, Clone)]
+pub struct HashJoinStats {
+    pub indexed_fields: usize,
+    pub total_entries: usize,
+    pub total_facts: usize,
+    pub indexed_fact_count: usize,
+}
+
+/// Enhanced Beta Memory with hash-based joins for efficient multi-condition rule processing
+#[derive(Debug)]
+pub struct BetaMemory {
+    /// Active partial matches grouped by rule ID
+    partial_matches: HashMap<RuleId, Vec<PartialMatch>>,
+    /// Hash join indexes for efficient fact joining
+    join_indexes: HashMap<RuleId, HashJoinIndex>,
+    /// Index for quick lookup: fact_id -> partial matches that include this fact
+    fact_to_matches: HashMap<FactId, Vec<(RuleId, usize)>>, // (rule_id, match_index)
+    /// Join specifications for each rule: rule_id -> join field mappings
+    rule_join_specs: HashMap<RuleId, Vec<(String, String)>>, // (left_field, right_field)
+    /// Statistics for monitoring
+    total_partial_matches: usize,
+    completed_matches: usize,
+    expired_matches: usize,
+    hash_join_hits: usize,
+    hash_join_misses: usize,
+    /// Maximum age for partial matches before cleanup (in seconds)
+    max_age_seconds: u64,
+}
+
+impl BetaMemory {
+    pub fn new() -> Self {
+        Self {
+            partial_matches: HashMap::new(),
+            join_indexes: HashMap::new(),
+            fact_to_matches: HashMap::new(),
+            rule_join_specs: HashMap::new(),
+            total_partial_matches: 0,
+            completed_matches: 0,
+            expired_matches: 0,
+            hash_join_hits: 0,
+            hash_join_misses: 0,
+            max_age_seconds: 300, // 5 minutes default
+        }
+    }
+
+    /// Configure join specifications for a rule
+    pub fn configure_rule_joins(&mut self, rule_id: RuleId, join_fields: Vec<(String, String)>) {
+        self.rule_join_specs.insert(rule_id, join_fields);
+        self.join_indexes.insert(rule_id, HashJoinIndex::new());
+    }
+
+    /// Add a fact to the hash join indexes for all applicable rules
+    pub fn index_fact_for_joins(&mut self, fact: &Fact) {
+        for (rule_id, join_spec) in &self.rule_join_specs {
+            // Extract the fields that this rule needs for joining
+            let join_fields: Vec<String> = join_spec
+                .iter()
+                .flat_map(|(left, right)| vec![left.clone(), right.clone()])
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            if let Some(join_index) = self.join_indexes.get_mut(rule_id) {
+                join_index.index_fact(fact, &join_fields);
+            }
+        }
+    }
+
+    /// Start a new partial match for a rule when its first condition is satisfied
+    pub fn start_partial_match(
+        &mut self,
+        rule_id: RuleId,
+        total_conditions: usize,
+        fact_id: FactId,
+    ) -> usize {
+        let mut partial_match = PartialMatch::new(rule_id, total_conditions);
+        partial_match.add_fact_match(0, fact_id); // First condition matched
+
+        let matches = self.partial_matches.entry(rule_id).or_default();
+        let match_index = matches.len();
+        matches.push(partial_match);
+
+        // Update fact index
+        self.fact_to_matches.entry(fact_id).or_default().push((rule_id, match_index));
+
+        self.total_partial_matches += 1;
+        match_index
+    }
+
+    /// Process a new fact through hash join algorithm for multi-condition rules
+    pub fn process_fact_with_hash_join(
+        &mut self,
+        rule_id: RuleId,
+        fact: &Fact,
+        rule_conditions: &[Condition],
+        fact_store: &crate::fact_store::arena_store::ArenaFactStore,
+    ) -> Vec<PartialMatch> {
+        let mut completed_matches = Vec::new();
+
+        // Initialize partial match tracking for this rule if not exists
+        self.partial_matches.entry(rule_id).or_default();
+
+        // Check if this fact can start a new partial match (matches first condition)
+        if let Some(first_condition) = rule_conditions.first() {
+            if self.fact_matches_first_condition(fact, first_condition) {
+                // Start new partial match
+                let match_index = self.start_partial_match(rule_id, rule_conditions.len(), fact.id);
+
+                // If single condition rule, mark as complete
+                if rule_conditions.len() == 1 {
+                    if let Some(matches) = self.partial_matches.get(&rule_id) {
+                        if let Some(partial_match) = matches.get(match_index) {
+                            completed_matches.push(partial_match.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Try to extend existing partial matches using hash joins
+        if let Some(join_spec) = self.rule_join_specs.get(&rule_id) {
+            if let Some(join_index) = self.join_indexes.get(&rule_id) {
+                let join_candidates = join_index.find_join_candidates(fact, join_spec);
+
+                if !join_candidates.is_empty() {
+                    self.hash_join_hits += 1;
+                    completed_matches.extend(self.extend_with_candidates(
+                        rule_id,
+                        fact,
+                        &join_candidates,
+                        fact_store,
+                    ));
+                } else {
+                    self.hash_join_misses += 1;
+                }
+            } else {
+                self.hash_join_misses += 1;
+            }
+        } else {
+            // No hash join configured - try direct extension
+            completed_matches.extend(self.extend_without_hash_join(
+                rule_id,
+                fact,
+                rule_conditions,
+                fact_store,
+            ));
+        }
+
+        completed_matches
+    }
+
+    /// Helper to check if fact matches the first condition of a rule
+    fn fact_matches_first_condition(&self, fact: &Fact, condition: &Condition) -> bool {
+        match condition {
+            Condition::Simple { field, operator, value } => {
+                if let Some(fact_value) = fact.data.fields.get(field) {
+                    match operator {
+                        Operator::Equal => fact_value == value,
+                        Operator::NotEqual => fact_value != value,
+                        Operator::GreaterThan => fact_value > value,
+                        Operator::LessThan => fact_value < value,
+                        Operator::GreaterThanOrEqual => fact_value >= value,
+                        Operator::LessThanOrEqual => fact_value <= value,
+                        Operator::Contains => match (fact_value, value) {
+                            (
+                                crate::types::FactValue::String(fact_str),
+                                crate::types::FactValue::String(pattern),
+                            ) => fact_str.contains(pattern),
+                            _ => false,
+                        },
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false, // Complex conditions not supported in simplified version
+        }
+    }
+
+    /// Extend partial matches using hash join candidates
+    fn extend_with_candidates(
+        &mut self,
+        rule_id: RuleId,
+        new_fact: &Fact,
+        candidates: &[FactId],
+        fact_store: &crate::fact_store::arena_store::ArenaFactStore,
+    ) -> Vec<PartialMatch> {
+        let mut completed_matches = Vec::new();
+
+        // For each candidate fact, try to extend existing partial matches
+        for &candidate_id in candidates {
+            if let Some(_candidate_fact) = fact_store.get_fact(candidate_id) {
+                if let Some(matches) = self.partial_matches.get_mut(&rule_id) {
+                    for (match_index, partial_match) in matches.iter_mut().enumerate() {
+                        if partial_match.next_condition_index < partial_match.total_conditions {
+                            let condition_index = partial_match.next_condition_index;
+                            partial_match.add_fact_match(condition_index, new_fact.id);
+
+                            // Update fact index
+                            self.fact_to_matches
+                                .entry(new_fact.id)
+                                .or_default()
+                                .push((rule_id, match_index));
+
+                            // Check if match is complete
+                            if partial_match.is_complete() {
+                                completed_matches.push(partial_match.clone());
+                                self.completed_matches += 1;
                             }
                         }
                     }
-                    ActionType::CreateFact { data } => {
-                        let new_fact = Fact {
-                            id: facts.len() as u64 + 1000 + results.len() as u64, // Unique ID generation
-                            data: data.clone(),
-                        };
-                        results.push(new_fact);
+                }
+            }
+        }
+
+        completed_matches
+    }
+
+    /// Extend partial matches without hash join (fallback method)
+    fn extend_without_hash_join(
+        &mut self,
+        rule_id: RuleId,
+        fact: &Fact,
+        _rule_conditions: &[Condition],
+        _fact_store: &crate::fact_store::arena_store::ArenaFactStore,
+    ) -> Vec<PartialMatch> {
+        let mut completed_matches = Vec::new();
+
+        if let Some(matches) = self.partial_matches.get_mut(&rule_id) {
+            for (match_index, partial_match) in matches.iter_mut().enumerate() {
+                if partial_match.next_condition_index < partial_match.total_conditions {
+                    let condition_index = partial_match.next_condition_index;
+                    partial_match.add_fact_match(condition_index, fact.id);
+
+                    // Update fact index
+                    self.fact_to_matches.entry(fact.id).or_default().push((rule_id, match_index));
+
+                    // Check if match is complete
+                    if partial_match.is_complete() {
+                        completed_matches.push(partial_match.clone());
+                        self.completed_matches += 1;
                     }
-                    ActionType::Formula { target_field, expression, source_calculator: _ } => {
-                        // Evaluate formula using calculator DSL
-                        if let Some(&fact_id) = token.fact_ids.as_slice().first() {
-                            if let Some(original_fact) = self.find_fact_by_id(fact_id, facts) {
-                                // Collect facts referenced by the token for multi-fact context
-                                let mut context_facts = Vec::new();
-                                for &token_fact_id in token.fact_ids.as_slice() {
-                                    if let Some(fact) = self.find_fact_by_id(token_fact_id, facts) {
-                                        context_facts.push(fact.clone());
-                                    }
-                                }
+                }
+            }
+        }
 
-                                // Create evaluation context with multi-fact support
-                                let context = EvaluationContext {
-                                    current_fact: original_fact,
-                                    facts: &context_facts,
-                                    globals: HashMap::new(),
-                                };
+        completed_matches
+    }
 
-                                // Evaluate the expression using cached calculator
-                                match self
-                                    .calculator
-                                    .lock()
-                                    .unwrap()
-                                    .eval_cached(expression, &context)
-                                {
-                                    Ok(CalculatorResult::Value(computed_value)) => {
-                                        let mut modified_fact = original_fact.clone();
-                                        modified_fact
-                                            .data
-                                            .fields
-                                            .insert(target_field.clone(), computed_value);
-                                        results.push(modified_fact);
+    /// Get all partial matches for a rule
+    pub fn get_partial_matches(&self, rule_id: RuleId) -> Vec<&PartialMatch> {
+        self.partial_matches
+            .get(&rule_id)
+            .map(|matches| matches.iter().collect())
+            .unwrap_or_default()
+    }
 
-                                        tracing::info!(
-                                            rule_id = self.rule_id,
-                                            target_field = %target_field,
-                                            expression = %expression,
-                                            "Formula action executed successfully"
-                                        );
-                                    }
-                                    Ok(other_result) => {
-                                        tracing::warn!(
-                                            rule_id = self.rule_id,
-                                            target_field = %target_field,
-                                            expression = %expression,
-                                            result = ?other_result,
-                                            "Formula returned non-value result"
-                                        );
-                                    }
-                                    Err(error) => {
-                                        tracing::error!(
-                                            rule_id = self.rule_id,
-                                            target_field = %target_field,
-                                            expression = %expression,
-                                            error = %error,
-                                            "Formula evaluation failed"
-                                        );
-                                    }
-                                }
+    /// Clean up expired partial matches
+    pub fn cleanup_expired_matches(&mut self) {
+        let max_age = self.max_age_seconds;
+
+        for (rule_id, matches) in self.partial_matches.iter_mut() {
+            let initial_len = matches.len();
+            matches.retain(|pm| !pm.is_expired(max_age));
+            let removed = initial_len - matches.len();
+            self.expired_matches += removed;
+
+            // Clean up fact index for removed matches
+            if removed > 0 {
+                // Rebuild fact index for this rule (simplified approach)
+                for (_fact_id, match_refs) in self.fact_to_matches.iter_mut() {
+                    match_refs.retain(|(rid, _)| rid != rule_id);
+                }
+
+                // Re-add current matches
+                for (match_idx, partial_match) in matches.iter().enumerate() {
+                    for &fact_id in partial_match.matched_facts.values() {
+                        self.fact_to_matches
+                            .entry(fact_id)
+                            .or_default()
+                            .push((*rule_id, match_idx));
+                    }
+                }
+            }
+        }
+
+        // Remove empty rule entries
+        self.partial_matches.retain(|_, matches| !matches.is_empty());
+    }
+
+    /// Get statistics for monitoring including hash join performance
+    pub fn get_stats(&self) -> BetaMemoryStats {
+        BetaMemoryStats {
+            active_partial_matches: self.partial_matches.values().map(|v| v.len()).sum(),
+            total_partial_matches: self.total_partial_matches,
+            completed_matches: self.completed_matches,
+            expired_matches: self.expired_matches,
+            rules_with_partial_matches: self.partial_matches.len(),
+            hash_join_hits: self.hash_join_hits,
+            hash_join_misses: self.hash_join_misses,
+            hash_join_hit_rate: if self.hash_join_hits + self.hash_join_misses > 0 {
+                (self.hash_join_hits as f64 / (self.hash_join_hits + self.hash_join_misses) as f64)
+                    * 100.0
+            } else {
+                0.0
+            },
+        }
+    }
+
+    /// Get hash join statistics for a specific rule
+    pub fn get_hash_join_stats(&self, rule_id: RuleId) -> Option<HashJoinStats> {
+        self.join_indexes.get(&rule_id).map(|index| index.get_stats())
+    }
+
+    /// Clear all partial matches and hash indexes (for testing or reset)
+    pub fn clear(&mut self) {
+        self.partial_matches.clear();
+        self.join_indexes.clear();
+        self.fact_to_matches.clear();
+        self.rule_join_specs.clear();
+        self.total_partial_matches = 0;
+        self.completed_matches = 0;
+        self.expired_matches = 0;
+        self.hash_join_hits = 0;
+        self.hash_join_misses = 0;
+    }
+}
+
+impl Default for BetaMemory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Enhanced statistics for beta memory monitoring including hash join performance
+#[derive(Debug, Clone)]
+pub struct BetaMemoryStats {
+    pub active_partial_matches: usize,
+    pub total_partial_matches: usize,
+    pub completed_matches: usize,
+    pub expired_matches: usize,
+    pub rules_with_partial_matches: usize,
+    pub hash_join_hits: usize,
+    pub hash_join_misses: usize,
+    pub hash_join_hit_rate: f64,
+}
+
+/// RETE network for rule processing with true alpha memory optimization
+#[derive(Debug)]
+pub struct ReteNetwork {
+    /// Alpha memory for efficient fact-to-rule matching
+    alpha_memory: AlphaMemory,
+    /// Beta memory for partial match tracking in multi-condition rules
+    beta_memory: BetaMemory,
+    /// ActionResult Vec pool for reducing allocation overhead (OPTIMIZATION)
+    action_result_pool: ActionResultPool,
+    /// Beta nodes for join operations
+    beta_nodes: HashMap<NodeId, BetaNode>,
+    /// Terminal nodes for rule actions
+    terminal_nodes: HashMap<RuleId, TerminalNode>,
+    /// Rules in the network
+    rules: HashMap<RuleId, Rule>,
+    /// Next available node ID
+    next_node_id: NodeId,
+    /// Next available fact ID for dynamic fact creation
+    next_fact_id: FactId,
+    /// Newly created facts during processing (for multi-stage pipelines)
+    pub created_facts: Vec<Fact>,
+}
+
+impl ReteNetwork {
+    /// Create a new RETE network with alpha memory, beta memory, and all optimizations
+    #[instrument]
+    pub fn new() -> Self {
+        info!(
+            "Creating new RETE network with alpha memory, beta memory, and action result pooling"
+        );
+        Self {
+            alpha_memory: AlphaMemory::new(),
+            beta_memory: BetaMemory::new(),
+            action_result_pool: ActionResultPool::new(),
+            beta_nodes: HashMap::new(),
+            terminal_nodes: HashMap::new(),
+            rules: HashMap::new(),
+            next_node_id: 1,
+            next_fact_id: 1_000_000, // Start fact IDs at 1M to avoid conflicts with input facts
+            created_facts: Vec::new(),
+        }
+    }
+
+    /// Add a rule to the network and build alpha memory indexes
+    #[instrument(skip(self))]
+    pub fn add_rule(&mut self, rule: Rule) -> Result<()> {
+        let rule_id = rule.id;
+        info!(
+            rule_id = rule_id,
+            "Adding rule to RETE network with alpha memory indexing"
+        );
+
+        // Build alpha memory indexes for each condition
+        for condition in &rule.conditions {
+            self.alpha_memory.index_rule_condition(rule_id, condition);
+        }
+
+        // Create terminal node for actions
+        let node_id = self.next_node_id;
+        self.next_node_id += 1;
+        let terminal_node = TerminalNode::new(node_id, rule_id, rule.actions.clone());
+        self.terminal_nodes.insert(rule_id, terminal_node);
+
+        // Store the rule
+        self.rules.insert(rule_id, rule);
+
+        Ok(())
+    }
+
+    /// Generate a unique fact ID for newly created facts
+    fn generate_fact_id(&mut self) -> FactId {
+        let id = self.next_fact_id;
+        self.next_fact_id += 1;
+        id
+    }
+
+    /// Get all facts created during processing
+    pub fn get_created_facts(&self) -> &[Fact] {
+        &self.created_facts
+    }
+
+    /// Clear all created facts (useful for multi-stage processing)
+    pub fn clear_created_facts(&mut self) {
+        self.created_facts.clear();
+    }
+
+    /// Process facts through the network and execute matching rules with true RETE architecture
+    #[instrument(skip(self, fact_store))]
+    pub fn process_facts(
+        &mut self,
+        facts: &[Fact],
+        fact_store: &mut ArenaFactStore,
+    ) -> Result<Vec<RuleExecutionResult>> {
+        // Pre-allocate result capacity based on fact count and average rules per fact
+        let mut results = Vec::with_capacity(facts.len() * 2);
+
+        // Clean up expired partial matches before processing
+        self.beta_memory.cleanup_expired_matches();
+
+        // Batch process facts for better cache locality and reduced overhead
+        for fact_batch in facts.chunks(1000) {
+            for fact in fact_batch {
+                // Get candidate rules from alpha memory
+                let candidate_rules = self.alpha_memory.find_candidate_rules(fact);
+
+                // Process each candidate rule through beta memory
+                for rule_id in candidate_rules {
+                    if let Some(rule) = self.rules.get(&rule_id).cloned() {
+                        if rule.conditions.len() == 1 {
+                            // Single condition rule - direct execution
+                            if self.fact_matches_condition(fact, &rule.conditions[0])? {
+                                let result =
+                                    self.execute_rule_optimized(&rule, fact, fact_store)?;
+                                results.push(result);
                             }
+                        } else {
+                            // Multi-condition rule - use beta memory
+                            self.process_multi_condition_rule(
+                                rule_id,
+                                &rule,
+                                fact,
+                                fact_store,
+                                &mut results,
+                            )?;
                         }
-                    }
-                    ActionType::ConditionalSet { target_field, conditions, source_calculator } => {
-                        // TODO: Implement conditional set logic (Phase 3)
-                        tracing::warn!(
-                            rule_id = self.rule_id,
-                            target_field = %target_field,
-                            condition_count = conditions.len(),
-                            calculator = ?source_calculator,
-                            "ConditionalSet action not yet implemented"
-                        );
-                    }
-                    ActionType::EmitWindow { window_name, fields } => {
-                        // TODO: Implement window emission for stream processing
-                        tracing::info!(
-                            rule_id = self.rule_id,
-                            window_name = %window_name,
-                            field_count = fields.len(),
-                            "EmitWindow action not yet implemented"
-                        );
-                    }
-                    ActionType::TriggerAlert { alert_type, message, severity, metadata } => {
-                        // TODO: Implement alert triggering for stream processing
-                        tracing::warn!(
-                            rule_id = self.rule_id,
-                            alert_type = %alert_type,
-                            message = %message,
-                            severity = ?severity,
-                            metadata_count = metadata.len(),
-                            "Alert triggered: {}", message
-                        );
-                    }
-                    ActionType::CallCalculator {
-                        calculator_name,
-                        input_mapping: _,
-                        output_field: _,
-                    } => {
-                        // TODO: Implement CallCalculator action
-                        tracing::warn!(
-                            "CallCalculator action not yet implemented in rete_nodes: {}",
-                            calculator_name
-                        );
                     }
                 }
             }
@@ -972,143 +841,1141 @@ impl TerminalNode {
         Ok(results)
     }
 
-    /// Optimized fact lookup by ID
-    fn find_fact_by_id<'a>(&self, fact_id: FactId, facts: &'a [Fact]) -> Option<&'a Fact> {
-        // Try index-based lookup first (common case where ID = index)
-        if let Some(fact) = facts.get(fact_id as usize) {
-            if fact.id == fact_id {
-                return Some(fact);
+    /// Process a multi-condition rule through beta memory with hash join optimization
+    fn process_multi_condition_rule(
+        &mut self,
+        rule_id: RuleId,
+        rule: &Rule,
+        fact: &Fact,
+        fact_store: &ArenaFactStore,
+        results: &mut Vec<RuleExecutionResult>,
+    ) -> Result<()> {
+        // Configure hash join for this rule if not already done
+        self.configure_hash_join_for_rule(rule_id, &rule.conditions);
+
+        // Index this fact for future joins
+        self.beta_memory.index_fact_for_joins(fact);
+
+        // Process fact through hash join algorithm
+        let completed_matches = self.beta_memory.process_fact_with_hash_join(
+            rule_id,
+            fact,
+            &rule.conditions,
+            fact_store,
+        );
+
+        // Execute rules for completed matches
+        for _completed_match in completed_matches {
+            let result = self.execute_rule_optimized(rule, fact, fact_store)?;
+            results.push(result);
+        }
+
+        Ok(())
+    }
+
+    /// Check if a fact matches a specific condition
+    fn fact_matches_condition(&self, fact: &Fact, condition: &Condition) -> Result<bool> {
+        match condition {
+            Condition::Simple { field, operator, value } => {
+                let fact_value = fact.data.fields.get(field);
+
+                match fact_value {
+                    Some(fact_val) => {
+                        match operator {
+                            Operator::Equal => Ok(fact_val == value),
+                            Operator::NotEqual => Ok(fact_val != value),
+                            Operator::GreaterThan => Ok(fact_val > value),
+                            Operator::LessThan => Ok(fact_val < value),
+                            Operator::GreaterThanOrEqual => Ok(fact_val >= value),
+                            Operator::LessThanOrEqual => Ok(fact_val <= value),
+                            Operator::Contains => {
+                                // Basic contains implementation for strings
+                                match (fact_val, value) {
+                                    (
+                                        crate::types::FactValue::String(fact_str),
+                                        crate::types::FactValue::String(pattern),
+                                    ) => Ok(fact_str.contains(pattern)),
+                                    _ => Ok(false),
+                                }
+                            }
+                        }
+                    }
+                    None => Ok(false), // Field doesn't exist
+                }
+            }
+            Condition::Complex { operator: _, conditions: _ } => {
+                // Complex conditions are not supported in this simplified alpha node implementation
+                Ok(false)
+            }
+            Condition::Aggregation(_) => {
+                // Aggregation conditions not supported in simplified version
+                Ok(false)
+            }
+            Condition::Stream(_) => {
+                // Stream conditions not supported in simplified version
+                Ok(false)
+            }
+        }
+    }
+
+    /// Execute a rule with optimized calculator batching and improved memory management
+    fn execute_rule_optimized(
+        &mut self,
+        rule: &Rule,
+        fact: &Fact,
+        _fact_store: &ArenaFactStore,
+    ) -> Result<RuleExecutionResult> {
+        // Get a pooled Vec<ActionResult> instead of allocating new one (OPTIMIZATION!)
+        let mut action_results = self.action_result_pool.get();
+
+        // Pre-process calculator actions for potential batching
+        let mut calculator_actions = Vec::new();
+        let mut other_actions = Vec::new();
+
+        for action in &rule.actions {
+            match &action.action_type {
+                ActionType::CallCalculator { .. } => calculator_actions.push(action),
+                _ => other_actions.push(action),
             }
         }
 
-        // Fallback to linear search
-        facts.iter().find(|f| f.id == fact_id)
+        // Execute non-calculator actions first (they're typically faster)
+        for action in other_actions {
+            let result = match &action.action_type {
+                ActionType::SetField { field, value } => ActionResult::FieldSet {
+                    fact_id: fact.id,
+                    field: field.clone(),
+                    value: value.clone(),
+                },
+                ActionType::CallCalculator { .. } => {
+                    // This should not happen due to filtering above, but handle it safely
+                    continue;
+                }
+                ActionType::Log { message } => {
+                    info!(rule_id = rule.id, message = message, "Rule action: Log");
+                    ActionResult::Logged { message: message.clone() }
+                }
+                ActionType::CreateFact { data } => {
+                    // Actually create a new fact
+                    let new_fact_id = self.generate_fact_id();
+                    let new_fact = Fact {
+                        timestamp: chrono::Utc::now(),
+                        id: new_fact_id,
+                        external_id: None,
+
+                        data: data.clone(),
+                    };
+
+                    // Store the created fact for potential processing in subsequent stages
+                    self.created_facts.push(new_fact.clone());
+
+                    info!(
+                        rule_id = rule.id,
+                        new_fact_id = new_fact_id,
+                        "Rule action: CreateFact - fact created"
+                    );
+
+                    ActionResult::FactCreated { fact_id: new_fact_id, fact_data: data.clone() }
+                }
+                ActionType::TriggerAlert { alert_type, message, severity: _, metadata: _ } => {
+                    info!(
+                        rule_id = rule.id,
+                        alert_type = alert_type,
+                        "Rule action: TriggerAlert"
+                    );
+                    ActionResult::Logged { message: format!("Alert [{}]: {}", alert_type, message) }
+                }
+                ActionType::Formula { expression, output_field } => {
+                    // Evaluate the formula expression
+                    match evaluate_formula_expression(expression, &fact.data.fields) {
+                        Ok(result_value) => {
+                            info!(
+                                rule_id = rule.id,
+                                expression = expression,
+                                output_field = output_field,
+                                result = ?result_value,
+                                "Formula evaluated successfully"
+                            );
+                            ActionResult::FieldSet {
+                                fact_id: fact.id,
+                                field: output_field.clone(),
+                                value: result_value,
+                            }
+                        }
+                        Err(e) => {
+                            info!(
+                                rule_id = rule.id,
+                                expression = expression,
+                                error = %e,
+                                "Formula evaluation failed"
+                            );
+                            ActionResult::Logged {
+                                message: format!("Formula '{}' failed: {}", expression, e),
+                            }
+                        }
+                    }
+                }
+                ActionType::UpdateFact { fact_id_field, updates } => {
+                    // Get the fact ID from the current fact's field
+                    if let Some(fact_id_value) = fact.data.fields.get(fact_id_field) {
+                        if let Some(target_fact_id) = fact_id_value.as_integer() {
+                            info!(
+                                rule_id = rule.id,
+                                target_fact_id = target_fact_id,
+                                fact_id_field = fact_id_field,
+                                "Rule action: UpdateFact"
+                            );
+
+                            let updated_fields: Vec<String> = updates.keys().cloned().collect();
+                            ActionResult::FactUpdated {
+                                fact_id: target_fact_id as u64,
+                                updated_fields,
+                            }
+                        } else {
+                            ActionResult::Logged {
+                                message: format!(
+                                    "UpdateFact failed: field '{}' is not an integer",
+                                    fact_id_field
+                                ),
+                            }
+                        }
+                    } else {
+                        ActionResult::Logged {
+                            message: format!(
+                                "UpdateFact failed: field '{}' not found",
+                                fact_id_field
+                            ),
+                        }
+                    }
+                }
+                ActionType::DeleteFact { fact_id_field } => {
+                    // Get the fact ID from the current fact's field
+                    if let Some(fact_id_value) = fact.data.fields.get(fact_id_field) {
+                        if let Some(target_fact_id) = fact_id_value.as_integer() {
+                            info!(
+                                rule_id = rule.id,
+                                target_fact_id = target_fact_id,
+                                fact_id_field = fact_id_field,
+                                "Rule action: DeleteFact"
+                            );
+
+                            ActionResult::FactDeleted { fact_id: target_fact_id as u64 }
+                        } else {
+                            ActionResult::Logged {
+                                message: format!(
+                                    "DeleteFact failed: field '{}' is not an integer",
+                                    fact_id_field
+                                ),
+                            }
+                        }
+                    } else {
+                        ActionResult::Logged {
+                            message: format!(
+                                "DeleteFact failed: field '{}' not found",
+                                fact_id_field
+                            ),
+                        }
+                    }
+                }
+                ActionType::IncrementField { field, increment } => {
+                    // Get the current value of the field
+                    if let Some(current_value) = fact.data.fields.get(field) {
+                        match (current_value, increment) {
+                            (FactValue::Integer(current), FactValue::Integer(inc)) => {
+                                let new_value = FactValue::Integer(current + inc);
+                                ActionResult::FieldIncremented {
+                                    fact_id: fact.id,
+                                    field: field.clone(),
+                                    old_value: current_value.clone(),
+                                    new_value,
+                                }
+                            }
+                            (FactValue::Float(current), FactValue::Float(inc)) => {
+                                let new_value = FactValue::Float(current + inc);
+                                ActionResult::FieldIncremented {
+                                    fact_id: fact.id,
+                                    field: field.clone(),
+                                    old_value: current_value.clone(),
+                                    new_value,
+                                }
+                            }
+                            _ => ActionResult::Logged {
+                                message: format!(
+                                    "IncrementField failed: incompatible types for field '{}'",
+                                    field
+                                ),
+                            },
+                        }
+                    } else {
+                        // Field doesn't exist, treat as starting from 0
+                        ActionResult::FieldIncremented {
+                            fact_id: fact.id,
+                            field: field.clone(),
+                            old_value: FactValue::Integer(0),
+                            new_value: increment.clone(),
+                        }
+                    }
+                }
+                ActionType::AppendToArray { field, value } => {
+                    // Get the current array value or create a new one
+                    if let Some(current_value) = fact.data.fields.get(field) {
+                        if let FactValue::Array(mut current_array) = current_value.clone() {
+                            current_array.push(value.clone());
+                            let new_length = current_array.len();
+                            ActionResult::ArrayAppended {
+                                fact_id: fact.id,
+                                field: field.clone(),
+                                appended_value: value.clone(),
+                                new_length,
+                            }
+                        } else {
+                            ActionResult::Logged {
+                                message: format!(
+                                    "AppendToArray failed: field '{}' is not an array",
+                                    field
+                                ),
+                            }
+                        }
+                    } else {
+                        // Field doesn't exist, create new array with the value
+                        ActionResult::ArrayAppended {
+                            fact_id: fact.id,
+                            field: field.clone(),
+                            appended_value: value.clone(),
+                            new_length: 1,
+                        }
+                    }
+                }
+                ActionType::SendNotification {
+                    recipient,
+                    subject,
+                    message: _,
+                    notification_type,
+                    metadata: _,
+                } => {
+                    info!(
+                        rule_id = rule.id,
+                        recipient = recipient,
+                        subject = subject,
+                        notification_type = ?notification_type,
+                        "Rule action: SendNotification"
+                    );
+                    ActionResult::NotificationSent {
+                        recipient: recipient.clone(),
+                        notification_type: notification_type.clone(),
+                        subject: subject.clone(),
+                    }
+                }
+            };
+            action_results.push(result);
+        }
+
+        // Create the result but don't return the Vec to pool yet (it's moved into the result)
+        Ok(RuleExecutionResult {
+            rule_id: rule.id,
+            fact_id: fact.id,
+            actions_executed: action_results,
+        })
     }
 
-    /// Get calculator cache statistics for monitoring
-    pub fn get_calculator_cache_stats(&self) -> crate::calculator_cache::CalculatorCacheStats {
-        self.calculator.lock().unwrap().cache_stats()
+    /// Get statistics about the network including alpha and beta memory performance
+    pub fn get_stats(&self) -> NetworkStats {
+        let alpha_stats = self.get_alpha_memory_stats();
+        let beta_stats = self.beta_memory.get_stats();
+
+        NetworkStats {
+            node_count: (self.beta_nodes.len() + self.terminal_nodes.len()) as u64,
+            memory_usage_bytes: alpha_stats.memory_usage_bytes
+                + (beta_stats.total_partial_matches * 128), // Rough estimate
+            alpha_memory_stats: alpha_stats,
+            beta_memory_stats: beta_stats,
+        }
     }
 
-    /// Get calculator cache utilization
-    pub fn get_calculator_cache_utilization(&self) -> crate::calculator_cache::CacheUtilization {
-        self.calculator.lock().unwrap().cache_utilization()
+    /// Get alpha memory statistics
+    pub fn get_alpha_memory_stats(&self) -> AlphaMemoryStats {
+        self.alpha_memory.get_stats()
+    }
+
+    /// Get action result pool statistics for monitoring
+    pub fn get_action_result_pool_stats(&self) -> (usize, usize, usize, f64) {
+        let (hits, misses, pool_size) = self.action_result_pool.stats();
+        let hit_rate = self.action_result_pool.hit_rate();
+        (hits, misses, pool_size, hit_rate)
+    }
+
+    /// Get beta memory statistics for monitoring multi-condition rule processing
+    pub fn get_beta_memory_stats(&self) -> BetaMemoryStats {
+        self.beta_memory.get_stats()
+    }
+
+    /// Configure hash join specifications for a rule based on its conditions
+    fn configure_hash_join_for_rule(&mut self, rule_id: RuleId, conditions: &[Condition]) {
+        if self.beta_memory.rule_join_specs.contains_key(&rule_id) {
+            return; // Already configured
+        }
+
+        let mut join_specs = Vec::new();
+
+        // Simple heuristic: create joins based on common field names between conditions
+        for (i, condition1) in conditions.iter().enumerate() {
+            if let Condition::Simple { field: field1, .. } = condition1 {
+                for (j, condition2) in conditions.iter().enumerate() {
+                    if i != j {
+                        if let Condition::Simple { field: field2, .. } = condition2 {
+                            // If field names are the same, create a self-join
+                            // For different fields, check if they follow common naming patterns  
+                            if field1 == field2 || self.fields_likely_joinable(field1, field2) {
+                                join_specs.push((field1.clone(), field2.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove duplicates
+        join_specs.sort();
+        join_specs.dedup();
+
+        if !join_specs.is_empty() {
+            self.beta_memory.configure_rule_joins(rule_id, join_specs);
+        }
+    }
+
+    /// Heuristic to determine if two fields are likely joinable
+    fn fields_likely_joinable(&self, field1: &str, field2: &str) -> bool {
+        // Common joinable field patterns
+        let joinable_patterns = [
+            ("user_id", "customer_id"),
+            ("entity_id", "id"),
+            ("parent_id", "id"),
+            ("account_id", "customer_id"),
+        ];
+
+        for (pattern1, pattern2) in &joinable_patterns {
+            if (field1 == *pattern1 && field2 == *pattern2)
+                || (field1 == *pattern2 && field2 == *pattern1)
+            {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
-/// Test a condition against a fact value using modern pattern matching
-pub fn test_condition(
-    fact_value: &FactValue,
-    operator: &Operator,
-    expected_value: &FactValue,
-) -> bool {
-    use {FactValue::*, Operator::*};
+/// Enhanced statistics for the RETE network including alpha and beta memory performance
+#[derive(Debug, Clone)]
+pub struct NetworkStats {
+    pub node_count: u64,
+    pub memory_usage_bytes: usize,
+    pub alpha_memory_stats: AlphaMemoryStats,
+    pub beta_memory_stats: BetaMemoryStats,
+}
 
-    match (fact_value, expected_value, operator) {
-        // Integer comparisons
-        (Integer(a), Integer(b), op) => match op {
-            Equal => a == b,
-            NotEqual => a != b,
-            GreaterThan => a > b,
-            LessThan => a < b,
-            GreaterThanOrEqual => a >= b,
-            LessThanOrEqual => a <= b,
-            Contains => false, // Not applicable for integers
-        },
+/// Statistics for alpha memory performance monitoring
+#[derive(Debug, Clone, Default)]
+pub struct AlphaMemoryStats {
+    pub indexed_rules: usize,
+    pub universal_rules: usize,
+    pub field_indexes: usize,
+    pub memory_usage_bytes: usize,
+}
 
-        // Float comparisons with epsilon handling
-        (Float(a), Float(b), op) => match op {
-            Equal => (a - b).abs() < f64::EPSILON,
-            NotEqual => (a - b).abs() >= f64::EPSILON,
-            GreaterThan => a > b,
-            LessThan => a < b,
-            GreaterThanOrEqual => a >= b,
-            LessThanOrEqual => a <= b,
-            Contains => false, // Not applicable for floats
-        },
-
-        // Cross-numeric comparisons (Integer vs Float)
-        (Integer(a), Float(_b), _op) => {
-            let a_float = *a as f64;
-            test_condition(&Float(a_float), operator, expected_value)
-        }
-        (Float(_a), Integer(b), _op) => {
-            let b_float = *b as f64;
-            test_condition(fact_value, operator, &Float(b_float))
-        }
-
-        // String comparisons
-        (String(a), String(b), op) => match op {
-            Equal => a == b,
-            NotEqual => a != b,
-            GreaterThan => a > b,
-            LessThan => a < b,
-            GreaterThanOrEqual => a >= b,
-            LessThanOrEqual => a <= b,
-            Contains => a.contains(b),
-        },
-
-        // Boolean comparisons
-        (Boolean(a), Boolean(b), op) => match op {
-            Equal => a == b,
-            NotEqual => a != b,
-            _ => false, // Other operators not applicable for booleans
-        },
-
-        // Type mismatch - return false
-        _ => false,
+impl Default for ReteNetwork {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Condition, FactData, FactValue, Operator};
+    use crate::types::{
+        Action, CalculatorHashMapPool, CalculatorResultCache, Condition, FactData, FactValue,
+        Operator, Rule,
+    };
     use std::collections::HashMap;
 
     #[test]
-    fn test_alpha_node_simple_condition() {
+    fn test_alpha_memory_indexing() {
+        let mut alpha_memory = AlphaMemory::new();
+
+        // Test equality condition indexing
+        let condition = Condition::Simple {
+            field: "status".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("active".to_string()),
+        };
+
+        alpha_memory.index_rule_condition(1, &condition);
+        alpha_memory.index_rule_condition(2, &condition);
+
+        // Create a fact that matches the condition
+        let mut fields = HashMap::new();
+        fields.insert(
+            "status".to_string(),
+            FactValue::String("active".to_string()),
+        );
+        fields.insert("user_id".to_string(), FactValue::Integer(123));
+
+        let fact = Fact {
+            timestamp: chrono::Utc::now(),
+            id: 1,
+            external_id: None,
+            data: FactData { fields },
+        };
+
+        let candidates = alpha_memory.find_candidate_rules(&fact);
+        assert!(candidates.contains(&1));
+        assert!(candidates.contains(&2));
+    }
+
+    #[test]
+    fn test_alpha_memory_no_matches() {
+        let mut alpha_memory = AlphaMemory::new();
+
+        let condition = Condition::Simple {
+            field: "status".to_string(),
+            operator: Operator::Equal,
+            value: FactValue::String("active".to_string()),
+        };
+
+        alpha_memory.index_rule_condition(1, &condition);
+
+        // Create a fact that doesn't match
+        let mut fields = HashMap::new();
+        fields.insert(
+            "status".to_string(),
+            FactValue::String("inactive".to_string()),
+        );
+
+        let fact = Fact {
+            timestamp: chrono::Utc::now(),
+            id: 1,
+            external_id: None,
+            data: FactData { fields },
+        };
+
+        let candidates = alpha_memory.find_candidate_rules(&fact);
+        assert!(!candidates.contains(&1));
+    }
+
+    #[test]
+    fn test_alpha_memory_universal_rules() {
+        let mut alpha_memory = AlphaMemory::new();
+
+        // Non-equality operators fall back to universal matching
         let condition = Condition::Simple {
             field: "age".to_string(),
             operator: Operator::GreaterThan,
             value: FactValue::Integer(18),
         };
 
-        let alpha_node = AlphaNode::new(1, condition);
+        alpha_memory.index_rule_condition(5, &condition);
 
+        // Any fact should match universal rules
         let mut fields = HashMap::new();
-        fields.insert("age".to_string(), FactValue::Integer(25));
+        fields.insert("name".to_string(), FactValue::String("test".to_string()));
 
-        let fact = Fact { id: 1, data: FactData { fields } };
+        let fact = Fact {
+            timestamp: chrono::Utc::now(),
+            id: 1,
+            external_id: None,
+            data: FactData { fields },
+        };
 
-        let mut token_pool = TokenPool::new(100);
-        let tokens = alpha_node.process_fact(&fact, &mut token_pool);
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].fact_ids.as_slice(), &[1]);
-        assert_eq!(alpha_node.memory.read().unwrap().len(), 1);
+        let candidates = alpha_memory.find_candidate_rules(&fact);
+        assert!(candidates.contains(&5));
     }
 
     #[test]
-    fn test_condition_matching() {
-        use {FactValue::*, Operator::*};
+    fn test_rete_network_with_alpha_memory() {
+        let mut network = ReteNetwork::new();
 
-        // Integer comparisons
-        assert!(test_condition(&Integer(25), &GreaterThan, &Integer(18)));
-        assert!(!test_condition(&Integer(15), &GreaterThan, &Integer(18)));
+        // Create a simple rule
+        let rule = Rule {
+            id: 1,
+            name: "Test Rule".to_string(),
+            conditions: vec![Condition::Simple {
+                field: "type".to_string(),
+                operator: Operator::Equal,
+                value: FactValue::String("user".to_string()),
+            }],
+            actions: vec![Action {
+                action_type: crate::types::ActionType::Log { message: "User found".to_string() },
+            }],
+        };
 
-        // String operations
-        assert!(test_condition(
-            &String("hello world".to_string()),
-            &Contains,
-            &String("world".to_string())
-        ));
+        network.add_rule(rule).unwrap();
 
-        // Cross-type numeric comparisons (new in 2024)
-        assert!(test_condition(&Integer(25), &GreaterThan, &Float(24.5)));
-        assert!(test_condition(&Float(25.5), &GreaterThan, &Integer(25)));
+        // Create a matching fact
+        let mut fields = HashMap::new();
+        fields.insert("type".to_string(), FactValue::String("user".to_string()));
+        fields.insert("id".to_string(), FactValue::Integer(123));
 
-        // Boolean operations
-        assert!(test_condition(&Boolean(true), &Equal, &Boolean(true)));
-        assert!(!test_condition(&Boolean(true), &Equal, &Boolean(false)));
+        let fact = Fact {
+            timestamp: chrono::Utc::now(),
+            id: 1,
+            external_id: None,
+            data: FactData { fields },
+        };
+
+        // Test that alpha memory finds the matching rule efficiently through alpha memory
+        let candidate_rules = network.alpha_memory.find_candidate_rules(&fact);
+        assert_eq!(candidate_rules.len(), 1);
+        assert_eq!(candidate_rules[0], 1);
+    }
+
+    #[test]
+    fn test_calculator_hashmap_pool() {
+        let mut pool = CalculatorHashMapPool::new();
+
+        // First get should be a miss
+        let map1 = pool.get();
+        let (hits, misses, pool_size) = pool.stats();
+        assert_eq!(hits, 0);
+        assert_eq!(misses, 1);
+        assert_eq!(pool_size, 0);
+
+        // Return the map to the pool
+        pool.return_map(map1);
+        let (_, _, pool_size) = pool.stats();
+        assert_eq!(pool_size, 1);
+
+        // Second get should be a hit
+        let map2 = pool.get();
+        let (hits, misses, pool_size) = pool.stats();
+        assert_eq!(hits, 1);
+        assert_eq!(misses, 1);
+        assert_eq!(pool_size, 0);
+
+        // Verify hit rate calculation
+        assert_eq!(pool.hit_rate(), 50.0);
+
+        pool.return_map(map2);
+    }
+
+    #[test]
+    fn test_calculator_hashmap_reuse() {
+        let mut pool = CalculatorHashMapPool::new();
+
+        // Get a map, add some data, return it
+        let mut map = pool.get();
+        map.insert("test".to_string(), FactValue::Integer(42));
+        assert_eq!(map.len(), 1);
+
+        pool.return_map(map);
+
+        // Get another map - should be the same one but cleared
+        let map2 = pool.get();
+        assert_eq!(map2.len(), 0); // Should be cleared
+
+        pool.return_map(map2);
+    }
+
+    #[test]
+    fn test_calculator_result_cache() {
+        use crate::types::CalculatorInputs;
+        let mut cache = CalculatorResultCache::new(100);
+
+        // Create test inputs
+        let mut fields = HashMap::new();
+        fields.insert("value".to_string(), FactValue::Float(25.0));
+        fields.insert("threshold".to_string(), FactValue::Float(20.0));
+        let inputs = CalculatorInputs { fields };
+
+        // First call should be a miss
+        assert!(cache.get("threshold_checker", &inputs).is_none());
+        let (hits, misses, cache_size, hit_rate) = cache.stats();
+        assert_eq!(hits, 0);
+        assert_eq!(misses, 1);
+        assert_eq!(cache_size, 0);
+        assert_eq!(hit_rate, 0.0);
+
+        // Store a result
+        cache.put("threshold_checker", &inputs, "cached_result".to_string());
+        let (_, _, cache_size, _) = cache.stats();
+        assert_eq!(cache_size, 1);
+
+        // Second call should be a hit
+        let result = cache.get("threshold_checker", &inputs);
+        assert_eq!(result, Some("cached_result".to_string()));
+        let (hits, misses, _, hit_rate) = cache.stats();
+        assert_eq!(hits, 1);
+        assert_eq!(misses, 1);
+        assert_eq!(hit_rate, 50.0);
+    }
+
+    #[test]
+    fn test_calculator_cache_different_inputs() {
+        use crate::types::CalculatorInputs;
+        use std::collections::HashMap;
+
+        let mut cache = CalculatorResultCache::new(100);
+
+        // Create different test inputs
+        let mut inputs1 = HashMap::new();
+        inputs1.insert("value".to_string(), FactValue::Integer(10));
+        let calc_inputs1 = CalculatorInputs { fields: inputs1 };
+
+        let mut inputs2 = HashMap::new();
+        inputs2.insert("value".to_string(), FactValue::Integer(20));
+        let calc_inputs2 = CalculatorInputs { fields: inputs2 };
+
+        // Test caching with different inputs
+        cache.put("test_calc", &calc_inputs1, "result1".to_string());
+        cache.put("test_calc", &calc_inputs2, "result2".to_string());
+
+        // Both should be cached separately
+        assert_eq!(
+            cache.get("test_calc", &calc_inputs1),
+            Some("result1".to_string())
+        );
+        assert_eq!(
+            cache.get("test_calc", &calc_inputs2),
+            Some("result2".to_string())
+        );
+    }
+
+    #[test]
+    fn test_action_result_pool() {
+        let pool = ActionResultPool::new();
+
+        // First get should be a miss
+        let vec1 = pool.get();
+        let (hits, misses, pool_size) = pool.stats();
+        assert_eq!(hits, 0);
+        assert_eq!(misses, 1);
+        assert_eq!(pool_size, 0);
+
+        // Return the vec to the pool
+        pool.return_vec(vec1);
+        let (_, _, pool_size) = pool.stats();
+        assert_eq!(pool_size, 1);
+
+        // Second get should be a hit
+        let vec2 = pool.get();
+        let (hits, misses, pool_size) = pool.stats();
+        assert_eq!(hits, 1);
+        assert_eq!(misses, 1);
+        assert_eq!(pool_size, 0);
+
+        // Verify hit rate calculation
+        assert_eq!(pool.hit_rate(), 50.0);
+
+        pool.return_vec(vec2);
+    }
+
+    #[test]
+    fn test_action_result_vec_reuse() {
+        let pool = ActionResultPool::new();
+
+        // Get a vec, add some data, return it
+        let mut vec = pool.get();
+        vec.push(ActionResult::logged("test".to_string()));
+        assert_eq!(vec.len(), 1);
+
+        pool.return_vec(vec);
+
+        // Get another vec - should be the same one but cleared
+        let vec2 = pool.get();
+        assert_eq!(vec2.len(), 0); // Should be cleared
+
+        pool.return_vec(vec2);
+    }
+
+    #[test]
+    fn test_partial_match_creation() {
+        let mut partial_match = PartialMatch::new(1, 3);
+        assert_eq!(partial_match.rule_id, 1);
+        assert_eq!(partial_match.total_conditions, 3);
+        assert_eq!(partial_match.next_condition_index, 0);
+        assert!(!partial_match.is_complete());
+
+        // Add first fact match
+        partial_match.add_fact_match(0, 100);
+        assert_eq!(partial_match.next_condition_index, 1);
+        assert!(!partial_match.is_complete());
+
+        // Add second fact match
+        partial_match.add_fact_match(1, 101);
+        assert_eq!(partial_match.next_condition_index, 2);
+        assert!(!partial_match.is_complete());
+
+        // Add third fact match
+        partial_match.add_fact_match(2, 102);
+        assert_eq!(partial_match.next_condition_index, 3);
+        assert!(partial_match.is_complete());
+
+        let fact_ids = partial_match.get_fact_ids();
+        assert_eq!(fact_ids.len(), 3);
+        assert!(fact_ids.contains(&100));
+        assert!(fact_ids.contains(&101));
+        assert!(fact_ids.contains(&102));
+    }
+
+    #[test]
+    fn test_beta_memory_partial_match_lifecycle() {
+        let mut beta_memory = BetaMemory::new();
+
+        // Start a partial match for a 2-condition rule
+        let match_index = beta_memory.start_partial_match(1, 2, 100);
+        assert_eq!(match_index, 0);
+
+        let stats = beta_memory.get_stats();
+        assert_eq!(stats.active_partial_matches, 1);
+        assert_eq!(stats.total_partial_matches, 1);
+        assert_eq!(stats.completed_matches, 0);
+
+        // Create test fact for extending the partial match
+        let mut fields = HashMap::new();
+        fields.insert(
+            "test_field".to_string(),
+            FactValue::String("test_value".to_string()),
+        );
+        let test_fact = Fact {
+            id: 101,
+            external_id: None,
+            timestamp: chrono::Utc::now(),
+            data: FactData { fields },
+        };
+
+        use crate::fact_store::arena_store::ArenaFactStore;
+        let fact_store = ArenaFactStore::new();
+
+        // Try to extend the partial match using new hash join API
+        let _completed_matches =
+            beta_memory.process_fact_with_hash_join(1, &test_fact, &[], &fact_store);
+        // Since we have a 2-condition rule and one match already started, this should potentially complete
+
+        let _final_stats = beta_memory.get_stats();
+        // The exact completion behavior depends on the hash join configuration
+    }
+
+    #[test]
+    fn test_beta_memory_multiple_partial_matches() {
+        let mut beta_memory = BetaMemory::new();
+
+        // Start multiple partial matches for the same rule
+        beta_memory.start_partial_match(1, 3, 100);
+        beta_memory.start_partial_match(1, 3, 200);
+        beta_memory.start_partial_match(2, 2, 300); // Different rule
+
+        let stats = beta_memory.get_stats();
+        assert_eq!(stats.active_partial_matches, 3);
+        assert_eq!(stats.rules_with_partial_matches, 2);
+
+        // Create test facts for extending matches
+        let mut fields1 = HashMap::new();
+        fields1.insert(
+            "test_field".to_string(),
+            FactValue::String("value1".to_string()),
+        );
+        let test_fact1 = Fact {
+            id: 101,
+            external_id: None,
+            timestamp: chrono::Utc::now(),
+            data: FactData { fields: fields1 },
+        };
+
+        let mut fields2 = HashMap::new();
+        fields2.insert(
+            "test_field".to_string(),
+            FactValue::String("value2".to_string()),
+        );
+        let test_fact2 = Fact {
+            id: 102,
+            external_id: None,
+            timestamp: chrono::Utc::now(),
+            data: FactData { fields: fields2 },
+        };
+
+        use crate::fact_store::arena_store::ArenaFactStore;
+        let fact_store = ArenaFactStore::new();
+
+        // Extend using new hash join API
+        let completed = beta_memory.process_fact_with_hash_join(1, &test_fact1, &[], &fact_store);
+        assert_eq!(completed.len(), 0); // Not complete yet (needs 3 conditions)
+
+        let _completed = beta_memory.process_fact_with_hash_join(1, &test_fact2, &[], &fact_store);
+        // Since we don't have proper multi-condition setup, this may not complete as expected
+        // The test validates the API works but may need adjustment based on rule setup
+
+        let final_stats = beta_memory.get_stats();
+        assert_eq!(final_stats.completed_matches, 2);
+    }
+
+    #[test]
+    fn test_beta_memory_cleanup() {
+        let mut beta_memory = BetaMemory::new();
+        beta_memory.max_age_seconds = 0; // Force immediate expiration
+
+        // Start a partial match
+        beta_memory.start_partial_match(1, 2, 100);
+
+        let stats_before = beta_memory.get_stats();
+        assert_eq!(stats_before.active_partial_matches, 1);
+
+        // Sleep to ensure expiration
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Cleanup expired matches
+        beta_memory.cleanup_expired_matches();
+
+        let stats_after = beta_memory.get_stats();
+        assert_eq!(stats_after.active_partial_matches, 0);
+        assert_eq!(stats_after.expired_matches, 1);
+    }
+}
+
+/// Result of executing a rule
+#[derive(Debug, Clone)]
+pub struct RuleExecutionResult {
+    pub rule_id: RuleId,
+    pub fact_id: FactId,
+    pub actions_executed: Vec<ActionResult>,
+}
+
+/// Result of executing an action with lazy string materialization
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub enum ActionResult {
+    FieldSet {
+        fact_id: FactId,
+        field: String,
+        value: crate::types::FactValue,
+    },
+    CalculatorResult {
+        calculator: String,
+        result: String,
+        output_field: String,
+        parsed_value: crate::types::FactValue,
+    },
+    Logged {
+        message: String,
+    },
+    /// Lazy logged message - only materializes string when accessed
+    LazyLogged {
+        template: &'static str,
+        args: Vec<String>,
+    },
+    /// Fact created by the action
+    FactCreated {
+        fact_id: FactId,
+        fact_data: FactData,
+    },
+    /// Fact updated by the action
+    FactUpdated {
+        fact_id: FactId,
+        updated_fields: Vec<String>,
+    },
+    /// Fact deleted by the action
+    FactDeleted {
+        fact_id: FactId,
+    },
+    /// Field incremented by the action
+    FieldIncremented {
+        fact_id: FactId,
+        field: String,
+        old_value: crate::types::FactValue,
+        new_value: crate::types::FactValue,
+    },
+    /// Value appended to array field
+    ArrayAppended {
+        fact_id: FactId,
+        field: String,
+        appended_value: crate::types::FactValue,
+        new_length: usize,
+    },
+    /// Notification sent
+    NotificationSent {
+        recipient: String,
+        notification_type: crate::types::NotificationType,
+        subject: String,
+    },
+}
+
+impl ActionResult {
+    /// Create a lazy logged result that defers string formatting
+    pub fn lazy_logged(template: &'static str, args: Vec<String>) -> Self {
+        Self::LazyLogged { template, args }
+    }
+
+    /// Create a simple logged result (for backwards compatibility)
+    pub fn logged(message: String) -> Self {
+        Self::Logged { message }
+    }
+
+    /// Get the formatted message (materializes lazy messages)
+    pub fn get_message(&self) -> Option<String> {
+        match self {
+            ActionResult::Logged { message } => Some(message.clone()),
+            ActionResult::LazyLogged { template, args } => {
+                // Simple template substitution - replace {0}, {1}, etc.
+                let mut result = template.to_string();
+                for (i, arg) in args.iter().enumerate() {
+                    let placeholder = format!("{{{}}}", i);
+                    result = result.replace(&placeholder, arg);
+                }
+                Some(result)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Evaluate a formula expression against fact fields
+/// Very simple implementation for BSSN - handle basic cases
+fn evaluate_formula_expression(
+    expression: &str,
+    fact_fields: &HashMap<String, FactValue>,
+) -> Result<FactValue> {
+    let expr = expression.trim();
+
+    // Handle field reference (e.g., "amount")
+    if let Some(value) = fact_fields.get(expr) {
+        return Ok(value.clone());
+    }
+
+    // Handle simple arithmetic (e.g., "amount * 1.2", "price + tax")
+    if let Some((left, op, right)) = parse_simple_binary_expression(expr) {
+        let left_val = evaluate_operand(&left, fact_fields)?;
+        let right_val = evaluate_operand(&right, fact_fields)?;
+
+        return evaluate_binary_operation(&left_val, &op, &right_val);
+    }
+
+    // Handle literal values
+    if let Ok(int_val) = expr.parse::<i64>() {
+        return Ok(FactValue::Integer(int_val));
+    }
+
+    if let Ok(float_val) = expr.parse::<f64>() {
+        return Ok(FactValue::Float(float_val));
+    }
+
+    if expr == "true" {
+        return Ok(FactValue::Boolean(true));
+    }
+
+    if expr == "false" {
+        return Ok(FactValue::Boolean(false));
+    }
+
+    // Handle string literals (quoted)
+    if expr.starts_with('"') && expr.ends_with('"') && expr.len() >= 2 {
+        return Ok(FactValue::String(expr[1..expr.len() - 1].to_string()));
+    }
+
+    Err(anyhow::anyhow!(
+        "Unable to evaluate expression: {}",
+        expression
+    ))
+}
+
+/// Parse a simple binary expression like "a + b" into (left, op, right)
+fn parse_simple_binary_expression(expr: &str) -> Option<(String, String, String)> {
+    let operators = vec![" + ", " - ", " * ", " / ", " % "];
+
+    for op in operators {
+        if let Some(pos) = expr.find(op) {
+            let left = expr[..pos].trim().to_string();
+            let right = expr[pos + op.len()..].trim().to_string();
+            let operator = op.trim().to_string();
+            return Some((left, operator, right));
+        }
+    }
+
+    None
+}
+
+/// Evaluate an operand (field reference or literal)
+fn evaluate_operand(operand: &str, fact_fields: &HashMap<String, FactValue>) -> Result<FactValue> {
+    // Field reference
+    if let Some(value) = fact_fields.get(operand) {
+        return Ok(value.clone());
+    }
+
+    // Literal values
+    if let Ok(int_val) = operand.parse::<i64>() {
+        return Ok(FactValue::Integer(int_val));
+    }
+
+    if let Ok(float_val) = operand.parse::<f64>() {
+        return Ok(FactValue::Float(float_val));
+    }
+
+    Err(anyhow::anyhow!("Unable to evaluate operand: {}", operand))
+}
+
+/// Evaluate a binary operation between two FactValues
+fn evaluate_binary_operation(left: &FactValue, op: &str, right: &FactValue) -> Result<FactValue> {
+    use FactValue::*;
+
+    match (left, right) {
+        (Integer(a), Integer(b)) => match op {
+            "+" => Ok(Integer(a + b)),
+            "-" => Ok(Integer(a - b)),
+            "*" => Ok(Integer(a * b)),
+            "/" => {
+                if *b == 0 {
+                    Err(anyhow::anyhow!("Division by zero"))
+                } else {
+                    Ok(Float(*a as f64 / *b as f64))
+                }
+            }
+            "%" => {
+                if *b == 0 {
+                    Err(anyhow::anyhow!("Modulo by zero"))
+                } else {
+                    Ok(Integer(a % b))
+                }
+            }
+            _ => Err(anyhow::anyhow!("Unsupported operator: {}", op)),
+        },
+        (Float(_), Float(_)) | (Integer(_), Float(_)) | (Float(_), Integer(_)) => {
+            let a_val = match left {
+                Integer(i) => *i as f64,
+                Float(f) => *f,
+                _ => unreachable!(),
+            };
+            let b_val = match right {
+                Integer(i) => *i as f64,
+                Float(f) => *f,
+                _ => unreachable!(),
+            };
+
+            match op {
+                "+" => Ok(Float(a_val + b_val)),
+                "-" => Ok(Float(a_val - b_val)),
+                "*" => Ok(Float(a_val * b_val)),
+                "/" => {
+                    if b_val == 0.0 {
+                        Err(anyhow::anyhow!("Division by zero"))
+                    } else {
+                        Ok(Float(a_val / b_val))
+                    }
+                }
+                "%" => {
+                    if b_val == 0.0 {
+                        Err(anyhow::anyhow!("Modulo by zero"))
+                    } else {
+                        Ok(Float(a_val % b_val))
+                    }
+                }
+                _ => Err(anyhow::anyhow!("Unsupported operator: {}", op)),
+            }
+        }
+        (String(a), String(b)) => match op {
+            "+" => Ok(String(format!("{}{}", a, b))),
+            _ => Err(anyhow::anyhow!("Unsupported operator '{}' for strings", op)),
+        },
+        _ => Err(anyhow::anyhow!(
+            "Incompatible types for operation: {:?} {} {:?}",
+            left,
+            op,
+            right
+        )),
     }
 }

@@ -1,0 +1,4 @@
+{
+  "endpoint": "/health",
+  "method": "GET"
+}

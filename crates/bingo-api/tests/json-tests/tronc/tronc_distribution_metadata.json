@@ -1,0 +1,14 @@
+{
+  "test_name": "TRONC Distribution",
+  "description": "Validates a complete, multi-step TRONC distribution scenario involving weighted aggregation and proportional allocation.",
+  "category": "tronc",
+  "tags": [
+    "tronc",
+    "weighted_sum_aggregator",
+    "proportional_allocator",
+    "deduct_percentage",
+    "fact_lookup"
+  ],
+  "author": "test-framework",
+  "timeout_ms": 5000
+}
