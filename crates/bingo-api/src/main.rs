@@ -2,19 +2,13 @@
 #![allow(missing_docs)]
 
 use std::env;
-use tracing::{error, info};
+use tonic::transport::Server;
+use tracing::info;
 
-/// Helper to read an environment variable and parse a `u16` with a fallback.
-fn read_env_u16(var: &str, default: u16) -> anyhow::Result<u16> {
-    match env::var(var) {
-        Ok(val_str) => match val_str.parse::<u16>() {
-            Ok(v) => Ok(v),
-            Err(e) => anyhow::bail!("Invalid value for {}: {} ({})", var, val_str, e),
-        },
-        Err(env::VarError::NotPresent) => Ok(default),
-        Err(e) => anyhow::bail!("Failed to read env var {}: {}", var, e),
-    }
-}
+use bingo_api::AppState;
+use bingo_api::generated::rules_engine_service_server::RulesEngineServiceServer;
+use bingo_api::grpc::service::RulesEngineServiceImpl;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -25,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     info!(
         version = "0.1.0",
         edition = "2024",
-        "Starting Bingo RETE Rules Engine"
+        "Starting Bingo RETE Rules Engine (gRPC)"
     );
 
     // Modern command line argument handling
@@ -41,61 +35,60 @@ async fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             _ => {
-                eprintln!("Unknown command: {}", cmd);
+                eprintln!("Unknown command: {cmd}");
                 print_help();
                 return Ok(());
             }
         }
     }
 
-    // Start web server with environment-based configuration
-    start_server().await
+    // Start gRPC server
+    start_grpc_server().await
 }
 
 async fn explain_command() -> anyhow::Result<()> {
-    println!("Bingo RETE Rules Engine - Explain Mode");
+    println!("Bingo RETE Rules Engine - gRPC Mode");
     println!("This engine processes facts through a RETE network for efficient rule evaluation.");
     println!("\nFeatures:");
-    println!("  - High-performance RETE algorithm with modern optimizations");
-    println!("  - Support for 3M+ facts with sub-second processing");
-    println!("  - Hybrid rules: Built-in + JSON API + Calculator DSL");
-    println!("  - Generic business rule processing");
+    println!("  - High-performance RETE algorithm with streaming gRPC interface");
+    println!("  - Support for 3M+ facts with O(1) memory usage");
+    println!("  - Two-phase processing: compile rules, then stream facts");
+    println!("  - Concurrent client support with session isolation");
     println!("  - Built with Rust 2024 edition");
     Ok(())
 }
 
 fn print_help() {
-    println!("Bingo RETE Rules Engine v0.1.0");
+    println!("Bingo RETE Rules Engine v0.1.0 (gRPC)");
     println!("Usage: bingo [COMMAND]");
     println!();
     println!("Commands:");
     println!("  explain    Show explanation of the rules engine");
     println!("  --help     Show this help message");
     println!();
-    println!("If no command is provided, starts the web server.");
+    println!("If no command is provided, starts the gRPC server.");
 }
 
-async fn start_server() -> anyhow::Result<()> {
-    // Environment-based configuration
-    let host = env::var("BINGO_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = match read_env_u16("BINGO_PORT", 3000) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Invalid BINGO_PORT env var: {} – falling back to 3000", e);
-            3000
-        }
-    };
+async fn start_grpc_server() -> anyhow::Result<()> {
+    // Environment-based configuration for gRPC
+    let grpc_addr = env::var("GRPC_LISTEN_ADDRESS").unwrap_or_else(|_| "0.0.0.0:50051".to_string());
 
-    info!(?host, ?port, "Configuring web server");
+    info!(?grpc_addr, "Configuring gRPC server");
 
-    let app = bingo_api::create_app().await?;
-    let addr = format!("{}:{}", host, port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    // Initialize application state
+    let app_state = AppState::new().await?;
 
-    println!("🚀 Bingo RETE server starting on {}", addr);
-    info!("Web server started successfully");
+    // Create gRPC service
+    let grpc_service = RulesEngineServiceImpl::new(Arc::new(app_state));
 
-    axum::serve(listener, app).await?;
+    let server = Server::builder()
+        .add_service(RulesEngineServiceServer::new(grpc_service))
+        .serve(grpc_addr.parse()?);
+
+    println!("🚀 Bingo RETE gRPC server starting on {grpc_addr}");
+    info!("gRPC server started successfully");
+
+    server.await?;
 
     // Gracefully shutdown tracing
     bingo_api::tracing_setup::shutdown_tracing();

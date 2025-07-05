@@ -32,7 +32,7 @@ fn create_user_fact(id: u64, name: &str, balance: f64, score: i64) -> Fact {
 
     Fact {
         id,
-        external_id: Some(format!("user-{}", id)),
+        external_id: Some(format!("user-{id}")),
         timestamp: Utc::now(),
         data: FactData { fields },
     }
@@ -102,8 +102,7 @@ fn test_update_fact_action() {
 
     for (fact_id, updated_fields) in update_results {
         println!(
-            "📊 Updated Fact ID: {}, Fields: {:?}",
-            fact_id, updated_fields
+            "📊 Updated Fact ID: {fact_id}, Fields: {updated_fields:?}"
         );
         assert_eq!(*fact_id, 1); // Alice's user_id
         assert!(updated_fields.contains(&"balance".to_string()));
@@ -163,7 +162,7 @@ fn test_delete_fact_action() {
     assert!(!delete_results.is_empty(), "Should have DeleteFact results");
 
     for fact_id in delete_results {
-        println!("📊 Deleted Fact ID: {}", fact_id);
+        println!("📊 Deleted Fact ID: {fact_id}");
         assert_eq!(*fact_id, 2); // Bob's user_id
     }
 
@@ -249,8 +248,7 @@ fn test_increment_field_action() {
 
     for (fact_id, field, old_value, new_value) in increment_results {
         println!(
-            "📊 Incremented Fact ID: {}, Field: {}, Old: {:?}, New: {:?}",
-            fact_id, field, old_value, new_value
+            "📊 Incremented Fact ID: {fact_id}, Field: {field}, Old: {old_value:?}, New: {new_value:?}"
         );
 
         match field.as_str() {
@@ -338,8 +336,7 @@ fn test_append_to_array_action() {
 
     for (fact_id, field, appended_value, new_length) in append_results {
         println!(
-            "📊 Appended to Fact ID: {}, Field: {}, Value: {:?}, New Length: {}",
-            fact_id, field, appended_value, new_length
+            "📊 Appended to Fact ID: {fact_id}, Field: {field}, Value: {appended_value:?}, New Length: {new_length}"
         );
         assert_eq!(*fact_id, 3); // Charlie's fact
         assert_eq!(field, "tags");
@@ -424,8 +421,7 @@ fn test_send_notification_action() {
 
     for (recipient, notification_type, subject) in notification_results {
         println!(
-            "📊 Notification sent to: {}, Type: {:?}, Subject: {}",
-            recipient, notification_type, subject
+            "📊 Notification sent to: {recipient}, Type: {notification_type:?}, Subject: {subject}"
         );
         assert_eq!(recipient, "alice@example.com");
         assert_eq!(notification_type, &NotificationType::Email);
@@ -512,7 +508,7 @@ fn test_error_handling_for_action_types() {
     );
 
     for error_message in error_results {
-        println!("⚠️  Error handled: {}", error_message);
+        println!("⚠️  Error handled: {error_message}");
         // Verify specific error patterns
         assert!(
             error_message.contains("UpdateFact failed")

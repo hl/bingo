@@ -103,10 +103,7 @@ fn test_update_fact_action() {
 
     if !fact_updated_results.is_empty() {
         for (fact_id, updated_fields) in fact_updated_results {
-            println!(
-                "✏️ Fact updated: fact_id={}, fields={:?}",
-                fact_id, updated_fields
-            );
+            println!("✏️ Fact updated: fact_id={fact_id}, fields={updated_fields:?}");
             assert_eq!(*fact_id, 1, "Should update fact with ID 1");
             assert!(
                 updated_fields.contains(&"status".to_string()),
@@ -133,7 +130,7 @@ fn test_update_fact_action() {
             .collect();
 
         for message in log_results {
-            println!("📝 Log result: {}", message);
+            println!("📝 Log result: {message}");
         }
 
         println!("⚠️ No FactUpdated results found, but rule executed");
@@ -222,7 +219,7 @@ fn test_delete_fact_action() {
 
     if !fact_deleted_results.is_empty() {
         for fact_id in fact_deleted_results {
-            println!("🗑️ Fact deleted: fact_id={}", fact_id);
+            println!("🗑️ Fact deleted: fact_id={fact_id}");
             assert_eq!(*fact_id, 3, "Should delete fact with ID 3");
         }
         println!("✅ DeleteFact action test passed");
@@ -241,7 +238,7 @@ fn test_delete_fact_action() {
             .collect();
 
         for message in log_results {
-            println!("📝 Log result: {}", message);
+            println!("📝 Log result: {message}");
         }
 
         println!("⚠️ No FactDeleted results found, but rule executed");

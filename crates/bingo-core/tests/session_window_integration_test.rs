@@ -71,7 +71,7 @@ fn create_fact_with_timestamp(
 
     Fact {
         id,
-        external_id: Some(format!("event-{}", id)),
+        external_id: Some(format!("event-{id}")),
         timestamp,
         data: FactData { fields },
     }
@@ -140,7 +140,7 @@ fn test_stream_condition_with_session_windows() {
     assert!(log_results.len() >= 2, "Should have at least 2 log results");
 
     for message in log_results {
-        println!("📊 Session detected: {}", message);
+        println!("📊 Session detected: {message}");
         assert!(message.contains("Session with >2 events detected"));
     }
 
@@ -208,7 +208,7 @@ fn test_aggregation_condition_with_session_windows() {
     assert!(log_results.len() >= 2, "Should have at least 2 log results");
 
     for message in log_results {
-        println!("📊 Session aggregation: {}", message);
+        println!("📊 Session aggregation: {message}");
         assert!(message.contains("Session sum >= 3 detected"));
     }
 
@@ -304,7 +304,7 @@ fn test_session_window_gap_timeout_behavior() {
     assert!(log_results.len() >= 2, "Should have at least 2 log results");
 
     for message in log_results {
-        println!("📊 Strict session: {}", message);
+        println!("📊 Strict session: {message}");
         assert!(message.contains("Strict session detected"));
     }
 
@@ -472,7 +472,7 @@ fn test_multiple_users_session_windows() {
     assert!(log_results.len() >= 2, "Should have at least 2 log results");
 
     for message in log_results {
-        println!("📊 Multi-user session: {}", message);
+        println!("📊 Multi-user session: {message}");
         assert!(message.contains("User session with >=2 events"));
     }
 

@@ -38,7 +38,20 @@
       "Bash(cargo:*)",
       "Bash(RUST_BACKTRACE=1 cargo test --package bingo-api --test optimization_test test_ruleset_registration_and_caching -- --nocapture)",
       "Bash(RUST_BACKTRACE=1 cargo test --package bingo-api --test streaming_test test_memory_safety_override -- --nocapture)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(cloc:*)",
+      "mcp__zen__challenge",
+      "Bash(rustup toolchain install:*)",
+      "Bash(rustup default:*)",
+      "Bash(git commit:*)",
+      "Bash(mkdir:*)",
+      "Bash(brew install:*)",
+      "Bash(timeout 5s cargo run:*)",
+      "Bash(true)",
+      "Bash(chmod:*)",
+      "Bash(mv:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }

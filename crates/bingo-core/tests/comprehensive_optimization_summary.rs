@@ -26,7 +26,7 @@ fn create_comprehensive_test_rules(count: usize) -> Vec<Rule> {
         let rule = match i % 6 {
             0 => Rule {
                 id: i as u64 + 3000,
-                name: format!("Employee Threshold Validation {}", i),
+                name: format!("Employee Threshold Validation {i}"),
                 conditions: vec![Condition::Simple {
                     field: "employee_type".to_string(),
                     operator: Operator::Equal,
@@ -46,7 +46,7 @@ fn create_comprehensive_test_rules(count: usize) -> Vec<Rule> {
             },
             1 => Rule {
                 id: i as u64 + 3000,
-                name: format!("Salary Limit Validation {}", i),
+                name: format!("Salary Limit Validation {i}"),
                 conditions: vec![Condition::Simple {
                     field: "employment_status".to_string(),
                     operator: Operator::Equal,
@@ -73,7 +73,7 @@ fn create_comprehensive_test_rules(count: usize) -> Vec<Rule> {
             },
             2 => Rule {
                 id: i as u64 + 3000,
-                name: format!("Hours Compliance Check {}", i),
+                name: format!("Hours Compliance Check {i}"),
                 conditions: vec![Condition::Simple {
                     field: "hours_worked".to_string(),
                     operator: Operator::GreaterThan,
@@ -93,7 +93,7 @@ fn create_comprehensive_test_rules(count: usize) -> Vec<Rule> {
             },
             3 => Rule {
                 id: i as u64 + 3000,
-                name: format!("Experience Assessment {}", i),
+                name: format!("Experience Assessment {i}"),
                 conditions: vec![Condition::Simple {
                     field: "years_experience".to_string(),
                     operator: Operator::GreaterThan,
@@ -108,14 +108,14 @@ fn create_comprehensive_test_rules(count: usize) -> Vec<Rule> {
                     },
                     Action {
                         action_type: ActionType::Log {
-                            message: format!("Experience assessment completed for rule {}", i),
+                            message: format!("Experience assessment completed for rule {i}"),
                         },
                     },
                 ],
             },
             4 => Rule {
                 id: i as u64 + 3000,
-                name: format!("Multi-Action Validation {}", i),
+                name: format!("Multi-Action Validation {i}"),
                 conditions: vec![Condition::Simple {
                     field: "active".to_string(),
                     operator: Operator::Equal,
@@ -145,7 +145,7 @@ fn create_comprehensive_test_rules(count: usize) -> Vec<Rule> {
             },
             5 => Rule {
                 id: i as u64 + 3000,
-                name: format!("Complex Business Logic {}", i),
+                name: format!("Complex Business Logic {i}"),
                 conditions: vec![Condition::Simple {
                     field: "department".to_string(),
                     operator: Operator::Equal,
@@ -307,7 +307,7 @@ fn test_comprehensive_optimization_showcase() {
         engine.get_action_result_pool_stats();
 
     println!("✅ PERFORMANCE RESULTS:");
-    println!("⏱️  Processing Time: {:?}", elapsed);
+    println!("⏱️  Processing Time: {elapsed:?}");
     println!("📊 Results Generated: {}", results.len());
     println!(
         "🧠 Memory Usage: {} -> {}, Delta: {} bytes ({:.2} GB)",
@@ -320,8 +320,7 @@ fn test_comprehensive_optimization_showcase() {
     println!("\n🔧 OPTIMIZATION EFFECTIVENESS:");
 
     println!(
-        "ActionResult Pool: {} hits, {} misses, {} pooled, {:.1}% hit rate",
-        action_hits, action_misses, action_pool_size, action_hit_rate
+        "ActionResult Pool: {action_hits} hits, {action_misses} misses, {action_pool_size} pooled, {action_hit_rate:.1}% hit rate"
     );
 
     // Calculate comprehensive metrics
@@ -329,8 +328,8 @@ fn test_comprehensive_optimization_showcase() {
     let memory_gb = memory_delta as f64 / (1024.0 * 1024.0 * 1024.0);
 
     println!("\n🎯 KEY METRICS:");
-    println!("📈 Processing Rate: {:.0} facts/sec", facts_per_sec);
-    println!("💾 Memory Efficiency: {:.2} GB total", memory_gb);
+    println!("📈 Processing Rate: {facts_per_sec:.0} facts/sec");
+    println!("💾 Memory Efficiency: {memory_gb:.2} GB total");
 
     println!(
         "🏆 Performance vs Target: {}x faster than 30s target",

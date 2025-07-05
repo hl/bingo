@@ -1,0 +1,8 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
+     Running `/Users/hl/Projects/private/bingo/target/debug/bingo`
+[2m2025-07-05T17:02:31.118639Z[0m [32m INFO[0m Tracing initialized for gRPC service [3mservice_name[0m[2m=[0mbingo-grpc-api [3mservice_version[0m[2m=[0m0.1.0 [3menvironment[0m[2m=[0mdevelopment
+[2m2025-07-05T17:02:31.118924Z[0m [32m INFO[0m Starting Bingo RETE Rules Engine (gRPC) [3mversion[0m[2m=[0m"0.1.0" [3medition[0m[2m=[0m"2024"
+[2m2025-07-05T17:02:31.119040Z[0m [32m INFO[0m Configuring gRPC server [3mgrpc_addr[0m[2m=[0m"0.0.0.0:50051"
+[2m2025-07-05T17:02:31.119092Z[0m [32m INFO[0m Initializing gRPC application state
+🚀 Bingo RETE gRPC server starting on 0.0.0.0:50051
+[2m2025-07-05T17:02:31.120335Z[0m [32m INFO[0m gRPC server started successfully

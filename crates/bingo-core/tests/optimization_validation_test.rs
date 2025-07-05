@@ -18,7 +18,7 @@ fn create_optimization_test_rules(count: usize) -> Vec<Rule> {
     for i in 0..count {
         let rule = Rule {
             id: i as u64 + 2000,
-            name: format!("Optimization Test Rule {}", i),
+            name: format!("Optimization Test Rule {i}"),
             conditions: vec![Condition::Simple {
                 field: "employee_type".to_string(),
                 operator: Operator::Equal,
@@ -124,8 +124,7 @@ fn test_optimization_effectiveness() {
     println!("\n📊 OPTIMIZATION STATISTICS:");
 
     println!(
-        "ActionResult Pool: {} hits, {} misses, {} pooled, {:.1}% hit rate",
-        action_hits, action_misses, action_pool_size, action_hit_rate
+        "ActionResult Pool: {action_hits} hits, {action_misses} misses, {action_pool_size} pooled, {action_hit_rate:.1}% hit rate"
     );
 
     // Validate performance optimizations are working
@@ -149,8 +148,7 @@ fn test_optimization_effectiveness() {
     let memory_mb = memory_delta as f64 / (1024.0 * 1024.0);
 
     println!(
-        "📈 Performance: {:.0} facts/sec | {:.1} MB memory",
-        facts_per_sec, memory_mb
+        "📈 Performance: {facts_per_sec:.0} facts/sec | {memory_mb:.1} MB memory"
     );
 }
 
@@ -219,7 +217,6 @@ fn test_cache_scaling_effectiveness() {
     let memory_mb = memory_delta as f64 / (1024.0 * 1024.0);
 
     println!(
-        "📈 Scaling Performance: {:.0} facts/sec | {:.1} MB memory",
-        facts_per_sec, memory_mb
+        "📈 Scaling Performance: {facts_per_sec:.0} facts/sec | {memory_mb:.1} MB memory"
     );
 }

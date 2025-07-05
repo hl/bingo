@@ -1,0 +1,250 @@
+syntax = "proto3";
+
+package rules_engine.v1;
+
+import "google/protobuf/empty.proto";
+
+// Core data types
+message Fact {
+  string id = 1;
+  map<string, Value> data = 2;
+  int64 created_at = 3; // Unix timestamp
+}
+
+message Value {
+  oneof value {
+    string string_value = 1;
+    double number_value = 2;
+    bool bool_value = 3;
+    int64 int_value = 4;
+  }
+}
+
+message Rule {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated Condition conditions = 4;
+  repeated Action actions = 5;
+  int32 priority = 6;
+  bool enabled = 7;
+  repeated string tags = 8;
+  int64 created_at = 9;
+  int64 updated_at = 10;
+}
+
+message Condition {
+  oneof condition_type {
+    SimpleCondition simple = 1;
+    ComplexCondition complex = 2;
+  }
+}
+
+message SimpleCondition {
+  string field = 1;
+  SimpleOperator operator = 2;
+  Value value = 3;
+}
+
+enum SimpleOperator {
+  SIMPLE_OPERATOR_EQUAL = 0;
+  SIMPLE_OPERATOR_NOT_EQUAL = 1;
+  SIMPLE_OPERATOR_GREATER_THAN = 2;
+  SIMPLE_OPERATOR_LESS_THAN = 3;
+  SIMPLE_OPERATOR_GREATER_THAN_OR_EQUAL = 4;
+  SIMPLE_OPERATOR_LESS_THAN_OR_EQUAL = 5;
+  SIMPLE_OPERATOR_CONTAINS = 6;
+  SIMPLE_OPERATOR_STARTS_WITH = 7;
+  SIMPLE_OPERATOR_ENDS_WITH = 8;
+}
+
+message ComplexCondition {
+  LogicalOperator operator = 1;
+  repeated Condition conditions = 2;
+}
+
+enum LogicalOperator {
+  LOGICAL_OPERATOR_AND = 0;
+  LOGICAL_OPERATOR_OR = 1;
+  LOGICAL_OPERATOR_NOT = 2;
+}
+
+message Action {
+  oneof action_type {
+    CreateFactAction create_fact = 1;
+    CallCalculatorAction call_calculator = 2;
+    FormulaAction formula = 3;
+  }
+}
+
+message CreateFactAction {
+  map<string, Value> fields = 1;
+}
+
+message CallCalculatorAction {
+  string calculator_name = 1;
+  map<string, string> input_mapping = 2;
+  string output_field = 3;
+}
+
+message FormulaAction {
+  string formula = 1;
+  map<string, string> variable_mapping = 2;
+  string output_field = 3;
+}
+
+// Request/Response messages
+message ProcessFactsRequest {
+  repeated Fact facts = 1;
+  repeated Rule rules = 2;
+  string request_id = 3;
+  ProcessingOptions options = 4;
+}
+
+message ProcessingOptions {
+  bool enable_incremental = 1;
+  int32 batch_size = 2;
+  int32 memory_limit_mb = 3;
+  repeated string result_filters = 4; // Only return results matching these patterns
+}
+
+message RuleExecutionResult {
+  string rule_id = 1;
+  string rule_name = 2;
+  Fact matched_fact = 3;
+  repeated ActionResult action_results = 4;
+  int64 execution_time_ns = 5;
+  map<string, string> metadata = 6;
+}
+
+message ActionResult {
+  string action_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  oneof result {
+    Fact created_fact = 4;
+    Value calculated_value = 5;
+    string formula_result = 6;
+  }
+}
+
+message ProcessingStatus {
+  string request_id = 1;
+  int32 facts_processed = 2;
+  int32 rules_executed = 3;
+  int32 results_generated = 4;
+  int64 processing_time_ms = 5;
+  bool completed = 6;
+  string error_message = 7;
+}
+
+message RegisterRulesetRequest {
+  string ruleset_id = 1;
+  repeated Rule rules = 2;
+}
+
+message RegisterRulesetResponse {
+  string ruleset_id = 1;
+  string ruleset_hash = 2;
+  int32 rules_compiled = 3;
+  bool success = 4;
+  string error_message = 5;
+}
+
+message EvaluateRulesetRequest {
+  string ruleset_id = 1;
+  repeated Fact facts = 2;
+  string request_id = 3;
+  ProcessingOptions options = 4;
+}
+
+// Two-phase processing messages
+message CompileRulesRequest {
+  repeated Rule rules = 1;
+  string session_id = 2; // Links compilation to subsequent fact processing
+  ProcessingOptions options = 3;
+}
+
+message CompileRulesResponse {
+  string session_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  int32 rules_compiled = 4;
+  int32 network_nodes_created = 5;
+  int64 compilation_time_ms = 6;
+  string engine_version = 7;
+}
+
+message ProcessFactsStreamRequest {
+  oneof request {
+    string session_id = 1;     // Reference to compiled rules session
+    Fact fact_batch = 2;       // Individual fact or batch of facts
+    ProcessingControl control = 3; // Control messages (pause, resume, stop)
+  }
+}
+
+message ProcessingControl {
+  enum ControlType {
+    CONTROL_TYPE_PAUSE = 0;
+    CONTROL_TYPE_RESUME = 1;
+    CONTROL_TYPE_STOP = 2;
+    CONTROL_TYPE_FLUSH = 3;    // Force processing of buffered facts
+  }
+  ControlType type = 1;
+  string reason = 2;
+}
+
+// Single-call alternative with rules validation
+message ProcessWithRulesRequest {
+  repeated Rule rules = 1;
+  repeated Fact facts = 2;
+  string request_id = 3;
+  ProcessingOptions options = 4;
+  bool validate_rules_only = 5; // If true, only validate rules without processing facts
+}
+
+message ProcessingResponse {
+  oneof response {
+    CompileRulesResponse rules_compiled = 1;  // First response: rules compilation result
+    RuleExecutionResult execution_result = 2; // Subsequent responses: fact processing results
+    ProcessingStatus status_update = 3;       // Status updates during processing
+    ProcessingComplete completion = 4;        // Final response
+  }
+}
+
+message ProcessingComplete {
+  string request_id = 1;
+  int32 total_facts_processed = 2;
+  int32 total_results_generated = 3;
+  int64 total_processing_time_ms = 4;
+  bool success = 5;
+  string error_message = 6;
+}
+
+// Main service definition
+service RulesEngineService {
+  // Two-phase processing: compile rules first, then stream facts
+  rpc CompileRules(CompileRulesRequest) returns (CompileRulesResponse);
+  rpc ProcessFactsStream(stream ProcessFactsStreamRequest) returns (stream RuleExecutionResult);
+  
+  // Alternative: single-call with rules validation before fact streaming
+  rpc ProcessWithRulesStream(ProcessWithRulesRequest) returns (stream ProcessingResponse);
+  
+  // Batch processing with status updates
+  rpc ProcessFactsBatch(ProcessFactsRequest) returns (stream ProcessingStatus);
+  
+  // Cached ruleset processing (streaming)
+  rpc EvaluateRulesetStream(EvaluateRulesetRequest) returns (stream RuleExecutionResult);
+  
+  // Ruleset management
+  rpc RegisterRuleset(RegisterRulesetRequest) returns (RegisterRulesetResponse);
+  
+  // Health check
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthResponse);
+}
+
+message HealthResponse {
+  string status = 1;
+  string version = 2;
+  int64 uptime_seconds = 3;
+}

@@ -299,8 +299,7 @@ fn test_multi_condition_performance() {
 
     let facts_per_sec = 10_000.0 / elapsed.as_secs_f64();
     println!(
-        "📈 Performance: {:.0} facts/sec with multi-condition rules",
-        facts_per_sec
+        "📈 Performance: {facts_per_sec:.0} facts/sec with multi-condition rules"
     );
 
     println!("🎉 Multi-condition rule performance validated!");

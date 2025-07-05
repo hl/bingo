@@ -31,7 +31,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
         let rule = match i % 8 {
             0 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Overtime Compliance Check {}", i),
+                name: format!("Overtime Compliance Check {i}"),
                 conditions: vec![Condition::Simple {
                     field: "hours_worked".to_string(),
                     operator: Operator::GreaterThan,
@@ -51,7 +51,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             1 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Performance Threshold Check {}", i),
+                name: format!("Performance Threshold Check {i}"),
                 conditions: vec![Condition::Simple {
                     field: "performance_score".to_string(),
                     operator: Operator::GreaterThan,
@@ -71,7 +71,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             2 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Sales Limit Validation {}", i),
+                name: format!("Sales Limit Validation {i}"),
                 conditions: vec![Condition::Simple {
                     field: "sales_role".to_string(),
                     operator: Operator::Equal,
@@ -95,7 +95,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             3 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Experience Threshold {}", i),
+                name: format!("Experience Threshold {i}"),
                 conditions: vec![Condition::Simple {
                     field: "years_experience".to_string(),
                     operator: Operator::GreaterThan,
@@ -115,7 +115,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             4 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Shift Hours Calculation {}", i),
+                name: format!("Shift Hours Calculation {i}"),
                 conditions: vec![Condition::Simple {
                     field: "shift_start".to_string(),
                     operator: Operator::NotEqual,
@@ -130,7 +130,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             5 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Time Difference Analysis {}", i),
+                name: format!("Time Difference Analysis {i}"),
                 conditions: vec![Condition::Simple {
                     field: "schedule_start".to_string(),
                     operator: Operator::NotEqual,
@@ -145,7 +145,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             6 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Weekly Hours Limit {}", i),
+                name: format!("Weekly Hours Limit {i}"),
                 conditions: vec![Condition::Simple {
                     field: "employment_status".to_string(),
                     operator: Operator::Equal,
@@ -169,7 +169,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             7 => Rule {
                 id: i as u64 + 1000,
-                name: format!("Salary Range Check {}", i),
+                name: format!("Salary Range Check {i}"),
                 conditions: vec![Condition::Simple {
                     field: "base_salary".to_string(),
                     operator: Operator::GreaterThan,
@@ -189,7 +189,7 @@ fn create_calculation_rules(count: usize) -> Vec<Rule> {
             },
             _ => Rule {
                 id: i as u64 + 1000,
-                name: format!("Default Compliance Check {}", i),
+                name: format!("Default Compliance Check {i}"),
                 conditions: vec![Condition::Simple {
                     field: "active".to_string(),
                     operator: Operator::Equal,
@@ -224,7 +224,7 @@ fn create_employee_facts(count: usize) -> Vec<Fact> {
             fields.insert("employee_id".to_string(), FactValue::Integer(i as i64));
             fields.insert(
                 "first_name".to_string(),
-                FactValue::String(format!("Employee{}", i)),
+                FactValue::String(format!("Employee{i}")),
             );
             fields.insert(
                 "last_name".to_string(),
@@ -363,7 +363,7 @@ fn test_100k_facts_200_rules_performance() {
     );
 
     let stats = engine.get_stats();
-    println!("Engine stats: {:?}", stats);
+    println!("Engine stats: {stats:?}");
 
     // Performance targets for complex rule processing
     assert!(elapsed.as_secs() < 25, "Should complete within 25 seconds");
@@ -421,7 +421,7 @@ fn test_200k_facts_200_rules_performance() {
     );
 
     let stats = engine.get_stats();
-    println!("Engine stats: {:?}", stats);
+    println!("Engine stats: {stats:?}");
 
     // Performance targets for complex rule processing
     assert!(elapsed.as_secs() < 45, "Should complete within 45 seconds");
@@ -476,7 +476,7 @@ fn test_100k_facts_500_rules_performance() {
     );
 
     let stats = engine.get_stats();
-    println!("Engine stats: {:?}", stats);
+    println!("Engine stats: {stats:?}");
 
     // Performance targets for high rule complexity
     assert!(elapsed.as_secs() < 55, "Should complete within 55 seconds");
@@ -531,7 +531,7 @@ fn test_200k_facts_500_rules_performance() {
     );
 
     let stats = engine.get_stats();
-    println!("Engine stats: {:?}", stats);
+    println!("Engine stats: {stats:?}");
 
     // Performance targets for maximum complexity scenario
     assert!(

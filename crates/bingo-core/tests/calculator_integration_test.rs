@@ -39,7 +39,7 @@ fn create_fact(
 
     Fact {
         id,
-        external_id: Some(format!("fact-{}", id)),
+        external_id: Some(format!("fact-{id}")),
         timestamp: Utc::now(),
         data: FactData { fields },
     }
@@ -109,8 +109,7 @@ fn test_threshold_check_calculator() {
 
     for (calculator, result, output_field, parsed_value) in calc_results {
         println!(
-            "📊 Calculator: {}, Result: {}, Output Field: {}, Parsed: {:?}",
-            calculator, result, output_field, parsed_value
+            "📊 Calculator: {calculator}, Result: {result}, Output Field: {output_field}, Parsed: {parsed_value:?}"
         );
         assert_eq!(calculator, "threshold_check");
         assert_eq!(output_field, "overtime_check");
@@ -182,8 +181,7 @@ fn test_limit_validator_calculator() {
 
     for (calculator, result, output_field, parsed_value) in calc_results {
         println!(
-            "📊 Calculator: {}, Result: {}, Output Field: {}, Parsed: {:?}",
-            calculator, result, output_field, parsed_value
+            "📊 Calculator: {calculator}, Result: {result}, Output Field: {output_field}, Parsed: {parsed_value:?}"
         );
         assert_eq!(calculator, "limit_validator");
         assert_eq!(output_field, "hours_valid");
@@ -283,8 +281,7 @@ fn test_weighted_average_calculator() {
 
     for (calculator, result, output_field, parsed_value) in calc_results {
         println!(
-            "📊 Calculator: {}, Result: {}, Output Field: {}, Parsed: {:?}",
-            calculator, result, output_field, parsed_value
+            "📊 Calculator: {calculator}, Result: {result}, Output Field: {output_field}, Parsed: {parsed_value:?}"
         );
         assert_eq!(calculator, "weighted_average");
         assert_eq!(output_field, "weighted_avg");
@@ -294,9 +291,7 @@ fn test_weighted_average_calculator() {
         if let Ok(result_float) = result.parse::<f64>() {
             assert!(
                 (result_float - expected_avg).abs() < 0.01,
-                "Expected ~{}, got {}",
-                expected_avg,
-                result_float
+                "Expected ~{expected_avg}, got {result_float}"
             );
         }
     }
@@ -366,8 +361,7 @@ fn test_formula_evaluation() {
 
     for (result, output_field, parsed_value) in formula_results {
         println!(
-            "📊 Formula Result: {}, Output Field: {}, Parsed: {:?}",
-            result, output_field, parsed_value
+            "📊 Formula Result: {result}, Output Field: {output_field}, Parsed: {parsed_value:?}"
         );
         assert_eq!(output_field, "gross_pay");
 
@@ -376,9 +370,7 @@ fn test_formula_evaluation() {
         if let Ok(result_float) = result.parse::<f64>() {
             assert!(
                 (result_float - expected_pay).abs() < 0.01,
-                "Expected ~{}, got {}",
-                expected_pay,
-                result_float
+                "Expected ~{expected_pay}, got {result_float}"
             );
         }
     }
@@ -445,8 +437,7 @@ fn test_complex_formula_expressions() {
 
     for (result, output_field, parsed_value) in formula_results {
         println!(
-            "📊 Formula Result: {}, Output Field: {}, Parsed: {:?}",
-            result, output_field, parsed_value
+            "📊 Formula Result: {result}, Output Field: {output_field}, Parsed: {parsed_value:?}"
         );
         assert_eq!(output_field, "tax_amount");
 
@@ -455,9 +446,7 @@ fn test_complex_formula_expressions() {
         if let Ok(result_float) = result.parse::<f64>() {
             assert!(
                 (result_float - expected_tax).abs() < 0.01,
-                "Expected ~{}, got {}",
-                expected_tax,
-                result_float
+                "Expected ~{expected_tax}, got {result_float}"
             );
         }
     }
@@ -525,7 +514,7 @@ fn test_calculator_error_handling() {
     );
 
     for error_message in error_results {
-        println!("⚠️  Error handled: {}", error_message);
+        println!("⚠️  Error handled: {error_message}");
         assert!(error_message.contains("non_existent_calculator"));
         assert!(error_message.contains("not found"));
     }
@@ -591,7 +580,7 @@ fn test_formula_error_handling() {
     );
 
     for error_message in error_results {
-        println!("⚠️  Formula error handled: {}", error_message);
+        println!("⚠️  Formula error handled: {error_message}");
         assert!(error_message.contains("Formula"));
         assert!(error_message.contains("failed"));
     }

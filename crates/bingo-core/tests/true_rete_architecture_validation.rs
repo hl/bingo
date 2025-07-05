@@ -378,7 +378,7 @@ fn test_true_rete_performance_scaling() {
     assert!(memory_delta < 2_000_000_000, "Memory should stay under 2GB");
 
     let facts_per_sec = 25_000.0 / elapsed.as_secs_f64();
-    println!("\\n📈 SCALING PERFORMANCE: {:.0} facts/sec", facts_per_sec);
+    println!("\\n📈 SCALING PERFORMANCE: {facts_per_sec:.0} facts/sec");
 
     println!("🎉 TRUE RETE SCALING VALIDATED!");
 }

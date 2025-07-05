@@ -80,8 +80,7 @@ fn test_formula_action_basic_arithmetic() {
     if !field_set_results.is_empty() {
         for (fact_id, field, value) in field_set_results {
             println!(
-                "💰 Formula result: fact_id={}, field={}, value={:?}",
-                fact_id, field, value
+                "💰 Formula result: fact_id={fact_id}, field={field}, value={value:?}"
             );
             if field == "total_price" {
                 if let FactValue::Float(price) = value {
@@ -109,7 +108,7 @@ fn test_formula_action_basic_arithmetic() {
 
         if !log_results.is_empty() {
             for message in log_results {
-                println!("📝 Log result: {}", message);
+                println!("📝 Log result: {message}");
             }
         }
 

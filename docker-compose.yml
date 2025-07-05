@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  bingo-grpc:
+    build: .
+    ports:
+      - "50051:50051"
+    environment:
+      - RUST_LOG=info
+      - GRPC_LISTEN_ADDRESS=0.0.0.0:50051
+      - SERVICE_NAME=bingo-grpc-api
+      - SERVICE_VERSION=0.1.0
+      - BINGO_ENVIRONMENT=production
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      # For gRPC, we'll use grpc_health_probe
+      # Download: https://github.com/grpc-ecosystem/grpc-health-probe/releases
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=localhost:50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - bingo-network
+
+  # Envoy proxy for HTTP-to-gRPC translation (optional)
+  envoy:
+    image: envoyproxy/envoy:v1.28-latest
+    ports:
+      - "8080:8080"  # HTTP port for legacy clients
+      - "9901:9901"  # Envoy admin interface
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+    depends_on:
+      - bingo-grpc
+    restart: unless-stopped
+    networks:
+      - bingo-network
+
+  # Nginx for load balancing multiple gRPC instances (optional)
+  nginx-grpc-lb:
+    image: nginx:alpine
+    ports:
+      - "50052:50052"  # Load balanced gRPC port
+    volumes:
+      - ./nginx-grpc.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - bingo-grpc
+    restart: unless-stopped
+    networks:
+      - bingo-network
+
+volumes:
+  logs:
+
+networks:
+  bingo-network:
+    driver: bridge

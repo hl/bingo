@@ -101,7 +101,7 @@ fn test_standard_deviation_aggregation() {
 
     for message in log_results.iter().take(3) {
         // Show first 3 results
-        println!("📊 Standard deviation result: {}", message);
+        println!("📊 Standard deviation result: {message}");
         assert!(message.contains("High salary variance detected"));
     }
 
@@ -167,7 +167,7 @@ fn test_percentile_aggregation() {
     assert!(!log_results.is_empty(), "Should have log results");
 
     for message in log_results.iter().take(3) {
-        println!("📊 Percentile result: {}", message);
+        println!("📊 Percentile result: {message}");
         assert!(message.contains("High-performing department"));
     }
 
@@ -262,8 +262,8 @@ fn test_multiple_advanced_aggregations() {
     let threshold_results =
         log_results.iter().filter(|msg| msg.contains("threshold analysis")).count();
 
-    println!("📊 Distribution analysis results: {}", distribution_results);
-    println!("📊 Threshold analysis results: {}", threshold_results);
+    println!("📊 Distribution analysis results: {distribution_results}");
+    println!("📊 Threshold analysis results: {threshold_results}");
 
     assert!(
         distribution_results > 0,
@@ -339,7 +339,7 @@ fn test_advanced_aggregation_with_windowing() {
     assert!(!log_results.is_empty(), "Should have log results");
 
     for message in log_results.iter().take(3) {
-        println!("📊 Windowed result: {}", message);
+        println!("📊 Windowed result: {message}");
         assert!(message.contains("Windowed median analysis"));
     }
 
@@ -402,7 +402,7 @@ fn test_edge_cases_advanced_aggregations() {
     assert!(!log_results.is_empty(), "Should have log results");
 
     for message in log_results.iter().take(3) {
-        println!("📊 Edge case result: {}", message);
+        println!("📊 Edge case result: {message}");
         assert!(message.contains("99th percentile analysis"));
     }
 

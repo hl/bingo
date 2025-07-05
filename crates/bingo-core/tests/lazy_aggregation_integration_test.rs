@@ -42,7 +42,7 @@ fn create_fact(
 
     Fact {
         id,
-        external_id: Some(format!("fact-{}", id)),
+        external_id: Some(format!("fact-{id}")),
         timestamp: Utc::now(),
         data: FactData { fields },
     }
@@ -83,7 +83,7 @@ fn test_lazy_aggregation_basic_functionality() {
 
     // Get baseline lazy aggregation stats
     let baseline_stats = engine.get_lazy_aggregation_stats();
-    println!("📊 Baseline stats: {:?}", baseline_stats);
+    println!("📊 Baseline stats: {baseline_stats:?}");
 
     // Process facts
     let facts = create_test_facts();
@@ -93,7 +93,7 @@ fn test_lazy_aggregation_basic_functionality() {
 
     // Check lazy aggregation stats after processing
     let final_stats = engine.get_lazy_aggregation_stats();
-    println!("📈 Final stats: {:?}", final_stats);
+    println!("📈 Final stats: {final_stats:?}");
 
     // We expect the rule to fire for facts that trigger departments with high total spending
     // Sales: 100 + 200 + 150 = 450 (> 400) ✓
@@ -159,8 +159,8 @@ fn test_lazy_aggregation_caching() {
     let _results2 = engine.process_facts(facts).unwrap();
     let stats_after_second = engine.get_lazy_aggregation_stats();
 
-    println!("📊 Stats after first processing: {:?}", stats_after_first);
-    println!("📊 Stats after second processing: {:?}", stats_after_second);
+    println!("📊 Stats after first processing: {stats_after_first:?}");
+    println!("📊 Stats after second processing: {stats_after_second:?}");
 
     // Should have more aggregation reuses in second run
     assert!(
@@ -207,7 +207,7 @@ fn test_lazy_aggregation_early_termination() {
     let _results = engine.process_facts(facts).unwrap();
 
     let final_stats = engine.get_lazy_aggregation_stats();
-    println!("📊 Early termination stats: {:?}", final_stats);
+    println!("📊 Early termination stats: {final_stats:?}");
 
     // Note: Early termination statistics are tracked at the individual lazy aggregation level
     // The manager stats show overall aggregation creation/reuse patterns
@@ -258,7 +258,7 @@ fn test_lazy_aggregation_cache_invalidation() {
     let _results2 = engine.process_facts(more_facts).unwrap();
 
     let final_stats = engine.get_lazy_aggregation_stats();
-    println!("📊 Cache invalidation stats: {:?}", final_stats);
+    println!("📊 Cache invalidation stats: {final_stats:?}");
 
     // Should show cache invalidations
     assert!(
@@ -307,8 +307,8 @@ fn test_lazy_aggregation_memory_cleanup() {
 
     let stats_after_cleanup = engine.get_lazy_aggregation_stats();
 
-    println!("📊 Stats before cleanup: {:?}", stats_before_cleanup);
-    println!("📊 Stats after cleanup: {:?}", stats_after_cleanup);
+    println!("📊 Stats before cleanup: {stats_before_cleanup:?}");
+    println!("📊 Stats after cleanup: {stats_after_cleanup:?}");
 
     // After cleanup, aggregation counts should be reset (simple cleanup clears all)
     // This is expected behavior for the test cleanup implementation
@@ -373,8 +373,8 @@ fn test_lazy_aggregation_performance_comparison() {
 
     let final_stats = engine.get_lazy_aggregation_stats();
 
-    println!("⏱️  Processing time: {:?}", duration);
-    println!("📊 Lazy aggregation stats: {:?}", final_stats);
+    println!("⏱️  Processing time: {duration:?}");
+    println!("📊 Lazy aggregation stats: {final_stats:?}");
     println!(
         "📈 Memory pool efficiency: {:.1}%",
         engine.get_memory_pool_efficiency()
