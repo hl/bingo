@@ -90,9 +90,7 @@ fn test_serialization_performance_improvement() {
 
     // Calculate improvement
     let improvement_factor = naive_time.as_nanos() as f64 / optimized_time.as_nanos() as f64;
-    println!(
-        "🎯 Performance Improvement: {improvement_factor:.2}x faster"
-    );
+    println!("🎯 Performance Improvement: {improvement_factor:.2}x faster");
 
     // Validate that we got cache hits (indicating optimization is working)
     assert!(

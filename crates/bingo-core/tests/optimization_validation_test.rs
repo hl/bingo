@@ -147,9 +147,7 @@ fn test_optimization_effectiveness() {
     let facts_per_sec = 50_000.0 / elapsed.as_secs_f64();
     let memory_mb = memory_delta as f64 / (1024.0 * 1024.0);
 
-    println!(
-        "📈 Performance: {facts_per_sec:.0} facts/sec | {memory_mb:.1} MB memory"
-    );
+    println!("📈 Performance: {facts_per_sec:.0} facts/sec | {memory_mb:.1} MB memory");
 }
 
 #[test]
@@ -216,7 +214,5 @@ fn test_cache_scaling_effectiveness() {
     let facts_per_sec = 100_000.0 / elapsed.as_secs_f64();
     let memory_mb = memory_delta as f64 / (1024.0 * 1024.0);
 
-    println!(
-        "📈 Scaling Performance: {facts_per_sec:.0} facts/sec | {memory_mb:.1} MB memory"
-    );
+    println!("📈 Scaling Performance: {facts_per_sec:.0} facts/sec | {memory_mb:.1} MB memory");
 }

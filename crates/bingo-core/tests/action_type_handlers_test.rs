@@ -101,9 +101,7 @@ fn test_update_fact_action() {
     assert!(!update_results.is_empty(), "Should have UpdateFact results");
 
     for (fact_id, updated_fields) in update_results {
-        println!(
-            "📊 Updated Fact ID: {fact_id}, Fields: {updated_fields:?}"
-        );
+        println!("📊 Updated Fact ID: {fact_id}, Fields: {updated_fields:?}");
         assert_eq!(*fact_id, 1); // Alice's user_id
         assert!(updated_fields.contains(&"balance".to_string()));
         assert!(updated_fields.contains(&"status".to_string()));

@@ -280,9 +280,7 @@ fn test_multi_condition_performance() {
 
     let (start_stats, end_stats, memory_delta) = memory_tracker.finish().unwrap();
 
-    println!(
-        "✅ Processed 10K facts with 20 multi-condition rules in {elapsed:?}"
-    );
+    println!("✅ Processed 10K facts with 20 multi-condition rules in {elapsed:?}");
     println!("📊 Generated {} rule execution results", results.len());
     println!(
         "🧠 Memory usage: {} -> {}, Delta: {} bytes ({:.2} MB)",
@@ -298,9 +296,7 @@ fn test_multi_condition_performance() {
     assert!(results.len() > 100, "Should generate substantial results");
 
     let facts_per_sec = 10_000.0 / elapsed.as_secs_f64();
-    println!(
-        "📈 Performance: {facts_per_sec:.0} facts/sec with multi-condition rules"
-    );
+    println!("📈 Performance: {facts_per_sec:.0} facts/sec with multi-condition rules");
 
     println!("🎉 Multi-condition rule performance validated!");
 }
