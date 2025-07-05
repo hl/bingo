@@ -29,6 +29,11 @@ jobs:
         toolchain: "1.88.0"
         components: rustfmt, clippy
 
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+
     - name: Cache dependencies
       uses: actions/cache@v4
       with:
@@ -64,6 +69,11 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: "1.88.0"
+
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
 
     - name: Cache dependencies
       uses: actions/cache@v4
@@ -106,6 +116,11 @@ jobs:
       with:
         toolchain: "1.88.0"
 
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+
     - name: Cache dependencies
       uses: actions/cache@v4
       with:
@@ -147,6 +162,11 @@ jobs:
       with:
         toolchain: "1.88.0"
 
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+
     - name: Install cargo-audit
       run: cargo install cargo-audit
 
@@ -166,6 +186,11 @@ jobs:
       with:
         toolchain: "1.88.0"
         components: llvm-tools-preview
+
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
 
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
@@ -191,6 +216,11 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: "1.88.0"
+
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
 
     - name: Verify release build
       run: cargo build --release --verbose
