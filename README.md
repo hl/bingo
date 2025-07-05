@@ -107,8 +107,8 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo check --workspace && c
 
 ## 📚 Documentation
 
-- **[GEMINI.md](GEMINI.md)**: A development guide for AI assistants.
-- **[PRODUCTION_DEPLOYMENT_GUIDE.md](PRODUCTION_DEPLOYMENT_GUIDE.md)**: Instructions for deploying the engine to production.
-- **[PERFORMANCE_TESTS.md](PERFORMANCE_TESTS.md)**: A detailed guide to the performance test suite.
-- **docs/**: Contains examples for compliance and payroll engines.
-- **[specs/](specs/)**: Contains detailed technical specifications for the architecture, API, and RETE algorithm.
+- **[docs/](docs/)**: Complete documentation including API references, client setup guides, and performance analysis
+- **[docs/grpc-api.md](docs/grpc-api.md)**: Comprehensive gRPC API documentation
+- **[docs/client-setup.md](docs/client-setup.md)**: Step-by-step client setup for multiple languages
+- **[docs/performance-tests.md](docs/performance-tests.md)**: Detailed performance test suite documentation
+- **[specs/](specs/)**: Detailed technical specifications for architecture, API, and RETE algorithm
