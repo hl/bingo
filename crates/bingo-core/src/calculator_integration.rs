@@ -2,6 +2,11 @@ use crate::types::FactValue;
 use anyhow::{Result, anyhow};
 use bingo_calculator::{
     Calculator, CalculatorInputs, LimitValidateCalculator, ThresholdCheckCalculator,
+    built_in::add::AddCalculator, built_in::multiply::MultiplyCalculator,
+    built_in::percentage_add::PercentageAddCalculator,
+    built_in::percentage_deduct::PercentageDeductCalculator,
+    built_in::proportional_allocator::ProportionalAllocatorCalculator,
+    built_in::time_between_datetime::TimeBetweenDatetimeCalculator,
     built_in::weighted_average::WeightedAverageCalculator,
 };
 use std::collections::HashMap;
@@ -42,6 +47,24 @@ impl CalculatorRegistry {
         registry.register(
             "weighted_average",
             Box::new(WeightedAverageCalculator::new()),
+        );
+
+        // Mathematical calculators
+        registry.register("multiply", Box::new(MultiplyCalculator));
+        registry.register("add", Box::new(AddCalculator));
+        registry.register("percentage_add", Box::new(PercentageAddCalculator));
+        registry.register("percentage_deduct", Box::new(PercentageDeductCalculator));
+
+        // Time and duration calculators
+        registry.register(
+            "time_between_datetime",
+            Box::new(TimeBetweenDatetimeCalculator),
+        );
+
+        // Allocation calculators
+        registry.register(
+            "proportional_allocator",
+            Box::new(ProportionalAllocatorCalculator),
         );
 
         registry

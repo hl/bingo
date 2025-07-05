@@ -50,7 +50,10 @@ fn test_formula_action_basic_arithmetic() {
     let results = engine.process_facts(vec![fact]).unwrap();
 
     println!("🎯 Formula rule results: {} rules fired", results.len());
-    assert!(!results.is_empty(), "Should fire rule for price calculation");
+    assert!(
+        !results.is_empty(),
+        "Should fire rule for price calculation"
+    );
 
     // Verify formula executed successfully
     let action_results: Vec<_> = results.iter().flat_map(|r| &r.actions_executed).collect();

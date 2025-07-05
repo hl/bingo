@@ -3,7 +3,6 @@
 // This test validates Task 3.3: Add session window support for stream processing
 // and exercises Stream conditions plus Aggregation conditions with session windows.
 
-
 use bingo_core::BingoEngine;
 use bingo_core::types::{
     Action, ActionType, AggregationCondition, AggregationType, AggregationWindow, Condition, Fact,

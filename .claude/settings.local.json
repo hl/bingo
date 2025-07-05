@@ -28,7 +28,17 @@
       "mcp__filesystem__search_files",
       "Bash(fd:*)",
       "Bash(cargo fix:*)",
-      "mcp__filesystem__list_allowed_directories"
+      "mcp__filesystem__list_allowed_directories",
+      "Bash(gh workflow:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(cargo audit:*)",
+      "Bash(cargo install:*)",
+      "Bash(cargo info:*)",
+      "Bash(cargo:*)",
+      "Bash(RUST_BACKTRACE=1 cargo test --package bingo-api --test optimization_test test_ruleset_registration_and_caching -- --nocapture)",
+      "Bash(RUST_BACKTRACE=1 cargo test --package bingo-api --test streaming_test test_memory_safety_override -- --nocapture)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

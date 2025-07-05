@@ -3,14 +3,11 @@
 // Validates that the optimized serialization provides measurable performance
 // improvements over naive approaches.
 
-
-
 use bingo_core::serialization::SerializationContext;
 use bingo_core::{Fact, FactData, FactValue};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::time::Instant;
-
 
 /// Create test facts with repeated patterns for cache hits
 fn create_test_facts(count: usize) -> Vec<Fact> {

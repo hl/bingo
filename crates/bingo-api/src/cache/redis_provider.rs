@@ -103,9 +103,11 @@ impl UnifiedCacheProvider for RedisCacheProvider {
                         let etag_key = etag_key.clone();
                         async move {
                             let mut pipe = redis::pipe();
-                            pipe.atomic()
-                                .set_ex(&asset_key, bytes, ttl_sec as u64)
-                                .set_ex(&etag_key, key, ttl_sec as u64);
+                            pipe.atomic().set_ex(&asset_key, bytes, ttl_sec as u64).set_ex(
+                                &etag_key,
+                                key,
+                                ttl_sec as u64,
+                            );
                             pipe.query_async::<_, ()>(&mut conn)
                                 .await
                                 .map_err(|e| anyhow::anyhow!("Redis pipeline: {}", e))

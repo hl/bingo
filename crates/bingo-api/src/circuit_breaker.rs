@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
-
 /// Circuit breaker states following the classic pattern
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum CircuitBreakerState {
@@ -58,7 +57,6 @@ pub struct CircuitBreakerStats {
     #[serde(skip_serializing, skip_deserializing)]
     pub last_state_change: Instant,
 }
-
 
 /// Internal state of the circuit breaker
 #[derive(Debug)]
@@ -248,12 +246,9 @@ impl CircuitBreaker {
     {
         // Check if we can execute
         let can_execute = {
-            let mut inner = self
-                .inner
-                .lock()
-                .map_err(|_| CircuitBreakerError::Internal {
-                    message: "Mutex poisoned".to_string(),
-                })?;
+            let mut inner = self.inner.lock().map_err(|_| CircuitBreakerError::Internal {
+                message: "Mutex poisoned".to_string(),
+            })?;
             inner.can_execute()
         };
 
@@ -263,10 +258,9 @@ impl CircuitBreaker {
 
         // Get timeout from config
         let timeout = {
-            let inner = self
-                .inner
-                .lock()
-                .map_err(|_| CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() })?;
+            let inner = self.inner.lock().map_err(|_| CircuitBreakerError::Internal {
+                message: "Mutex poisoned".to_string(),
+            })?;
             inner.config.call_timeout
         };
 
@@ -277,10 +271,9 @@ impl CircuitBreaker {
             Ok(Ok(value)) => {
                 // Success
                 {
-                    let mut inner = self
-                        .inner
-                        .lock()
-                        .map_err(|_| CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() })?;
+                    let mut inner = self.inner.lock().map_err(|_| {
+                        CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() }
+                    })?;
                     inner.record_success();
                 }
                 debug!(name = %self.name, "Circuit breaker call succeeded");
@@ -289,10 +282,9 @@ impl CircuitBreaker {
             Ok(Err(error)) => {
                 // Service error
                 {
-                    let mut inner = self
-                        .inner
-                        .lock()
-                        .map_err(|_| CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() })?;
+                    let mut inner = self.inner.lock().map_err(|_| {
+                        CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() }
+                    })?;
                     inner.record_failure();
                 }
                 warn!(
@@ -305,10 +297,9 @@ impl CircuitBreaker {
             Err(_) => {
                 // Timeout
                 {
-                    let mut inner = self
-                        .inner
-                        .lock()
-                        .map_err(|_| CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() })?;
+                    let mut inner = self.inner.lock().map_err(|_| {
+                        CircuitBreakerError::Internal { message: "Mutex poisoned".to_string() }
+                    })?;
                     inner.record_failure();
                 }
                 warn!(

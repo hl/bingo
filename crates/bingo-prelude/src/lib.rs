@@ -11,20 +11,25 @@
 // Re-export core engine & type system ---------------------------------------------------------
 
 pub use bingo_core::{
+    Action,
+    ActionType,
     BingoEngine,
+    Condition,
     // Fundamental data types
-    Fact, FactData, FactValue,
+    Fact,
+    FactData,
+    FactValue,
+    LogicalOperator,
+    Operator,
     // Rule structure
-    Rule, Condition, Operator, LogicalOperator, Action, ActionType,
+    Rule,
     // Runtime results
     rete_nodes::RuleExecutionResult,
 };
 
 // Calculator trait & a few helpers ------------------------------------------------------------
 
-pub use bingo_calculator::{
-    Calculator, CalculatorInputs,
-};
+pub use bingo_calculator::{Calculator, CalculatorInputs};
 
 // Commonly used built-in calculators ----------------------------------------------------------
 

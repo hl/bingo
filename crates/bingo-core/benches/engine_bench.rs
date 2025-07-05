@@ -9,8 +9,14 @@ fn generate_test_facts(count: usize) -> Vec<Fact> {
             let mut map = HashMap::new();
             map.insert("entity_id".to_string(), FactValue::Integer(i as i64));
             map.insert("value".to_string(), FactValue::Float(i as f64 * 1.5));
-            map.insert("status".to_string(), FactValue::String("active".to_string()));
-            map.insert("category".to_string(), FactValue::String(format!("cat_{}", i % 10)));
+            map.insert(
+                "status".to_string(),
+                FactValue::String("active".to_string()),
+            );
+            map.insert(
+                "category".to_string(),
+                FactValue::String(format!("cat_{}", i % 10)),
+            );
             map.insert("score".to_string(), FactValue::Float((i % 100) as f64));
 
             let data = FactData { fields: map };

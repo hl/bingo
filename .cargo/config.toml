@@ -1,0 +1,4 @@
+[env]
+TMPDIR = { value = ".", force = true }
+TEMP = { value = ".", force = true }
+TMP = { value = ".", force = true }

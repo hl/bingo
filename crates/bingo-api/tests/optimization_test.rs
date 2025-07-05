@@ -74,7 +74,8 @@ async fn test_ruleset_registration_and_caching() {
                     "test_field": "test_value"
                 },
                 "created_at": "2024-01-01T00:00:00Z"
-            }]
+            }],
+            "response_format": "standard"
         }))
         .await;
 
@@ -94,7 +95,8 @@ async fn test_ruleset_registration_and_caching() {
                     "test_field": "test_value"
                 },
                 "created_at": "2024-01-01T00:00:00Z"
-            }]
+            }],
+            "response_format": "standard"
         }))
         .await;
 

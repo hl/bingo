@@ -1224,7 +1224,7 @@ impl ReteNetwork {
                     if i != j {
                         if let Condition::Simple { field: field2, .. } = condition2 {
                             // If field names are the same, create a self-join
-                            // For different fields, check if they follow common naming patterns  
+                            // For different fields, check if they follow common naming patterns
                             if field1 == field2 || self.fields_likely_joinable(field1, field2) {
                                 join_specs.push((field1.clone(), field2.clone()));
                             }

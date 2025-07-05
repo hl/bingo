@@ -3,13 +3,11 @@
 // Validates that lazy aggregations work correctly within the RETE network and
 // provide performance benefits.
 
-
-
+use bingo_core::BingoEngine;
 use bingo_core::types::{
     Action, ActionType, AggregationCondition, AggregationType, Condition, Fact, FactData,
     FactValue, Operator, Rule,
 };
-use bingo_core::BingoEngine;
 use chrono::Utc;
 use std::collections::HashMap;
 

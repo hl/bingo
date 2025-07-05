@@ -13,14 +13,12 @@ use axum::{
 };
 use bingo_core::{BingoEngine, Fact as CoreFact};
 use futures_util::stream::{self, Stream};
-use tokio_stream;
 use serde_json;
 use std::pin::Pin;
 use std::sync::Arc;
 use sysinfo::{Pid, System};
+use tokio_stream;
 use tracing::{debug, info, instrument, warn};
-
-
 
 /// Incremental processor for large fact datasets
 pub struct IncrementalProcessor {

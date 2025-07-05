@@ -112,3 +112,11 @@ impl<'a> CalculatorInputs<'a> {
 // Re-export calculator implementations
 pub use limit_validator::LimitValidateCalculator;
 pub use threshold_check::ThresholdCheckCalculator;
+
+// Additional built-in calculator structs for external use
+pub use built_in::add::AddCalculator;
+pub use built_in::multiply::MultiplyCalculator;
+pub use built_in::percentage_add::PercentageAddCalculator;
+pub use built_in::percentage_deduct::PercentageDeductCalculator;
+pub use built_in::proportional_allocator::ProportionalAllocatorCalculator;
+pub use built_in::time_between_datetime::TimeBetweenDatetimeCalculator;

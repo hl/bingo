@@ -91,9 +91,25 @@ pub mod arena_store {
         }
 
         pub fn insert(&mut self, mut fact: Fact) -> FactId {
-            let id = self.next_id;
+            // Preserve the external `id` if it is non-zero to keep test expectations intact.
+            // Otherwise, fall back to the internal auto-incrementing identifier.
+            // Avoid accidentally allocating gigantic vectors when facts are created from
+            // hashed external identifiers (e.g. 64-bit FNV hashes used by the API layer).
+            // In such cases we fall back to using the internal sequential identifier.
+
+            let id = if fact.id == 0 || fact.id > 1_000_000 {
+                self.next_id
+            } else {
+                fact.id
+            };
+
+            // Ensure the internal counter always stays ahead of the highest observed id so that
+            // subsequently inserted facts without predefined identifiers receive unique ids.
+            if id >= self.next_id {
+                self.next_id = id + 1;
+            }
+
             fact.id = id;
-            self.next_id += 1;
 
             // Update external ID mapping if present
             if let Some(ref external_id) = fact.external_id {

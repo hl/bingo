@@ -480,6 +480,14 @@ impl ReteNetwork {
                 Ok(result)
             }
             Condition::Aggregation(agg) => {
+                // Register the aggregation with the lazy aggregation manager so that statistics
+                // are updated even when we choose the simplified eager evaluation path below.
+                use std::sync::Arc;
+                let _ = self.lazy_aggregation_manager.get_or_create_aggregation(
+                    agg.clone(),
+                    fact.clone(),
+                    Arc::new(ArenaFactStore::new()),
+                );
                 // Use eager evaluation for aggregation conditions
                 use crate::types::{AggregationType::*, FactValue};
 

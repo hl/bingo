@@ -45,13 +45,13 @@ tokio-stream = "0.1"
 # Observability and metrics
 opentelemetry = "0.24"
 opentelemetry_sdk = { version = "0.24", features = ["rt-tokio"] }
-opentelemetry-prometheus = "0.17"
+opentelemetry-prometheus = "0.29"
 opentelemetry-otlp = { version = "0.17", features = ["tonic"] }
 opentelemetry-stdout = "0.5"
 tracing-opentelemetry = "0.25"
 once_cell = "1.19"
 sysinfo = "0.30"
-prometheus = "0.13"
+prometheus = "0.14"
 
 # Caching
 moka = { version = "0.12", features = ["future"] }

@@ -63,7 +63,10 @@ impl CompiledAsset {
     pub fn get_cache_headers(&self) -> Vec<(String, String)> {
         let headers = vec![
             ("ETag".to_string(), self.etag.clone()),
-            ("Cache-Control".to_string(), "public, max-age=300".to_string()),
+            (
+                "Cache-Control".to_string(),
+                "public, max-age=300".to_string(),
+            ),
         ];
         headers
     }
