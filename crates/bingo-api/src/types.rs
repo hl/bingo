@@ -863,7 +863,7 @@ impl RegisterRulesetRequest {
 
         // Validate each rule
         for (i, rule) in self.rules.iter().enumerate() {
-            rule.validate().map_err(|e| format!("Rule {}: {}", i, e))?;
+            rule.validate().map_err(|e| format!("Rule {i}: {e}"))?;
         }
 
         if let Some(ttl) = self.ttl_seconds {
@@ -898,7 +898,7 @@ impl EvaluateRequest {
                 }
                 // Validate each rule
                 for (i, rule) in rules.iter().enumerate() {
-                    rule.validate().map_err(|e| format!("Rule {}: {}", i, e))?;
+                    rule.validate().map_err(|e| format!("Rule {i}: {e}"))?;
                 }
             }
             (None, Some(ruleset_id)) => {
@@ -915,7 +915,7 @@ impl EvaluateRequest {
         // Validate facts have non-empty data
         for (i, fact) in self.facts.iter().enumerate() {
             if fact.data.is_empty() {
-                return Err(format!("Fact {} must contain at least one data field", i));
+                return Err(format!("Fact {i} must contain at least one data field"));
             }
         }
 

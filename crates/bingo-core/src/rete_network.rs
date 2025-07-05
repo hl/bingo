@@ -222,7 +222,7 @@ fn evaluate_binary_operation(left: &FactValue, op: &str, right: &FactValue) -> R
             }
         }
         (String(a), String(b)) => match op {
-            "+" => Ok(String(format!("{}{}", a, b))),
+            "+" => Ok(String(format!("{a}{b}"))),
             _ => Err(anyhow::anyhow!("Unsupported string operator: {}", op)),
         },
         _ => Err(anyhow::anyhow!(
@@ -750,7 +750,7 @@ impl ReteNetwork {
                                 "Calculator execution failed"
                             );
                             ActionResult::Logged {
-                                message: format!("Calculator '{}' failed: {}", calculator_name, e),
+                                message: format!("Calculator '{calculator_name}' failed: {e}"),
                             }
                         }
                     }
@@ -786,7 +786,7 @@ impl ReteNetwork {
                         alert_type = alert_type,
                         "Rule action: TriggerAlert"
                     );
-                    ActionResult::Logged { message: format!("Alert [{}]: {}", alert_type, message) }
+                    ActionResult::Logged { message: format!("Alert [{alert_type}]: {message}") }
                 }
                 ActionType::Formula { expression, output_field } => {
                     // Evaluate the formula expression
@@ -815,7 +815,7 @@ impl ReteNetwork {
                                 "Formula evaluation failed"
                             );
                             ActionResult::Logged {
-                                message: format!("Formula '{}' failed: {}", expression, e),
+                                message: format!("Formula '{expression}' failed: {e}"),
                             }
                         }
                     }
@@ -847,24 +847,21 @@ impl ReteNetwork {
                             } else {
                                 ActionResult::Logged {
                                     message: format!(
-                                        "UpdateFact failed: fact with ID {} not found",
-                                        target_fact_id
+                                        "UpdateFact failed: fact with ID {target_fact_id} not found"
                                     ),
                                 }
                             }
                         } else {
                             ActionResult::Logged {
                                 message: format!(
-                                    "UpdateFact failed: field '{}' is not an integer",
-                                    fact_id_field
+                                    "UpdateFact failed: field '{fact_id_field}' is not an integer"
                                 ),
                             }
                         }
                     } else {
                         ActionResult::Logged {
                             message: format!(
-                                "UpdateFact failed: field '{}' not found",
-                                fact_id_field
+                                "UpdateFact failed: field '{fact_id_field}' not found"
                             ),
                         }
                     }
@@ -891,24 +888,21 @@ impl ReteNetwork {
                             } else {
                                 ActionResult::Logged {
                                     message: format!(
-                                        "DeleteFact failed: fact with ID {} not found",
-                                        target_fact_id
+                                        "DeleteFact failed: fact with ID {target_fact_id} not found"
                                     ),
                                 }
                             }
                         } else {
                             ActionResult::Logged {
                                 message: format!(
-                                    "DeleteFact failed: field '{}' is not an integer",
-                                    fact_id_field
+                                    "DeleteFact failed: field '{fact_id_field}' is not an integer"
                                 ),
                             }
                         }
                     } else {
                         ActionResult::Logged {
                             message: format!(
-                                "DeleteFact failed: field '{}' not found",
-                                fact_id_field
+                                "DeleteFact failed: field '{fact_id_field}' not found"
                             ),
                         }
                     }
@@ -987,8 +981,7 @@ impl ReteNetwork {
                             }
                             _ => ActionResult::Logged {
                                 message: format!(
-                                    "IncrementField failed: incompatible types for field '{}'",
-                                    field
+                                    "IncrementField failed: incompatible types for field '{field}'"
                                 ),
                             },
                         }
@@ -1030,8 +1023,7 @@ impl ReteNetwork {
                         } else {
                             ActionResult::Logged {
                                 message: format!(
-                                    "AppendToArray failed: field '{}' is not an array",
-                                    field
+                                    "AppendToArray failed: field '{field}' is not an array"
                                 ),
                             }
                         }
@@ -1085,7 +1077,7 @@ impl ReteNetwork {
     /// Create an alpha node for a condition (simplified)
     fn create_alpha_node_for_condition(&mut self, condition: &Condition) -> Result<()> {
         if let Condition::Simple { field, operator, value } = condition {
-            let key = format!("{}_{:?}_{:?}", field, operator, value);
+            let key = format!("{field}_{operator:?}_{value:?}");
 
             if !self.alpha_nodes.contains_key(&key) {
                 let node_id = self.next_node_id;

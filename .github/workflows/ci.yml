@@ -26,6 +26,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
+        toolchain: "1.88.0"
         components: rustfmt, clippy
 
     - name: Cache dependencies
@@ -61,6 +62,8 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.88.0"
 
     - name: Cache dependencies
       uses: actions/cache@v4
@@ -78,12 +81,16 @@ jobs:
         RUST_LOG: info
 
     # Run API server test to verify basic functionality
+    - name: Build server binary first
+      run: cargo build --release --bin bingo
+
     - name: Run API server test
       run: |
-        timeout 30s cargo run --release --bin bingo &
-        sleep 5
-        curl -f http://localhost:3000/health || echo "Server test completed"
-        pkill -f bingo || true
+        timeout 30s ./target/release/bingo &
+        BINGO_PID=$!
+        sleep 10
+        curl -f http://localhost:3000/health && echo "Server health check passed" || echo "Server test completed"
+        kill $BINGO_PID 2>/dev/null || true
       continue-on-error: true  # Don't fail CI if server test has issues
 
   # Comprehensive performance validation - manual trigger or nightly
@@ -96,6 +103,8 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.88.0"
 
     - name: Cache dependencies
       uses: actions/cache@v4
@@ -135,6 +144,8 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.88.0"
 
     - name: Install cargo-audit
       run: cargo install cargo-audit
@@ -153,6 +164,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
+        toolchain: "1.88.0"
         components: llvm-tools-preview
 
     - name: Install cargo-llvm-cov
@@ -177,6 +189,8 @@ jobs:
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.88.0"
 
     - name: Verify release build
       run: cargo build --release --verbose

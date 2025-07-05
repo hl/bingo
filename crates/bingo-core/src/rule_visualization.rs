@@ -730,7 +730,7 @@ impl RuleDependencyAnalyzer {
                     "style=solid"
                 };
 
-                writeln!(dot, "  {} -> {} [{}];", dep_id, rule_id, style)?;
+                writeln!(dot, "  {dep_id} -> {rule_id} [{style}];")?;
             }
         }
 
@@ -764,13 +764,13 @@ impl RuleDependencyAnalyzer {
                 rule.actions.len()
             )?;
 
-            writeln!(mermaid, "  class {} {}", rule.id, class)?;
+            writeln!(mermaid, "  class {} {class}", rule.id)?;
         }
 
         // Add edges
         for (rule_id, dependencies) in &self.dependency_graph.dependencies {
             for &dep_id in dependencies {
-                writeln!(mermaid, "  {} --> {}", dep_id, rule_id)?;
+                writeln!(mermaid, "  {dep_id} --> {rule_id}")?;
             }
         }
 
@@ -852,8 +852,7 @@ impl RuleDependencyAnalyzer {
                         let end_y = y2 + node_height / 2;
                         writeln!(
                             svg,
-                            r#"  <line x1="{}" y1="{}" x2="{}" y2="{}" class="dependency-line" />"#,
-                            start_x, start_y, end_x, end_y
+                            r#"  <line x1="{start_x}" y1="{start_y}" x2="{end_x}" y2="{end_y}" class="dependency-line" />"#
                         )?;
                     }
                 }
@@ -865,8 +864,7 @@ impl RuleDependencyAnalyzer {
             // Draw rectangle
             writeln!(
                 svg,
-                r#"  <rect x="{}" y="{}" width="{}" height="{}" class="rule-node" />"#,
-                x, y, node_width, node_height
+                r#"  <rect x="{x}" y="{y}" width="{node_width}" height="{node_height}" class="rule-node" />"#
             )?;
 
             // Draw rule ID text
@@ -874,8 +872,7 @@ impl RuleDependencyAnalyzer {
             let text_y = y + node_height / 2 + 4; // Center vertically with slight offset
             writeln!(
                 svg,
-                r#"  <text x="{}" y="{}" text-anchor="middle" class="rule-text">Rule {}</text>"#,
-                text_x, text_y, rule_id
+                r#"  <text x="{text_x}" y="{text_y}" text-anchor="middle" class="rule-text">Rule {rule_id}</text>"#
             )?;
         }
 

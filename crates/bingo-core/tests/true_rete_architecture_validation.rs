@@ -134,7 +134,7 @@ fn create_true_rete_test_facts() -> Vec<Fact> {
             fields.insert("employee_id".to_string(), FactValue::Integer(i));
             fields.insert(
                 "name".to_string(),
-                FactValue::String(format!("Employee {}", i)),
+                FactValue::String(format!("Employee {i}")),
             );
 
             // Alpha memory patterns (many facts will match "active")
@@ -221,7 +221,7 @@ fn test_true_rete_architecture_integration() {
         engine.get_action_result_pool_stats();
 
     println!("✅ RETE ARCHITECTURE VALIDATION:");
-    println!("⏱️  Processing Time: {:?}", elapsed);
+    println!("⏱️  Processing Time: {elapsed:?}");
     println!("📊 Rule Executions: {}", results.len());
 
     println!("\\n🧠 ALPHA MEMORY:");
@@ -236,14 +236,13 @@ fn test_true_rete_architecture_integration() {
 
     println!("\\n🎯 ACTIONRESULT OPTIMIZATIONS:");
     println!(
-        "   Lazy Pool: {} hits, {} misses, {:.1}% hit rate",
-        action_hits, action_misses, action_hit_rate
+        "   Lazy Pool: {action_hits} hits, {action_misses} misses, {action_hit_rate:.1}% hit rate"
     );
 
     // Performance validation
     let facts_per_sec = 1000.0 / elapsed.as_secs_f64();
     println!("\\n📈 PERFORMANCE METRICS:");
-    println!("   Processing Rate: {:.0} facts/sec", facts_per_sec);
+    println!("   Processing Rate: {facts_per_sec:.0} facts/sec");
     println!("   Memory Efficiency: Pooling and caching active");
 
     // Validate all optimizations are working
@@ -275,7 +274,7 @@ fn test_true_rete_performance_scaling() {
     for i in 5..50 {
         let rule = Rule {
             id: 7000 + i,
-            name: format!("Scaling Test Rule {}", i),
+            name: format!("Scaling Test Rule {i}"),
             conditions: vec![
                 Condition::Simple {
                     field: "status".to_string(),
@@ -296,7 +295,7 @@ fn test_true_rete_performance_scaling() {
                         ("threshold".to_string(), "threshold".to_string()),
                         ("operator".to_string(), "GreaterThanOrEqual".to_string()),
                     ]),
-                    output_field: format!("validation_{}", i),
+                    output_field: format!("validation_{i}"),
                 },
             }],
         };
@@ -362,7 +361,7 @@ fn test_true_rete_performance_scaling() {
     // Their effectiveness is validated through overall performance metrics.
 
     println!("✅ SCALING TEST RESULTS:");
-    println!("⏱️  Processing Time: {:?}", elapsed);
+    println!("⏱️  Processing Time: {elapsed:?}");
     println!("📊 Rule Executions: {}", results.len());
     println!(
         "🧠 Memory: {} -> {}, Delta: {} bytes ({:.2} MB)",

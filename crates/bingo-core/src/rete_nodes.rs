@@ -983,7 +983,7 @@ impl ReteNetwork {
                         alert_type = alert_type,
                         "Rule action: TriggerAlert"
                     );
-                    ActionResult::Logged { message: format!("Alert [{}]: {}", alert_type, message) }
+                    ActionResult::Logged { message: format!("Alert [{alert_type}]: {message}") }
                 }
                 ActionType::Formula { expression, output_field } => {
                     // Evaluate the formula expression
@@ -1010,7 +1010,7 @@ impl ReteNetwork {
                                 "Formula evaluation failed"
                             );
                             ActionResult::Logged {
-                                message: format!("Formula '{}' failed: {}", expression, e),
+                                message: format!("Formula '{expression}' failed: {e}"),
                             }
                         }
                     }
@@ -1034,16 +1034,14 @@ impl ReteNetwork {
                         } else {
                             ActionResult::Logged {
                                 message: format!(
-                                    "UpdateFact failed: field '{}' is not an integer",
-                                    fact_id_field
+                                    "UpdateFact failed: field '{fact_id_field}' is not an integer"
                                 ),
                             }
                         }
                     } else {
                         ActionResult::Logged {
                             message: format!(
-                                "UpdateFact failed: field '{}' not found",
-                                fact_id_field
+                                "UpdateFact failed: field '{fact_id_field}' not found"
                             ),
                         }
                     }
@@ -1063,16 +1061,14 @@ impl ReteNetwork {
                         } else {
                             ActionResult::Logged {
                                 message: format!(
-                                    "DeleteFact failed: field '{}' is not an integer",
-                                    fact_id_field
+                                    "DeleteFact failed: field '{fact_id_field}' is not an integer"
                                 ),
                             }
                         }
                     } else {
                         ActionResult::Logged {
                             message: format!(
-                                "DeleteFact failed: field '{}' not found",
-                                fact_id_field
+                                "DeleteFact failed: field '{fact_id_field}' not found"
                             ),
                         }
                     }
@@ -1101,8 +1097,7 @@ impl ReteNetwork {
                             }
                             _ => ActionResult::Logged {
                                 message: format!(
-                                    "IncrementField failed: incompatible types for field '{}'",
-                                    field
+                                    "IncrementField failed: incompatible types for field '{field}'"
                                 ),
                             },
                         }
@@ -1131,8 +1126,7 @@ impl ReteNetwork {
                         } else {
                             ActionResult::Logged {
                                 message: format!(
-                                    "AppendToArray failed: field '{}' is not an array",
-                                    field
+                                    "AppendToArray failed: field '{field}' is not an array"
                                 ),
                             }
                         }
@@ -1815,7 +1809,7 @@ impl ActionResult {
                 // Simple template substitution - replace {0}, {1}, etc.
                 let mut result = template.to_string();
                 for (i, arg) in args.iter().enumerate() {
-                    let placeholder = format!("{{{}}}", i);
+                    let placeholder = format!("{{{i}}}");
                     result = result.replace(&placeholder, arg);
                 }
                 Some(result)
@@ -1968,7 +1962,7 @@ fn evaluate_binary_operation(left: &FactValue, op: &str, right: &FactValue) -> R
             }
         }
         (String(a), String(b)) => match op {
-            "+" => Ok(String(format!("{}{}", a, b))),
+            "+" => Ok(String(format!("{a}{b}"))),
             _ => Err(anyhow::anyhow!("Unsupported operator '{}' for strings", op)),
         },
         _ => Err(anyhow::anyhow!(

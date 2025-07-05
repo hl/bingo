@@ -128,7 +128,7 @@ impl MemoryStats {
     /// Format RSS in human-readable form
     pub fn format_rss(&self) -> String {
         let mb = self.rss_bytes as f64 / (1024.0 * 1024.0);
-        format!("{:.2} MB", mb)
+        format!("{mb:.2} MB")
     }
 }
 
@@ -167,8 +167,7 @@ mod tests {
         // Should return some reasonable value (at least a few KB)
         assert!(
             usage > 1024,
-            "Memory usage should be at least 1KB, got: {}",
-            usage
+            "Memory usage should be at least 1KB, got: {usage}"
         );
     }
 

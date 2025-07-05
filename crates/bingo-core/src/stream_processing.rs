@@ -132,7 +132,7 @@ impl WindowInstance {
 
     /// Compute aggregation for this window
     pub fn compute_aggregation(&mut self, func: &AggregationFunction) -> anyhow::Result<FactValue> {
-        let cache_key = format!("{:?}", func);
+        let cache_key = format!("{func:?}");
 
         // Return cached result if available
         if let Some(cached_result) = self.aggregation_cache.get(&cache_key) {

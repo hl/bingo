@@ -105,7 +105,7 @@ impl SerializationContext {
 
         // Write external_id if present
         if let Some(external_id) = &fact.external_id {
-            write!(&mut buffer, r#""external_id":"{}","#, external_id)?;
+            write!(&mut buffer, r#""external_id":"{external_id}","#)?;
         }
 
         // Write timestamp
@@ -224,10 +224,10 @@ impl SerializationContext {
     /// Create a cache key for a FactValue
     fn create_cache_key(&self, value: &FactValue) -> String {
         match value {
-            FactValue::String(s) => format!("s:{}", s),
-            FactValue::Integer(i) => format!("i:{}", i),
-            FactValue::Float(f) => format!("f:{}", f),
-            FactValue::Boolean(b) => format!("b:{}", b),
+            FactValue::String(s) => format!("s:{s}"),
+            FactValue::Integer(i) => format!("i:{i}"),
+            FactValue::Float(f) => format!("f:{f}"),
+            FactValue::Boolean(b) => format!("b:{b}"),
             FactValue::Null => "null".to_string(),
             // For complex types, use a hash
             _ => {
@@ -444,7 +444,7 @@ mod tests {
         let facts: Vec<Fact> = (0..10)
             .map(|i| Fact {
                 id: i,
-                external_id: Some(format!("fact-{}", i)),
+                external_id: Some(format!("fact-{i}")),
                 timestamp: Utc::now(),
                 data: FactData {
                     fields: std::iter::once((

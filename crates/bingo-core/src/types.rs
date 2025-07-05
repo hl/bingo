@@ -251,17 +251,17 @@ impl PartialOrd for FactValue {
 impl fmt::Display for FactValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FactValue::String(s) => write!(f, "{}", s),
-            FactValue::Integer(i) => write!(f, "{}", i),
-            FactValue::Float(fl) => write!(f, "{}", fl),
-            FactValue::Boolean(b) => write!(f, "{}", b),
+            FactValue::String(s) => write!(f, "{s}"),
+            FactValue::Integer(i) => write!(f, "{i}"),
+            FactValue::Float(fl) => write!(f, "{fl}"),
+            FactValue::Boolean(b) => write!(f, "{b}"),
             FactValue::Array(arr) => {
                 write!(f, "[")?;
                 for (i, item) in arr.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", item)?;
+                    write!(f, "{item}")?
                 }
                 write!(f, "]")
             }
@@ -272,7 +272,7 @@ impl fmt::Display for FactValue {
                     if !first {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", key, value)?;
+                    write!(f, "{key}: {value}")?;
                     first = false;
                 }
                 write!(f, "}}")

@@ -55,7 +55,10 @@ fn test_100k_fact_scaling() {
             );
             fields.insert(
                 "category".to_string(),
-                FactValue::String(format!("cat_{}", i % 100)),
+                FactValue::String({
+                    let cat_id = i % 100;
+                    format!("cat_{cat_id}")
+                }),
             );
 
             Fact {
@@ -78,7 +81,7 @@ fn test_100k_fact_scaling() {
     );
 
     let stats = engine.get_stats();
-    println!("Final engine stats: {:?}", stats);
+    println!("Final engine stats: {stats:?}");
 
     // Validate performance and results - Realistic production targets
     assert!(
@@ -124,7 +127,10 @@ fn test_500k_fact_scaling() {
             fields.insert("entity_id".to_string(), FactValue::Integer(i as i64));
             fields.insert(
                 "category".to_string(),
-                FactValue::String(format!("cat_{}", i % 100)),
+                FactValue::String({
+                    let cat_id = i % 100;
+                    format!("cat_{cat_id}")
+                }),
             );
             fields.insert("value".to_string(), FactValue::Float(i as f64 * 1.5));
 
@@ -157,7 +163,7 @@ fn test_500k_fact_scaling() {
     );
 
     let stats = engine.get_stats();
-    println!("Final engine stats: {:?}", stats);
+    println!("Final engine stats: {stats:?}");
 
     // Validate performance and memory usage - Realistic production targets
     assert!(
@@ -211,7 +217,10 @@ fn test_1m_fact_scaling() {
             );
             fields.insert(
                 "region".to_string(),
-                FactValue::String(format!("region_{}", i % 50)),
+                FactValue::String({
+                    let region_id = i % 50;
+                    format!("region_{region_id}")
+                }),
             );
 
             Fact {
@@ -243,7 +252,7 @@ fn test_1m_fact_scaling() {
     );
 
     let stats = engine.get_stats();
-    println!("Final engine stats: {:?}", stats);
+    println!("Final engine stats: {stats:?}");
 
     // Validate against realistic enterprise targets for production deployment
     assert!(
@@ -305,7 +314,10 @@ fn test_200k_fact_scaling_ci_appropriate() {
             );
             fields.insert(
                 "region".to_string(),
-                FactValue::String(format!("region_{}", i % 20)),
+                FactValue::String({
+                    let region_id = i % 20;
+                    format!("region_{region_id}")
+                }),
             );
 
             Fact {
@@ -337,7 +349,7 @@ fn test_200k_fact_scaling_ci_appropriate() {
     );
 
     let stats = engine.get_stats();
-    println!("Final engine stats: {:?}", stats);
+    println!("Final engine stats: {stats:?}");
 
     // CI-appropriate performance targets (scaled down for limited resources)
     assert!(

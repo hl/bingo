@@ -181,7 +181,7 @@ impl FactAggregator {
             FactValue::Integer(i) => Ok(*i as f64),
             FactValue::Float(f) => Ok(*f),
             FactValue::String(s) => {
-                s.parse::<f64>().context(format!("Could not parse '{}' as numeric value", s))
+                s.parse::<f64>().context(format!("Could not parse '{s}' as numeric value"))
             }
             _ => Err(anyhow::anyhow!("Value {:?} is not numeric", value)),
         }

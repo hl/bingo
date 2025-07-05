@@ -521,7 +521,7 @@ impl LazyAggregationManager {
 
         // Add window specification if present
         if let Some(window) = &spec.window {
-            key_parts.push(format!("window:{:?}", window));
+            key_parts.push(format!("window:{window:?}"));
         }
 
         key_parts.join("|")
@@ -562,7 +562,7 @@ mod tests {
 
         Fact {
             id,
-            external_id: Some(format!("fact-{}", id)),
+            external_id: Some(format!("fact-{id}")),
             timestamp: Utc::now(),
             data: FactData { fields },
         }

@@ -346,7 +346,7 @@ impl fmt::Display for UnifiedStats {
             self.avg_facts_per_backend()
         )?;
         for (backend, count) in &self.fact_storage.facts_by_backend {
-            writeln!(f, "  {}: {} facts", backend, count)?;
+            writeln!(f, "  {backend}: {count} facts")?;
         }
         writeln!(f)?;
 
@@ -378,7 +378,7 @@ impl fmt::Display for UnifiedStats {
         writeln!(f, "  Objects Allocated: {}", self.memory.pool_allocated)?;
         writeln!(f, "  Objects Returned: {}", self.memory.pool_returned)?;
         for (pool_type, peak_size) in &self.memory.peak_pool_sizes {
-            writeln!(f, "  {} Peak Size: {}", pool_type, peak_size)?;
+            writeln!(f, "  {pool_type} Peak Size: {peak_size}")?;
         }
         writeln!(f)?;
 

@@ -226,7 +226,7 @@ fn test_multi_condition_performance() {
     for i in 0..20 {
         let rule = Rule {
             id: 6000 + i,
-            name: format!("Multi-Condition Rule {}", i),
+            name: format!("Multi-Condition Rule {i}"),
             conditions: vec![
                 Condition::Simple {
                     field: "department".to_string(),
@@ -246,7 +246,7 @@ fn test_multi_condition_performance() {
             ],
             actions: vec![Action {
                 action_type: ActionType::Log {
-                    message: format!("Multi-condition rule {} triggered", i),
+                    message: format!("Multi-condition rule {i} triggered"),
                 },
             }],
         };
@@ -281,8 +281,7 @@ fn test_multi_condition_performance() {
     let (start_stats, end_stats, memory_delta) = memory_tracker.finish().unwrap();
 
     println!(
-        "✅ Processed 10K facts with 20 multi-condition rules in {:?}",
-        elapsed
+        "✅ Processed 10K facts with 20 multi-condition rules in {elapsed:?}"
     );
     println!("📊 Generated {} rule execution results", results.len());
     println!(

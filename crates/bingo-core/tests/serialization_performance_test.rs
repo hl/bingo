@@ -31,7 +31,7 @@ fn create_test_facts(count: usize) -> Vec<Fact> {
 
             Fact {
                 id: i as u64,
-                external_id: Some(format!("fact-{}", i)),
+                external_id: Some(format!("fact-{i}")),
                 timestamp: Utc::now(),
                 data: FactData { fields },
             }
@@ -58,7 +58,7 @@ fn test_serialization_performance_improvement() {
     let stats = ctx.get_stats();
 
     println!("✅ Optimized Serialization Results:");
-    println!("   Time taken: {:?}", optimized_time);
+    println!("   Time taken: {optimized_time:?}");
     println!(
         "   Cache hits: {} ({:.1}% hit rate)",
         stats.cache_hits,
@@ -86,13 +86,12 @@ fn test_serialization_performance_improvement() {
     let naive_time = start.elapsed();
 
     println!("📊 Naive Serialization Results:");
-    println!("   Time taken: {:?}", naive_time);
+    println!("   Time taken: {naive_time:?}");
 
     // Calculate improvement
     let improvement_factor = naive_time.as_nanos() as f64 / optimized_time.as_nanos() as f64;
     println!(
-        "🎯 Performance Improvement: {:.2}x faster",
-        improvement_factor
+        "🎯 Performance Improvement: {improvement_factor:.2}x faster"
     );
 
     // Validate that we got cache hits (indicating optimization is working)
@@ -131,8 +130,8 @@ fn test_bulk_serialization_efficiency() {
     let individual_time = start.elapsed();
 
     println!("🔄 Bulk vs Individual Serialization:");
-    println!("   Bulk time: {:?}", bulk_time);
-    println!("   Individual time: {:?}", individual_time);
+    println!("   Bulk time: {bulk_time:?}");
+    println!("   Individual time: {individual_time:?}");
 
     // Note: Bulk serialization focuses on correctness and memory efficiency
     // rather than pure speed, as it ensures proper JSON array formatting

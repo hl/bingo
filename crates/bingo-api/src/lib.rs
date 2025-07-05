@@ -839,7 +839,7 @@ async fn evaluate_handler(
                 cache_headers = Some(compiled_asset.get_cache_headers());
                 compiled_asset.create_engine_with_capacity(payload.facts.len()).map_err(|e| {
                      error!(request_id = %request_id, error = %e, "Failed to create engine from cached asset");
-                    ApiError::cache("ruleset_cache", format!("Failed to create engine from cached asset: {}", e))
+                    ApiError::cache("ruleset_cache", format!("Failed to create engine from cached asset: {e}"))
                 })?
             } else {
                 // Cache miss: compile, cache, and then create the engine
@@ -891,7 +891,7 @@ async fn evaluate_handler(
                 // Create the engine instance from the newly cached template
                 compiled_asset.create_engine_with_capacity(payload.facts.len()).map_err(|e| {
                     error!(request_id = %request_id, error = %e, "Failed to create engine from newly cached asset");
-                    ApiError::cache("ruleset_cache", format!("Failed to create engine from newly cached asset: {}", e))
+                    ApiError::cache("ruleset_cache", format!("Failed to create engine from newly cached asset: {e}"))
                 })?
             }
         }
@@ -929,7 +929,7 @@ async fn evaluate_handler(
                     );
                     ApiError::cache(
                         "ruleset_cache",
-                        format!("Failed to create engine from cached asset: {}", e),
+                        format!("Failed to create engine from cached asset: {e}"),
                     )
                 })?
             } else {
@@ -946,8 +946,7 @@ async fn evaluate_handler(
                 request_tracker.finish("POST", "/evaluate", 404);
 
                 return Err(ApiError::not_found(format!(
-                    "Ruleset '{}' not found in cache",
-                    ruleset_id
+                    "Ruleset '{ruleset_id}' not found in cache"
                 )));
             }
         }
@@ -1019,7 +1018,7 @@ async fn evaluate_handler(
             error = %e,
             "Failed to evaluate rules and facts"
         );
-        ApiError::engine(format!("Failed to evaluate: {}", e))
+        ApiError::engine(format!("Failed to evaluate: {e}"))
     })?;
 
     let processing_time_ms = start.elapsed().as_millis() as u64;
