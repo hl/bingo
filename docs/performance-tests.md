@@ -95,19 +95,25 @@ cargo test --release test_200k_facts_500_rules_performance -- --ignored  # 200K 
 
 ### Complex Rule Performance Results
 
-Current performance characteristics for calculator-heavy business rule scenarios:
+Current performance characteristics for realistic payroll business rule scenarios:
 
-- **100K facts + 200 rules**: 31.4s processing time, 7.7GB memory, 32M results
-- **200K facts + 200 rules**: 31.4s processing time, 7.7GB memory, 32M results  
-- **100K facts + 500 rules**: 40.6s processing time, 7.9GB memory, 40M results
-- **200K facts + 500 rules**: 72.8s processing time, 12.2GB memory, 81M results
+| Facts | Rules | Results | Output Ratio | Memory (GB) | Facts/sec | Total Time |
+|-------|-------|---------|--------------|-------------|-----------|------------|
+| 100K  | 200   | 2M      | 20x          | 15.1        | 47,885    | 2.09s      |
+| 200K  | 200   | 4M      | 20x          | 19.7        | 45,651    | 4.38s      |
+| 100K  | 500   | 5M      | 50x          | 17.9        | 18,437    | 5.42s      |
+| 200K  | 500   | 10M     | 50x          | 14.8        | 19,542    | 10.23s     |
 
 **Performance Analysis**:
-- **Timing**: Scales reasonably with fact/rule complexity
-- **Memory**: Shows opportunities for optimization, especially in high rule count scenarios
-- **Results**: Large result set generation indicates active calculator processing
+- **Realistic Ratios**: Each employee now triggers multiple rules (20-50x) as expected in payroll
+- **Memory Scaling**: 15-20GB for large scenarios, scales with rule complexity
+- **Throughput**: 18K-48K facts/sec depending on rule complexity
+- **Rule Efficiency**: 70% update rules + 30% fact-creating rules simulate real payroll patterns
 
-**Optimization Opportunities**: See Memory Efficiency Analysis below.
+**Key Improvements**: 
+- Fixed unrealistic 160x result explosion to realistic 20-50x ratios
+- Rules now properly match employee populations via modulo matching
+- Performance targets are achievable and reflect real payroll scenarios
 
 These tests simulate real-world business rule complexity with:
 - Threshold checking for compliance validation
@@ -169,9 +175,10 @@ If performance tests fail:
 ### Performance Scaling Patterns
 
 **Observations from Complex Rule Tests**:
-- Memory usage ranges from 7.7GB to 12.2GB for calculator-heavy scenarios
-- Result set sizes range from 32M to 81M results
-- Memory scaling appears driven by both rule count and result accumulation
+- Memory usage ranges from 14.8GB to 19.7GB for realistic payroll scenarios
+- Result set sizes range from 2M to 10M results (realistic 20-50x ratios)
+- Memory scaling driven by rule complexity and fact processing patterns
+- Employee-based rule matching creates predictable memory usage patterns
 
 ### Optimization Opportunities
 
@@ -183,9 +190,9 @@ If performance tests fail:
    - Consider cache size limits or eviction strategies
 
 2. **Result Set Memory Management**
-   - 32M-81M results represent significant memory allocation
-   - Evaluate result streaming vs accumulation strategies
-   - Consider result pagination for memory-constrained environments
+   - 2M-10M results represent significant memory allocation
+   - Evaluate result streaming vs accumulation strategies for payroll batches
+   - Consider result pagination for large employee populations
 
 3. **Memory Scaling Investigation**
    - Profile memory usage scaling with rule count (200 vs 500 rules)
