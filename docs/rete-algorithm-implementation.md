@@ -14,6 +14,33 @@ The RETE network consists of three main node types:
 2. **Beta Nodes**: Join multiple fact patterns together  
 3. **Terminal Nodes**: Execute actions when rules fire
 
+```mermaid
+graph TB
+    F[Facts] --> A1[Alpha Node 1]
+    F --> A2[Alpha Node 2]
+    F --> A3[Alpha Node 3]
+    
+    A1 --> B1[Beta Node 1]
+    A2 --> B1
+    A2 --> B2[Beta Node 2]
+    A3 --> B2
+    
+    B1 --> T1[Terminal Node 1]
+    B2 --> T2[Terminal Node 2]
+    
+    T1 --> E1[Execute Actions]
+    T2 --> E2[Execute Actions]
+    
+    style F fill:#e1f5fe
+    style A1 fill:#f3e5f5
+    style A2 fill:#f3e5f5
+    style A3 fill:#f3e5f5
+    style B1 fill:#e8f5e8
+    style B2 fill:#e8f5e8
+    style T1 fill:#fff3e0
+    style T2 fill:#fff3e0
+```
+
 ```rust
 // From crates/bingo-core/src/types.rs
 #[derive(Debug, Clone)]
@@ -39,6 +66,31 @@ pub struct TerminalNode {
 ### Alpha Memory Optimization
 
 The Alpha Memory provides efficient fact-to-rule indexing using field-based hash maps:
+
+```mermaid
+graph LR
+    F[New Fact] --> H{Hash Field Values}
+    H --> I1[Index: entity_id]
+    H --> I2[Index: status]
+    H --> I3[Index: category]
+    
+    I1 --> R1[Rules 1,3,5]
+    I2 --> R2[Rules 2,4]
+    I3 --> R3[Rules 1,6]
+    
+    R1 --> M[Merge Results]
+    R2 --> M
+    R3 --> M
+    
+    M --> E[Execute Matching Rules]
+    
+    style F fill:#e1f5fe
+    style H fill:#f3e5f5
+    style I1 fill:#e8f5e8
+    style I2 fill:#e8f5e8
+    style I3 fill:#e8f5e8
+    style E fill:#fff3e0
+```
 
 ```rust
 // From crates/bingo-core/src/rete_nodes.rs
@@ -140,6 +192,29 @@ pub fn get(&mut self, fact_id: FactId) -> Option<Fact> {
 3. **Fact Processing**: New facts matched against indexed conditions
 4. **Action Execution**: Matched rules trigger their actions
 
+```mermaid
+sequenceDiagram
+    participant R as Rule Registration
+    participant AM as Alpha Memory
+    participant FP as Fact Processor
+    participant RE as Rule Engine
+    participant AE as Action Executor
+    
+    R->>AM: Register Rule Conditions
+    AM->>AM: Build Field Indexes
+    
+    Note over FP: New Fact Arrives
+    FP->>AM: Query Matching Rules
+    AM->>FP: Return Candidate Rules
+    
+    FP->>RE: Evaluate Conditions
+    RE->>RE: Filter Valid Matches
+    RE->>AE: Execute Actions
+    
+    AE->>AE: Process Action Queue
+    AE-->>FP: Return Results
+```
+
 ```rust
 // From crates/bingo-core/src/rete_network.rs
 impl ReteNetwork {
@@ -215,6 +290,28 @@ ActionType::CallCalculator { calculator_name, input_mapping, output_field } => {
 
 The stream processor handles temporal pattern matching with multiple window types:
 
+```mermaid
+gantt
+    title Stream Processing Windows
+    dateFormat X
+    axisFormat %H:%M
+    
+    section Tumbling Windows
+    Window 1    :w1, 0, 5
+    Window 2    :w2, 5, 10
+    Window 3    :w3, 10, 15
+    
+    section Sliding Windows
+    Window A    :wa, 0, 8
+    Window B    :wb, 3, 11
+    Window C    :wc, 6, 14
+    
+    section Session Windows
+    Session 1   :s1, 0, 4
+    Gap         :sg1, 4, 7
+    Session 2   :s2, 7, 12
+```
+
 ```rust
 // From crates/bingo-core/src/stream_processing.rs
 #[derive(Debug, Clone, PartialEq)]
@@ -241,6 +338,25 @@ pub struct WindowInstance {
 ### Watermark Processing
 
 Event-time processing with watermarks for handling out-of-order events:
+
+```mermaid
+timeline
+    title Event Time vs Processing Time
+    
+    section Processing Time
+        T1 : Event A (ts=10)
+        T2 : Event B (ts=8)
+        T3 : Event C (ts=12)
+        T4 : Watermark (ts=9)
+        T5 : Event D (ts=15)
+        T6 : Watermark (ts=13)
+    
+    section Event Time
+        8  : Event B (late)
+        10 : Event A (on-time)
+        12 : Event C (on-time)
+        15 : Event D (on-time)
+```
 
 ```rust
 impl StreamProcessor {
@@ -296,6 +412,36 @@ pub enum AggregationFunction {
 2. **Arena Allocation**: Efficient fact storage with minimal fragmentation
 3. **Lazy Evaluation**: Expensive operations deferred until needed
 4. **Reference Counting**: Smart pointers for shared data structures
+
+```mermaid
+graph TB
+    subgraph "Memory Management"
+        OP[Object Pool] --> HP[HashMap Pool]
+        OP --> FP[Fact Pool]
+        OP --> AP[Action Pool]
+        
+        AA[Arena Allocator] --> FB[Fact Buffer]
+        AA --> RB[Rule Buffer]
+        
+        RC[Reference Counter] --> SF[Shared Facts]
+        RC --> SR[Shared Rules]
+        
+        LE[Lazy Evaluator] --> CA[Cached Aggregations]
+        LE --> DC[Deferred Calculations]
+    end
+    
+    subgraph "Performance Impact"
+        HP --> PI1[Reduced Allocations]
+        FB --> PI2[Memory Locality]
+        SF --> PI3[Reduced Copies]
+        CA --> PI4[Faster Queries]
+    end
+    
+    style OP fill:#e1f5fe
+    style AA fill:#f3e5f5
+    style RC fill:#e8f5e8
+    style LE fill:#fff3e0
+```
 
 ### Calculator Pool Implementation
 
@@ -395,6 +541,29 @@ Where:
 
 ### 1. Alpha Memory Indexing
 
+```mermaid
+flowchart LR
+    subgraph "Before Optimization O(n)"
+        F1[New Fact] --> L1[Linear Scan]
+        L1 --> R1[Rule 1]
+        L1 --> R2[Rule 2]
+        L1 --> R3[Rule 3]
+        L1 --> RN[Rule N]
+    end
+    
+    subgraph "After Optimization O(1)"
+        F2[New Fact] --> H[Hash Lookup]
+        H --> I1[Index Match]
+        I1 --> RC[Rule Candidates]
+        RC --> E[Evaluate Matches]
+    end
+    
+    style F1 fill:#ffebee
+    style L1 fill:#ffebee
+    style F2 fill:#e8f5e8
+    style H fill:#e8f5e8
+```
+
 **Before Optimization:**
 ```rust
 // O(n) linear scan through all rules
@@ -425,6 +594,29 @@ for (field_name, field_value) in &fact.data.fields {
 **Two-Tier Cache Strategy:**
 1. HashMap for all facts (O(1) access)
 2. LRU cache for hot facts (near O(1) access)
+
+```mermaid
+graph TD
+    FR[Fact Request] --> CC{Check LRU Cache}
+    CC -->|Hit| CH[Cache Hit]
+    CC -->|Miss| HM[HashMap Lookup]
+    
+    CH --> UF[Update Frequency]
+    HM --> CM[Cache Miss]
+    CM --> UL[Update LRU]
+    UL --> RF[Return Fact]
+    
+    UF --> RF
+    
+    subgraph "Performance Metrics"
+        HR[Hit Rate: 40-60%]
+        LI[Latency Improvement: 2-3x]
+        MP[Memory Pressure: Reduced]
+    end
+    
+    style CH fill:#e8f5e8
+    style CM fill:#fff3e0
+```
 
 **Performance Impact:**
 - 40-60% cache hit rates typical
