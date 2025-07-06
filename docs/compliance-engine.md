@@ -24,138 +24,310 @@ The engine handles this by breaking the problem into stages using rule prioritie
 1.  **Shift Calculation (Priority 200):** First, a high-priority rule calculates the duration of each individual shift fact.
 2.  **Compliance Check (Priority 100):** Next, a lower-priority rule runs on the employee fact. It aggregates the `calculated_hours` from all the relevant shift facts and compares the total against the employee's configured `weekly_hours_limit`.
 
-### API Request Format
+## Rule Definitions
 
-This example shows how to structure the rules and facts to execute this staged process in a single call.
+The compliance checking process is executed through a series of rules with different priorities.
 
-**gRPC Method:** `EngineService.Evaluate`
-
-```json
-{
-  "rules": [
-    {
-      "id": "calculate_shift_hours",
-      "name": "Calculate Hours for Each Shift",
-      "description": "Calculates the duration in hours for any fact representing a shift.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "shift" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "time_between_datetime",
-          "input_mapping": {
-            "start_field": "start_datetime",
-            "end_field": "finish_datetime",
-            "unit": "hours"
-          },
-          "output_field": "calculated_hours"
-        }
-      ],
-      "priority": 200
-    },
-    {
-      "id": "student_visa_compliance_check",
-      "name": "Student Visa Weekly Hours Compliance",
-      "description": "Aggregates shift hours and checks them against the employee's weekly limit.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "employee" },
-        { "field": "is_student_visa", "operator": "equal", "value": true }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "limit_validator",
-          "input_mapping": {
-            "value": {
-              "source_type": "aggregate",
-              "source_field": "calculated_hours",
-              "filter": "entity_type == 'shift' && employee_id == current_fact.employee_id"
-            },
-            "warning_threshold": "weekly_hours_warning",
-            "critical_threshold": null,
-            "max_threshold": "weekly_hours_limit"
-          },
-          "output_field": "compliance_result"
-        }
-      ],
-      "priority": 100
-    }
-  ],
-  "facts": [
-    {
-      "id": "emp_123",
-      "data": {
-        "entity_type": "employee",
-        "employee_id": "emp_123",
-        "name": "Alice Johnson",
-        "is_student_visa": true,
-        "weekly_hours_limit": 20.0,
-        "weekly_hours_warning": 18.0
-      }
-    },
-    {
-      "id": "shift_001",
-      "data": {
-        "entity_type": "shift",
-        "employee_id": "emp_123",
-        "start_datetime": "2024-06-17T09:00:00Z",
-        "finish_datetime": "2024-06-17T17:00:00Z"
-      }
-    },
-    {
-      "id": "shift_002",
-      "data": {
-        "entity_type": "shift",
-        "employee_id": "emp_123",
-        "start_datetime": "2024-06-18T10:00:00Z",
-        "finish_datetime": "2024-06-18T18:00:00Z"
-      }
-    },
-    {
-      "id": "shift_003",
-      "data": {
-        "entity_type": "shift",
-        "employee_id": "emp_123",
-        "start_datetime": "2024-06-19T09:00:00Z",
-        "finish_datetime": "2024-06-19T17:30:00Z"
-      }
-    }
-  ]
+### Rule 1: Calculate Shift Hours
+```rust
+Rule {
+    id: "calculate_shift_hours".to_string(),
+    name: "Calculate Hours for Each Shift".to_string(),
+    description: "Calculates the duration in hours for any fact representing a shift.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("shift".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "time_between_datetime".to_string(),
+            input_mapping: HashMap::from([
+                ("start_field".to_string(), "start_datetime".to_string()),
+                ("end_field".to_string(), "finish_datetime".to_string()),
+                ("unit".to_string(), "hours".to_string()),
+            ]),
+            output_field: "calculated_hours".to_string(),
+        })),
+    }],
+    priority: 200,
+    enabled: true,
+    tags: vec!["compliance".to_string(), "time_calculation".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
 }
 ```
-*Note: The `aggregate` source type in the `student_visa_compliance_check` rule is a conceptual representation of how the engine would need to aggregate data from other facts. The exact implementation may vary.*
 
-### Expected Response
-
-The response shows the result of the compliance check for the employee fact, which is the one that aggregates the data.
-
-```json
-{
-  "request_id": "req_12345",
-  "results": [
-    {
-      "rule_id": "student_visa_compliance_check",
-      "fact_id": "emp_123",
-      "actions_executed": [
-        {
-          "type": "calculator_result",
-          "calculator": "limit_validator",
-          "result": {
-            "severity": "breach",
-            "status": "Value 24.5 has breached maximum threshold 20",
-            "value": 24.5,
-            "utilization_percent": 122.5
-          }
-        }
-      ]
-    }
-  ],
-  "rules_processed": 2,
-  "facts_processed": 4,
-  "rules_fired": 4
+### Rule 2: Student Visa Compliance Check
+```rust
+Rule {
+    id: "student_visa_compliance_check".to_string(),
+    name: "Student Visa Weekly Hours Compliance".to_string(),
+    description: "Aggregates shift hours and checks them against the employee's weekly limit.".to_string(),
+    conditions: vec![
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "entity_type".to_string(),
+                operator: SimpleOperator::Equal as i32,
+                value: Some(Value {
+                    value: Some(value::Value::StringValue("employee".to_string())),
+                }),
+            })),
+        },
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "is_student_visa".to_string(),
+                operator: SimpleOperator::Equal as i32,
+                value: Some(Value {
+                    value: Some(value::Value::BoolValue(true)),
+                }),
+            })),
+        },
+    ],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "limit_validator".to_string(),
+            input_mapping: HashMap::from([
+                ("aggregate_field".to_string(), "calculated_hours".to_string()),
+                ("filter_condition".to_string(), "entity_type == 'shift' && employee_id == current_fact.employee_id".to_string()),
+                ("warning_threshold_field".to_string(), "weekly_hours_warning".to_string()),
+                ("max_threshold_field".to_string(), "weekly_hours_limit".to_string()),
+            ]),
+            output_field: "compliance_result".to_string(),
+        })),
+    }],
+    priority: 100,
+    enabled: true,
+    tags: vec!["compliance".to_string(), "student_visa".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
 }
 ```
+
+### gRPC API Example
+
+Here is a complete example using the gRPC API to process compliance checking.
+
+```rust
+use rules_engine::{*, rules_engine_service_client::RulesEngineServiceClient};
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn compliance_check_example() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = RulesEngineServiceClient::connect("http://127.0.0.1:50051").await?;
+
+    let rules = vec![
+        // Rule 1: Calculate shift hours
+        Rule {
+            id: "calculate_shift_hours".to_string(),
+            name: "Calculate Hours for Each Shift".to_string(),
+            description: "Calculates the duration in hours for any fact representing a shift.".to_string(),
+            conditions: vec![Condition {
+                condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                    field: "entity_type".to_string(),
+                    operator: SimpleOperator::Equal as i32,
+                    value: Some(Value {
+                        value: Some(value::Value::StringValue("shift".to_string())),
+                    }),
+                })),
+            }],
+            actions: vec![Action {
+                action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                    calculator_name: "time_between_datetime".to_string(),
+                    input_mapping: HashMap::from([
+                        ("start_field".to_string(), "start_datetime".to_string()),
+                        ("end_field".to_string(), "finish_datetime".to_string()),
+                        ("unit".to_string(), "hours".to_string()),
+                    ]),
+                    output_field: "calculated_hours".to_string(),
+                })),
+            }],
+            priority: 200,
+            enabled: true,
+            tags: vec!["compliance".to_string(), "time_calculation".to_string()],
+            created_at: chrono::Utc::now().timestamp(),
+            updated_at: chrono::Utc::now().timestamp(),
+        },
+        // Rule 2: Compliance check
+        Rule {
+            id: "student_visa_compliance_check".to_string(),
+            name: "Student Visa Weekly Hours Compliance".to_string(),
+            description: "Aggregates shift hours and checks them against the employee's weekly limit.".to_string(),
+            conditions: vec![
+                Condition {
+                    condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                        field: "entity_type".to_string(),
+                        operator: SimpleOperator::Equal as i32,
+                        value: Some(Value {
+                            value: Some(value::Value::StringValue("employee".to_string())),
+                        }),
+                    })),
+                },
+                Condition {
+                    condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                        field: "is_student_visa".to_string(),
+                        operator: SimpleOperator::Equal as i32,
+                        value: Some(Value {
+                            value: Some(value::Value::BoolValue(true)),
+                        }),
+                    })),
+                },
+            ],
+            actions: vec![Action {
+                action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                    calculator_name: "limit_validator".to_string(),
+                    input_mapping: HashMap::from([
+                        ("aggregate_field".to_string(), "calculated_hours".to_string()),
+                        ("filter_condition".to_string(), "entity_type == 'shift' && employee_id == current_fact.employee_id".to_string()),
+                        ("warning_threshold_field".to_string(), "weekly_hours_warning".to_string()),
+                        ("max_threshold_field".to_string(), "weekly_hours_limit".to_string()),
+                    ]),
+                    output_field: "compliance_result".to_string(),
+                })),
+            }],
+            priority: 100,
+            enabled: true,
+            tags: vec!["compliance".to_string(), "student_visa".to_string()],
+            created_at: chrono::Utc::now().timestamp(),
+            updated_at: chrono::Utc::now().timestamp(),
+        },
+    ];
+
+    let facts = vec![
+        Fact {
+            id: "emp_123".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("employee".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_123".to_string())) }),
+                ("name".to_string(), Value { value: Some(value::Value::StringValue("Alice Johnson".to_string())) }),
+                ("is_student_visa".to_string(), Value { value: Some(value::Value::BoolValue(true)) }),
+                ("weekly_hours_limit".to_string(), Value { value: Some(value::Value::NumberValue(20.0)) }),
+                ("weekly_hours_warning".to_string(), Value { value: Some(value::Value::NumberValue(18.0)) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "shift_001".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("shift".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_123".to_string())) }),
+                ("start_datetime".to_string(), Value { value: Some(value::Value::StringValue("2024-06-17T09:00:00Z".to_string())) }),
+                ("finish_datetime".to_string(), Value { value: Some(value::Value::StringValue("2024-06-17T17:00:00Z".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "shift_002".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("shift".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_123".to_string())) }),
+                ("start_datetime".to_string(), Value { value: Some(value::Value::StringValue("2024-06-18T10:00:00Z".to_string())) }),
+                ("finish_datetime".to_string(), Value { value: Some(value::Value::StringValue("2024-06-18T18:00:00Z".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "shift_003".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("shift".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_123".to_string())) }),
+                ("start_datetime".to_string(), Value { value: Some(value::Value::StringValue("2024-06-19T09:00:00Z".to_string())) }),
+                ("finish_datetime".to_string(), Value { value: Some(value::Value::StringValue("2024-06-19T17:30:00Z".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+    ];
+
+    // Use two-phase processing
+    let compile_request = CompileRulesRequest {
+        rules,
+        session_id: "compliance_session".to_string(),
+        options: None,
+    };
+
+    let compile_response = client.compile_rules(compile_request).await?.into_inner();
+    println!("Rules compiled successfully! Session: {}", compile_response.session_id);
+
+    // Stream facts and process results
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let request_stream = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
+
+    let mut response_stream = client
+        .process_facts_stream(tonic::Request::new(request_stream))
+        .await?
+        .into_inner();
+
+    tx.send(ProcessFactsStreamRequest {
+        request: Some(process_facts_stream_request::Request::SessionId(compile_response.session_id)),
+    })?;
+
+    for fact in facts {
+        tx.send(ProcessFactsStreamRequest {
+            request: Some(process_facts_stream_request::Request::FactBatch(fact)),
+        })?;
+    }
+
+    while let Some(result) = response_stream.next().await {
+        match result {
+            Ok(execution_result) => {
+                println!("Rule '{}' fired for fact '{}'", 
+                    execution_result.rule_name, 
+                    execution_result.matched_fact.unwrap().id
+                );
+                
+                for action_result in execution_result.action_results {
+                    if action_result.success {
+                        println!("  Compliance check completed successfully");
+                    } else {
+                        println!("  Compliance check failed: {}", action_result.error_message);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Stream error: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+*Note: The calculator actions use input mappings to handle aggregations and compliance threshold validation across the fact network.*
+
+### Expected Results
+
+The gRPC streaming API will return a series of `RuleExecutionResult` messages as rules fire:
+
+```
+Rule 'Calculate Hours for Each Shift' fired for fact 'shift_001'
+  Compliance check completed successfully
+  
+Rule 'Calculate Hours for Each Shift' fired for fact 'shift_002'
+  Compliance check completed successfully
+  
+Rule 'Calculate Hours for Each Shift' fired for fact 'shift_003'
+  Compliance check completed successfully
+  
+Rule 'Student Visa Weekly Hours Compliance' fired for fact 'emp_123'
+  Compliance check completed successfully
+```
+
+If a compliance violation is detected, the action result will contain:
+- Severity level (warning, breach)
+- Detailed status message
+- Actual value vs. threshold
+- Utilization percentage
+
+For example, if the employee worked 24.5 hours against a 20-hour limit:
+- Severity: "breach"
+- Status: "Value 24.5 has breached maximum threshold 20"
+- Utilization: 122.5%
 
 ## Available Predefined Calculators
 

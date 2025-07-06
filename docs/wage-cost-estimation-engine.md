@@ -59,213 +59,343 @@ Raw time tracking data for employees.
 
 The wage cost calculation is executed through a series of rules with different priorities.
 
-```json
-{
-  "rules": [
-    {
-      "id": "calculate_shift_hours",
-      "name": "Calculate Hours for Each Shift",
-      "description": "Calculates the duration in hours for any fact representing a shift.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "shift" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "time_between_datetime",
-          "input_mapping": {
-            "start_field": "start_datetime",
-            "end_field": "finish_datetime",
-            "unit": { "value": "hours" }
-          },
-          "output_field": "calculated_hours"
-        }
-      ],
-      "priority": 300
-    },
-    {
-      "id": "calculate_base_pay_per_shift",
-      "name": "Calculate Base Pay for Each Shift",
-      "description": "Calculates the base pay for a shift based on calculated hours and employee hourly rate.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "shift" },
-        { "field": "calculated_hours", "operator": "exists" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "multiply",
-          "input_mapping": {
-            "multiplicand": "calculated_hours",
-            "multiplier": {
-              "source_type": "fact_lookup",
-              "fact_id_field": "employee_id",
-              "fact_type": "employee_profile",
-              "field": "hourly_rate"
-            }
-          },
-          "output_field": "base_shift_cost"
-        }
-      ],
-      "priority": 250
-    },
-    {
-      "id": "aggregate_employee_gross_pay",
-      "name": "Aggregate Gross Pay per Employee",
-      "description": "Aggregates total base and overtime pay for each employee.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "employee_profile" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "aggregate_sum",
-          "input_mapping": {
-            "value": {
-              "source_type": "aggregate",
-              "source_field": "base_shift_cost",
-              "filter": "entity_type == 'shift' && employee_id == current_fact.employee_id"
-            }
-          },
-          "output_field": "total_gross_pay"
-        }
-      ],
-      "priority": 200
-    },
-    {
-      "id": "calculate_employer_benefits_and_taxes",
-      "name": "Calculate Employer Benefits and Taxes",
-      "description": "Calculates employer-paid benefits and taxes based on employee profile and gross pay.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "employee_profile" },
-        { "field": "total_gross_pay", "operator": "exists" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "add",
-          "input_mapping": {
-            "addend1": "total_gross_pay",
-            "addend2": "health_insurance_cost_per_period"
-          },
-          "output_field": "gross_pay_with_benefits"
-        },
-        {
-          "type": "call_calculator",
-          "calculator_name": "percentage_add",
-          "input_mapping": {
-            "base_amount": "gross_pay_with_benefits",
-            "percentage": "fica_tax_rate"
-          },
-          "output_field": "gross_pay_with_benefits_and_fica"
-        },
-        {
-          "type": "call_calculator",
-          "calculator_name": "percentage_add",
-          "input_mapping": {
-            "base_amount": "gross_pay_with_benefits_and_fica",
-            "percentage": "unemployment_tax_rate"
-          },
-          "output_field": "total_employee_wage_cost"
-        }
-      ],
-      "priority": 150
-    }
-  ]
+### Rule 1: Calculate Shift Hours
+```rust
+Rule {
+    id: "calculate_shift_hours".to_string(),
+    name: "Calculate Hours for Each Shift".to_string(),
+    description: "Calculates the duration in hours for any fact representing a shift.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("shift".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "time_between_datetime".to_string(),
+            input_mapping: HashMap::from([
+                ("start_field".to_string(), "start_datetime".to_string()),
+                ("end_field".to_string(), "finish_datetime".to_string()),
+                ("unit".to_string(), "hours".to_string()),
+                ("break_minutes_field".to_string(), "break_minutes".to_string()),
+            ]),
+            output_field: "calculated_hours".to_string(),
+        })),
+    }],
+    priority: 300,
+    enabled: true,
+    tags: vec!["wage_cost".to_string(), "time_calculation".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
 }
-```*Note: The `aggregate_sum`, `add`, and `percentage_add` are conceptual calculators. The `aggregate` source type for `value` and `fact_lookup` source type for `multiplier` are conceptual representations of how the engine would need to aggregate and reference data from other facts. The exact implementation may vary.*
+```
 
-## API Request Example
-
-Here is a complete example of what would be sent to the `/evaluate` endpoint.
-
-### Input
-
-```json
-{
-  "rules": [
-    {
-      "id": "calculate_shift_hours",
-      "priority": 300,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "shift" } ],
-      "actions": [ { "type": "call_calculator", "calculator_name": "time_between_datetime", "input_mapping": { "start_field": "start_datetime", "end_field": "finish_datetime", "unit": { "value": "hours" } }, "output_field": "calculated_hours" } ]
-    },
-    {
-      "id": "calculate_base_pay_per_shift",
-      "priority": 250,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "shift" }, { "field": "calculated_hours", "operator": "exists" } ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "multiply",
-          "input_mapping": {
-            "multiplicand": "calculated_hours",
-            "multiplier": { "source_type": "fact_lookup", "fact_id_field": "employee_id", "fact_type": "employee_profile", "field": "hourly_rate" }
-          },
-          "output_field": "base_shift_cost"
-        }
-      ]
-    },
-    {
-      "id": "aggregate_employee_gross_pay",
-      "priority": 200,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "employee_profile" } ],
-      "actions": [
-        {
-          "type": "call_calculator", "calculator_name": "aggregate_sum",
-          "input_mapping": {
-            "value": { "source_type": "aggregate", "source_field": "base_shift_cost", "filter": "entity_type == 'shift' && employee_id == current_fact.employee_id" }
-          },
-          "output_field": "total_gross_pay"
-        }
-      ]
-    },
-    {
-      "id": "calculate_employer_benefits_and_taxes",
-      "priority": 150,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "employee_profile" }, { "field": "total_gross_pay", "operator": "exists" } ],
-      "actions": [
-        {
-          "type": "call_calculator", "calculator_name": "add",
-          "input_mapping": { "addend1": "total_gross_pay", "addend2": "health_insurance_cost_per_period" },
-          "output_field": "gross_pay_with_benefits"
+### Rule 2: Calculate Base Pay per Shift
+```rust
+Rule {
+    id: "calculate_base_pay_per_shift".to_string(),
+    name: "Calculate Base Pay for Each Shift".to_string(),
+    description: "Calculates the base pay for a shift based on calculated hours and employee hourly rate.".to_string(),
+    conditions: vec![
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "entity_type".to_string(),
+                operator: SimpleOperator::Equal as i32,
+                value: Some(Value {
+                    value: Some(value::Value::StringValue("shift".to_string())),
+                }),
+            })),
         },
-        {
-          "type": "call_calculator", "calculator_name": "percentage_add",
-          "input_mapping": { "base_amount": "gross_pay_with_benefits", "percentage": "fica_tax_rate" },
-          "output_field": "gross_pay_with_benefits_and_fica"
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "calculated_hours".to_string(),
+                operator: SimpleOperator::GreaterThan as i32,
+                value: Some(Value {
+                    value: Some(value::Value::NumberValue(0.0)),
+                }),
+            })),
         },
-        {
-          "type": "call_calculator", "calculator_name": "percentage_add",
-          "input_mapping": { "base_amount": "gross_pay_with_benefits_and_fica", "percentage": "unemployment_tax_rate" },
-          "output_field": "total_employee_wage_cost"
-        }
-      ]
-    }
-  ],
-  "facts": [
-    {
-      "id": "emp_profile_001",
-      "data": { "entity_type": "employee_profile", "employee_id": "EMP001", "hourly_rate": 25.00, "weekly_overtime_threshold": 40, "health_insurance_cost_per_period": 150.00, "fica_tax_rate": 0.0765, "unemployment_tax_rate": 0.006 }
-    },
-    {
-      "id": "emp_profile_002",
-      "data": { "entity_type": "employee_profile", "employee_id": "EMP002", "hourly_rate": 30.00, "weekly_overtime_threshold": 40, "health_insurance_cost_per_period": 150.00, "fica_tax_rate": 0.0765, "unemployment_tax_rate": 0.006 }
-    },
-    {
-      "id": "shift_001",
-      "data": { "entity_type": "shift", "employee_id": "EMP001", "start_datetime": "2025-06-03T09:00:00Z", "finish_datetime": "2025-06-03T17:00:00Z", "break_minutes": 30 }
-    },
-    {
-      "id": "shift_002",
-      "data": { "entity_type": "shift", "employee_id": "EMP001", "start_datetime": "2025-06-04T09:00:00Z", "finish_datetime": "2025-06-04T19:00:00Z", "break_minutes": 60 }
-    },
-    {
-      "id": "shift_003",
-      "data": { "entity_type": "shift", "employee_id": "EMP002", "start_datetime": "2025-06-03T08:00:00Z", "finish_datetime": "2025-06-03T16:00:00Z", "break_minutes": 30 }
-    }
-  ]
+    ],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "multiply_with_lookup".to_string(),
+            input_mapping: HashMap::from([
+                ("multiplicand".to_string(), "calculated_hours".to_string()),
+                ("lookup_fact_type".to_string(), "employee_profile".to_string()),
+                ("lookup_key_field".to_string(), "employee_id".to_string()),
+                ("lookup_value_field".to_string(), "hourly_rate".to_string()),
+            ]),
+            output_field: "base_shift_cost".to_string(),
+        })),
+    }],
+    priority: 250,
+    enabled: true,
+    tags: vec!["wage_cost".to_string(), "base_pay".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
 }
+```
+
+### Rule 3: Aggregate Employee Gross Pay
+```rust
+Rule {
+    id: "aggregate_employee_gross_pay".to_string(),
+    name: "Aggregate Gross Pay per Employee".to_string(),
+    description: "Aggregates total base and overtime pay for each employee.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("employee_profile".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "aggregate_sum".to_string(),
+            input_mapping: HashMap::from([
+                ("source_field".to_string(), "base_shift_cost".to_string()),
+                ("filter_condition".to_string(), "entity_type == 'shift' && employee_id == current_fact.employee_id".to_string()),
+            ]),
+            output_field: "total_gross_pay".to_string(),
+        })),
+    }],
+    priority: 200,
+    enabled: true,
+    tags: vec!["wage_cost".to_string(), "aggregation".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
+}
+```
+
+### Rule 4: Calculate Employer Benefits and Taxes
+```rust
+Rule {
+    id: "calculate_employer_benefits_and_taxes".to_string(),
+    name: "Calculate Employer Benefits and Taxes".to_string(),
+    description: "Calculates employer-paid benefits and taxes based on employee profile and gross pay.".to_string(),
+    conditions: vec![
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "entity_type".to_string(),
+                operator: SimpleOperator::Equal as i32,
+                value: Some(Value {
+                    value: Some(value::Value::StringValue("employee_profile".to_string())),
+                }),
+            })),
+        },
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "total_gross_pay".to_string(),
+                operator: SimpleOperator::GreaterThan as i32,
+                value: Some(Value {
+                    value: Some(value::Value::NumberValue(0.0)),
+                }),
+            })),
+        },
+    ],
+    actions: vec![
+        Action {
+            action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                calculator_name: "add".to_string(),
+                input_mapping: HashMap::from([
+                    ("addend1".to_string(), "total_gross_pay".to_string()),
+                    ("addend2".to_string(), "health_insurance_cost_per_period".to_string()),
+                ]),
+                output_field: "gross_pay_with_benefits".to_string(),
+            })),
+        },
+        Action {
+            action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                calculator_name: "percentage_add".to_string(),
+                input_mapping: HashMap::from([
+                    ("base_amount".to_string(), "gross_pay_with_benefits".to_string()),
+                    ("percentage".to_string(), "fica_tax_rate".to_string()),
+                ]),
+                output_field: "gross_pay_with_benefits_and_fica".to_string(),
+            })),
+        },
+        Action {
+            action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                calculator_name: "percentage_add".to_string(),
+                input_mapping: HashMap::from([
+                    ("base_amount".to_string(), "gross_pay_with_benefits_and_fica".to_string()),
+                    ("percentage".to_string(), "unemployment_tax_rate".to_string()),
+                ]),
+                output_field: "total_employee_wage_cost".to_string(),
+            })),
+        },
+    ],
+    priority: 150,
+    enabled: true,
+    tags: vec!["wage_cost".to_string(), "benefits".to_string(), "taxes".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
+}
+```
+
+*Note: The calculator actions use input mappings to handle aggregations, fact lookups, and complex benefit/tax calculations across the fact network.*
+
+## gRPC API Example
+
+Here is a complete example using the gRPC API to process wage cost estimation.
+
+### Python Client Example
+
+```python
+import grpc
+import rules_engine_pb2
+import rules_engine_pb2_grpc
+import time
+from collections import OrderedDict
+
+def wage_cost_estimation_example():
+    channel = grpc.insecure_channel('localhost:50051')
+    client = rules_engine_pb2_grpc.RulesEngineServiceStub(channel)
+    
+    # Create rules for wage cost estimation
+    rules = [
+        # Rule 1: Calculate Shift Hours
+        rules_engine_pb2.Rule(
+            id="calculate_shift_hours",
+            name="Calculate Hours for Each Shift",
+            description="Calculates the duration in hours for any fact representing a shift.",
+            conditions=[
+                rules_engine_pb2.Condition(
+                    simple=rules_engine_pb2.SimpleCondition(
+                        field="entity_type",
+                        operator=rules_engine_pb2.SimpleOperator.EQUAL,
+                        value=rules_engine_pb2.Value(string_value="shift")
+                    )
+                )
+            ],
+            actions=[
+                rules_engine_pb2.Action(
+                    call_calculator=rules_engine_pb2.CallCalculatorAction(
+                        calculator_name="time_between_datetime",
+                        input_mapping={
+                            "start_field": "start_datetime",
+                            "end_field": "finish_datetime",
+                            "unit": "hours",
+                            "break_minutes_field": "break_minutes"
+                        },
+                        output_field="calculated_hours"
+                    )
+                )
+            ],
+            priority=300,
+            enabled=True,
+            tags=["wage_cost", "time_calculation"],
+            created_at=int(time.time()),
+            updated_at=int(time.time())
+        ),
+        # Rule 2: Calculate Base Pay per Shift
+        rules_engine_pb2.Rule(
+            id="calculate_base_pay_per_shift",
+            name="Calculate Base Pay for Each Shift",
+            description="Calculates the base pay for a shift based on calculated hours and employee hourly rate.",
+            conditions=[
+                rules_engine_pb2.Condition(
+                    simple=rules_engine_pb2.SimpleCondition(
+                        field="entity_type",
+                        operator=rules_engine_pb2.SimpleOperator.EQUAL,
+                        value=rules_engine_pb2.Value(string_value="shift")
+                    )
+                ),
+                rules_engine_pb2.Condition(
+                    simple=rules_engine_pb2.SimpleCondition(
+                        field="calculated_hours",
+                        operator=rules_engine_pb2.SimpleOperator.GREATER_THAN,
+                        value=rules_engine_pb2.Value(number_value=0.0)
+                    )
+                )
+            ],
+            actions=[
+                rules_engine_pb2.Action(
+                    call_calculator=rules_engine_pb2.CallCalculatorAction(
+                        calculator_name="multiply_with_lookup",
+                        input_mapping={
+                            "multiplicand": "calculated_hours",
+                            "lookup_fact_type": "employee_profile",
+                            "lookup_key_field": "employee_id",
+                            "lookup_value_field": "hourly_rate"
+                        },
+                        output_field="base_shift_cost"
+                    )
+                )
+            ],
+            priority=250,
+            enabled=True,
+            tags=["wage_cost", "base_pay"],
+            created_at=int(time.time()),
+            updated_at=int(time.time())
+        ),
+        # Additional rules would follow the same pattern...
+    ]
+    
+    # Create facts for wage cost estimation
+    facts = [
+        rules_engine_pb2.Fact(
+            id="emp_profile_001",
+            data={
+                "entity_type": rules_engine_pb2.Value(string_value="employee_profile"),
+                "employee_id": rules_engine_pb2.Value(string_value="EMP001"),
+                "hourly_rate": rules_engine_pb2.Value(number_value=25.00),
+                "weekly_overtime_threshold": rules_engine_pb2.Value(number_value=40),
+                "health_insurance_cost_per_period": rules_engine_pb2.Value(number_value=150.00),
+                "fica_tax_rate": rules_engine_pb2.Value(number_value=0.0765),
+                "unemployment_tax_rate": rules_engine_pb2.Value(number_value=0.006)
+            },
+            created_at=int(time.time())
+        ),
+        rules_engine_pb2.Fact(
+            id="shift_001",
+            data={
+                "entity_type": rules_engine_pb2.Value(string_value="shift"),
+                "employee_id": rules_engine_pb2.Value(string_value="EMP001"),
+                "start_datetime": rules_engine_pb2.Value(string_value="2025-06-03T09:00:00Z"),
+                "finish_datetime": rules_engine_pb2.Value(string_value="2025-06-03T17:00:00Z"),
+                "break_minutes": rules_engine_pb2.Value(number_value=30)
+            },
+            created_at=int(time.time())
+        ),
+        # Additional facts would follow...
+    ]
+    
+    try:
+        # Use two-phase processing
+        compile_request = rules_engine_pb2.CompileRulesRequest(
+            rules=rules,
+            session_id="wage_cost_session"
+        )
+        
+        compile_response = client.CompileRules(compile_request)
+        print(f"Rules compiled successfully! Session: {compile_response.session_id}")
+        
+        # Stream facts through compiled rules
+        def generate_requests():
+            yield rules_engine_pb2.ProcessFactsStreamRequest(session_id=compile_response.session_id)
+            for fact in facts:
+                yield rules_engine_pb2.ProcessFactsStreamRequest(fact_batch=fact)
+        
+        for response in client.ProcessFactsStream(generate_requests()):
+            print(f"Rule '{response.rule_name}' fired for fact '{response.matched_fact.id}'")
+            for action_result in response.action_results:
+                if action_result.success:
+                    print(f"  Action executed successfully")
+                else:
+                    print(f"  Action failed: {action_result.error_message}")
+    
+    except grpc.RpcError as e:
+        print(f"gRPC error: {e.code()} - {e.details()}")
+
+if __name__ == "__main__":
+    wage_cost_estimation_example()
 ```
 
 ### Expected Output

@@ -45,92 +45,133 @@ Configuration data for each employee.
 
 The payroll calculation is executed through a series of rules with different priorities. This ensures that initial calculations (like determining the hours for each shift) are completed before subsequent rules perform aggregations.
 
-```json
-{
-  "rules": [
-    {
-      "id": "calculate_shift_hours",
-      "name": "Calculate Payable Hours for Each Shift",
-      "description": "Calculates the duration in hours for any fact representing a shift.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "shift" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "time_between_datetime",
-          "input_mapping": {
-            "start_field": "start_datetime",
-            "end_field": "finish_datetime",
-            "unit": "hours"
-          },
-          "output_field": "calculated_hours"
-        }
-      ],
-      "priority": 200
-    },
-    {
-      "id": "calculate_overtime",
-      "name": "Calculate Weekly Overtime",
-      "description": "Aggregates base pay shift hours and creates an overtime fact if the weekly threshold is exceeded.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "employee_config" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "threshold_check",
-          "input_mapping": {
-            "value": {
-              "source_type": "aggregate",
-              "source_field": "calculated_hours",
-              "filter": "entity_type == 'shift' && employee_number == current_fact.employee_number && pay_code == 'base_pay'"
-            },
-            "threshold": "weekly_overtime_threshold",
-            "operator": { "value": "GreaterThan" }
-          },
-          "output_field": "overtime_calculation"
-        },
-        {
-            "type": "create_fact",
-            "fact_id": "overtime_{{current_fact.employee_number}}",
-            "fact_data": {
-                "entity_type": "overtime",
-                "employee_number": "{{current_fact.employee_number}}",
-                "pay_code": "overtime",
-                "hours": "{{overtime_calculation.violation_amount}}",
-                "pay_rate": "{{current_fact.base_hourly_rate}}"
-            },
-            "condition": "{{overtime_calculation.passes}}"
-        }
-      ],
-      "priority": 100
-    },
-    {
-      "id": "calculate_gross_pay",
-      "name": "Calculate Gross Pay",
-      "description": "Calculates the gross pay for any fact with hours and a pay rate.",
-      "conditions": [
-        { "field": "hours", "operator": "exists" },
-        { "field": "pay_rate", "operator": "exists" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "multiply",
-          "input_mapping": {
-            "multiplicand": "hours",
-            "multiplier": "pay_rate"
-          },
-          "output_field": "gross_pay"
-        }
-      ],
-      "priority": 50
-    }
-  ]
+### Rule 1: Calculate Shift Hours
+```rust
+Rule {
+    id: "calculate_shift_hours".to_string(),
+    name: "Calculate Payable Hours for Each Shift".to_string(),
+    description: "Calculates the duration in hours for any fact representing a shift.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("shift".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "time_between_datetime".to_string(),
+            input_mapping: HashMap::from([
+                ("start_field".to_string(), "start_datetime".to_string()),
+                ("end_field".to_string(), "finish_datetime".to_string()),
+                ("unit".to_string(), "hours".to_string()),
+            ]),
+            output_field: "calculated_hours".to_string(),
+        })),
+    }],
+    priority: 200,
+    enabled: true,
+    tags: vec!["payroll".to_string(), "time_calculation".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
 }
 ```
-*Note: The `aggregate` source type and the use of `{{...}}` for templating in the `create_fact` action are conceptual representations of how the engine would need to function. The exact implementation may vary.*
+
+### Rule 2: Calculate Weekly Overtime
+```rust
+Rule {
+    id: "calculate_overtime".to_string(),
+    name: "Calculate Weekly Overtime".to_string(),
+    description: "Aggregates base pay shift hours and creates an overtime fact if the weekly threshold is exceeded.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("employee_config".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![
+        Action {
+            action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                calculator_name: "threshold_check".to_string(),
+                input_mapping: HashMap::from([
+                    ("aggregate_field".to_string(), "calculated_hours".to_string()),
+                    ("filter_condition".to_string(), "entity_type == 'shift' && employee_number == current_fact.employee_number && pay_code == 'base_pay'".to_string()),
+                    ("threshold_field".to_string(), "weekly_overtime_threshold".to_string()),
+                    ("operator".to_string(), "GreaterThan".to_string()),
+                ]),
+                output_field: "overtime_calculation".to_string(),
+            })),
+        },
+        Action {
+            action_type: Some(action::ActionType::CreateFact(CreateFactAction {
+                fields: HashMap::from([
+                    ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("overtime".to_string())) }),
+                    ("employee_number".to_string(), Value { value: Some(value::Value::StringValue("{{current_fact.employee_number}}".to_string())) }),
+                    ("pay_code".to_string(), Value { value: Some(value::Value::StringValue("overtime".to_string())) }),
+                    ("hours".to_string(), Value { value: Some(value::Value::StringValue("{{overtime_calculation.excess_amount}}".to_string())) }),
+                    ("pay_rate".to_string(), Value { value: Some(value::Value::StringValue("{{current_fact.base_hourly_rate}}".to_string())) }),
+                ]),
+            })),
+        },
+    ],
+    priority: 100,
+    enabled: true,
+    tags: vec!["payroll".to_string(), "overtime".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
+}
+```
+
+### Rule 3: Calculate Gross Pay
+```rust
+Rule {
+    id: "calculate_gross_pay".to_string(),
+    name: "Calculate Gross Pay".to_string(),
+    description: "Calculates the gross pay for any fact with hours and a pay rate.".to_string(),
+    conditions: vec![
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "hours".to_string(),
+                operator: SimpleOperator::GreaterThan as i32,
+                value: Some(Value {
+                    value: Some(value::Value::NumberValue(0.0)),
+                }),
+            })),
+        },
+        Condition {
+            condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                field: "pay_rate".to_string(),
+                operator: SimpleOperator::GreaterThan as i32,
+                value: Some(Value {
+                    value: Some(value::Value::NumberValue(0.0)),
+                }),
+            })),
+        },
+    ],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "multiply".to_string(),
+            input_mapping: HashMap::from([
+                ("multiplicand".to_string(), "hours".to_string()),
+                ("multiplier".to_string(), "pay_rate".to_string()),
+            ]),
+            output_field: "gross_pay".to_string(),
+        })),
+    }],
+    priority: 50,
+    enabled: true,
+    tags: vec!["payroll".to_string(), "gross_pay".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
+}
+```
+
+*Note: The calculator actions use input mappings to handle aggregations, fact lookups, and templating for dynamic fact creation.*
 
 ## Final Output
 

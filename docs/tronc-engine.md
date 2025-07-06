@@ -56,189 +56,356 @@ Raw shift data for employees, including hours worked that are eligible for TRONC
 
 The TRONC distribution is executed through a series of rules with different priorities. This ensures that the total eligible hours are calculated before individual allocations are made.
 
-```json
-{
-  "rules": [
-    {
-      "id": "deduct_admin_fee",
-      "name": "Deduct Administration Fee from TRONC Pool",
-      "description": "Deducts a specified percentage as an administration fee from the total TRONC amount.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "tronc_distribution_config" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "percentage_deduct",
-          "input_mapping": {
-            "total_amount": "total_tronc_amount",
-            "percentage": "administration_fee_percentage"
-          },
-          "output_field": "adjusted_tronc_amount"
-        }
-      ],
-      "priority": 300
-    },
-    {
-      "id": "calculate_weighted_eligible_hours",
-      "name": "Calculate Total Weighted Eligible Hours for TRONC Distribution",
-      "description": "Aggregates total weighted hours worked by eligible employees for a given distribution period, considering role-based weights.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "tronc_distribution_config" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "aggregate_weighted_sum",
-          "input_mapping": {
-            "value": {
-              "source_type": "aggregate",
-              "source_field": "hours_worked",
-              "filter": "entity_type == 'employee_shift' && shift_date == current_fact.distribution_date",
-              "weight_field": "role",
-              "weight_lookup_fact_type": "role_weight_config",
-              "weight_lookup_field": "weight"
-            }
-          },
-          "output_field": "total_weighted_eligible_hours"
-        }
-      ],
-      "priority": 200
-    },
-    {
-      "id": "allocate_tronc_to_shift",
-      "name": "Allocate TRONC to Employee Shifts",
-      "description": "Calculates each shift's proportional share of the adjusted TRONC pool based on weighted hours.",
-      "conditions": [
-        { "field": "entity_type", "operator": "equal", "value": "employee_shift" }
-      ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "allocate_proportional",
-          "input_mapping": {
-            "total_amount": {
-              "source_type": "fact_lookup",
-              "fact_id": "tronc_config_2025-06-28",
-              "field": "adjusted_tronc_amount"
-            },
-            "individual_value": {
-              "source_type": "current_fact",
-              "source_field": "hours_worked",
-              "weight_field": "role",
-              "weight_lookup_fact_type": "role_weight_config",
-              "weight_lookup_field": "weight"
-            },
-            "total_value": {
-              "source_type": "fact_lookup",
-              "fact_id": "tronc_config_2025-06-28",
-              "field": "total_weighted_eligible_hours"
-            }
-          },
-          "output_field": "tronc_allocated_amount"
-        }
-      ],
-      "priority": 100
-    }
-  ]
-}
-```
-*Note: The `aggregate` and `fact_lookup` source types are part of the engine's powerful data access DSL. They allow rules to dynamically aggregate data from across the fact network and look up specific values from other facts by their ID, enabling complex, multi-stage calculations.*
-
-## API Request Example
-
-Here is a complete example of what would be sent to the gRPC `EngineService.Evaluate` method.
-
-### Input
-
-```json
-{
-  "rules": [
-    {
-      "id": "deduct_admin_fee",
-      "priority": 300,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "tronc_distribution_config" } ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "percentage_deduct",
-          "input_mapping": {
-            "total_amount": "total_tronc_amount",
-            "percentage": "administration_fee_percentage"
-          },
-          "output_field": "adjusted_tronc_amount"
-        }
-      ]
-    },
-    {
-      "id": "calculate_weighted_eligible_hours",
-      "priority": 200,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "tronc_distribution_config" } ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "aggregate_weighted_sum",
-          "input_mapping": {
-            "value": {
-              "source_type": "aggregate",
-              "source_field": "hours_worked",
-              "filter": "entity_type == 'employee_shift' && shift_date == current_fact.distribution_date",
-              "weight_field": "role",
-              "weight_lookup_fact_type": "role_weight_config",
-              "weight_lookup_field": "weight"
-            }
-          },
-          "output_field": "total_weighted_eligible_hours"
-        }
-      ]
-    },
-    {
-      "id": "allocate_tronc_to_shift",
-      "priority": 100,
-      "conditions": [ { "field": "entity_type", "operator": "equal", "value": "employee_shift" } ],
-      "actions": [
-        {
-          "type": "call_calculator",
-          "calculator_name": "allocate_proportional",
-          "input_mapping": {
-            "total_amount": {
-              "source_type": "fact_lookup",
-              "fact_id": "tronc_config_2025-06-28",
-              "field": "adjusted_tronc_amount"
-            },
-            "individual_value": {
-              "source_type": "current_fact",
-              "source_field": "hours_worked",
-              "weight_field": "role",
-              "weight_lookup_fact_type": "role_weight_config",
-              "weight_lookup_field": "weight"
-            },
-            "total_value": {
-              "source_type": "fact_lookup",
-              "fact_id": "tronc_config_2025-06-28",
-              "field": "total_weighted_eligible_hours"
-            }
-          },
-          "output_field": "tronc_allocated_amount"
-        }
-      ]
-    }
-  ],
-  "facts": [
-    {
-      "id": "tronc_config_2025-06-28",
-      "data": { "entity_type": "tronc_distribution_config", "total_tronc_amount": 500.00, "administration_fee_percentage": 0.05, "distribution_date": "2025-06-28" }
-    },
-    { "id": "role_weight_waiter", "data": { "entity_type": "role_weight_config", "role": "waiter", "weight": 1.0 } },
-    { "id": "role_weight_bartender", "data": { "entity_type": "role_weight_config", "role": "bartender", "weight": 1.2 } },
-    { "id": "shift_001", "data": { "entity_type": "employee_shift", "employee_id": "emp_A", "hours_worked": 8.0, "shift_date": "2025-06-28", "role": "waiter" } },
-    { "id": "shift_002", "data": { "entity_type": "employee_shift", "employee_id": "emp_B", "hours_worked": 6.0, "shift_date": "2025-06-28", "role": "waiter" } },
-    { "id": "shift_003", "data": { "entity_type": "employee_shift", "employee_id": "emp_C", "hours_worked": 10.0, "shift_date": "2025-06-28", "role": "bartender" } }
-  ]
+### Rule 1: Deduct Administration Fee
+```rust
+Rule {
+    id: "deduct_admin_fee".to_string(),
+    name: "Deduct Administration Fee from TRONC Pool".to_string(),
+    description: "Deducts a specified percentage as an administration fee from the total TRONC amount.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("tronc_distribution_config".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "percentage_deduct".to_string(),
+            input_mapping: HashMap::from([
+                ("total_amount".to_string(), "total_tronc_amount".to_string()),
+                ("percentage".to_string(), "administration_fee_percentage".to_string()),
+            ]),
+            output_field: "adjusted_tronc_amount".to_string(),
+        })),
+    }],
+    priority: 300,
+    enabled: true,
+    tags: vec!["tronc".to_string(), "administration".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
 }
 ```
 
-### Expected Output
+### Rule 2: Calculate Total Weighted Eligible Hours
+```rust
+Rule {
+    id: "calculate_weighted_eligible_hours".to_string(),
+    name: "Calculate Total Weighted Eligible Hours for TRONC Distribution".to_string(),
+    description: "Aggregates total weighted hours worked by eligible employees for a given distribution period, considering role-based weights.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("tronc_distribution_config".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "aggregate_weighted_sum".to_string(),
+            input_mapping: HashMap::from([
+                ("source_field".to_string(), "hours_worked".to_string()),
+                ("filter_condition".to_string(), "entity_type == 'employee_shift' && shift_date == current_fact.distribution_date".to_string()),
+                ("weight_field".to_string(), "role".to_string()),
+                ("weight_lookup_type".to_string(), "role_weight_config".to_string()),
+                ("weight_lookup_field".to_string(), "weight".to_string()),
+            ]),
+            output_field: "total_weighted_eligible_hours".to_string(),
+        })),
+    }],
+    priority: 200,
+    enabled: true,
+    tags: vec!["tronc".to_string(), "calculation".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
+}
+```
+
+### Rule 3: Allocate TRONC to Employee Shifts
+```rust
+Rule {
+    id: "allocate_tronc_to_shift".to_string(),
+    name: "Allocate TRONC to Employee Shifts".to_string(),
+    description: "Calculates each shift's proportional share of the adjusted TRONC pool based on weighted hours.".to_string(),
+    conditions: vec![Condition {
+        condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+            field: "entity_type".to_string(),
+            operator: SimpleOperator::Equal as i32,
+            value: Some(Value {
+                value: Some(value::Value::StringValue("employee_shift".to_string())),
+            }),
+        })),
+    }],
+    actions: vec![Action {
+        action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+            calculator_name: "allocate_proportional".to_string(),
+            input_mapping: HashMap::from([
+                ("total_amount_fact_id".to_string(), "tronc_config_2025-06-28".to_string()),
+                ("total_amount_field".to_string(), "adjusted_tronc_amount".to_string()),
+                ("individual_hours_field".to_string(), "hours_worked".to_string()),
+                ("weight_field".to_string(), "role".to_string()),
+                ("weight_lookup_type".to_string(), "role_weight_config".to_string()),
+                ("total_hours_fact_id".to_string(), "tronc_config_2025-06-28".to_string()),
+                ("total_hours_field".to_string(), "total_weighted_eligible_hours".to_string()),
+            ]),
+            output_field: "tronc_allocated_amount".to_string(),
+        })),
+    }],
+    priority: 100,
+    enabled: true,
+    tags: vec!["tronc".to_string(), "allocation".to_string()],
+    created_at: chrono::Utc::now().timestamp(),
+    updated_at: chrono::Utc::now().timestamp(),
+}
+```
+
+*Note: The calculator actions use input mappings to reference aggregated data and fact lookups, enabling complex, multi-stage calculations across the fact network.*
+
+## gRPC API Example
+
+Here is a complete example using the gRPC API to process TRONC distribution.
+
+### Rust Client Example
+
+```rust
+use rules_engine::{*, rules_engine_service_client::RulesEngineServiceClient};
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn tronc_distribution_example() -> Result<(), Box<dyn std::error::Error>> {
+    let mut client = RulesEngineServiceClient::connect("http://127.0.0.1:50051").await?;
+
+    // Create the rules for TRONC distribution
+    let rules = vec![
+        // Rule 1: Deduct Administration Fee (Priority 300)
+        Rule {
+            id: "deduct_admin_fee".to_string(),
+            name: "Deduct Administration Fee from TRONC Pool".to_string(),
+            description: "Deducts a specified percentage as an administration fee from the total TRONC amount.".to_string(),
+            conditions: vec![Condition {
+                condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                    field: "entity_type".to_string(),
+                    operator: SimpleOperator::Equal as i32,
+                    value: Some(Value {
+                        value: Some(value::Value::StringValue("tronc_distribution_config".to_string())),
+                    }),
+                })),
+            }],
+            actions: vec![Action {
+                action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                    calculator_name: "percentage_deduct".to_string(),
+                    input_mapping: HashMap::from([
+                        ("total_amount".to_string(), "total_tronc_amount".to_string()),
+                        ("percentage".to_string(), "administration_fee_percentage".to_string()),
+                    ]),
+                    output_field: "adjusted_tronc_amount".to_string(),
+                })),
+            }],
+            priority: 300,
+            enabled: true,
+            tags: vec!["tronc".to_string(), "administration".to_string()],
+            created_at: chrono::Utc::now().timestamp(),
+            updated_at: chrono::Utc::now().timestamp(),
+        },
+        // Rule 2: Calculate Total Weighted Eligible Hours (Priority 200)
+        Rule {
+            id: "calculate_weighted_eligible_hours".to_string(),
+            name: "Calculate Total Weighted Eligible Hours for TRONC Distribution".to_string(),
+            description: "Aggregates total weighted hours worked by eligible employees for a given distribution period.".to_string(),
+            conditions: vec![Condition {
+                condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                    field: "entity_type".to_string(),
+                    operator: SimpleOperator::Equal as i32,
+                    value: Some(Value {
+                        value: Some(value::Value::StringValue("tronc_distribution_config".to_string())),
+                    }),
+                })),
+            }],
+            actions: vec![Action {
+                action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                    calculator_name: "aggregate_weighted_sum".to_string(),
+                    input_mapping: HashMap::from([
+                        ("source_field".to_string(), "hours_worked".to_string()),
+                        ("filter_condition".to_string(), "entity_type == 'employee_shift' && shift_date == current_fact.distribution_date".to_string()),
+                        ("weight_field".to_string(), "role".to_string()),
+                        ("weight_lookup_type".to_string(), "role_weight_config".to_string()),
+                        ("weight_lookup_field".to_string(), "weight".to_string()),
+                    ]),
+                    output_field: "total_weighted_eligible_hours".to_string(),
+                })),
+            }],
+            priority: 200,
+            enabled: true,
+            tags: vec!["tronc".to_string(), "calculation".to_string()],
+            created_at: chrono::Utc::now().timestamp(),
+            updated_at: chrono::Utc::now().timestamp(),
+        },
+        // Rule 3: Allocate TRONC to Employee Shifts (Priority 100)
+        Rule {
+            id: "allocate_tronc_to_shift".to_string(),
+            name: "Allocate TRONC to Employee Shifts".to_string(),
+            description: "Calculates each shift's proportional share of the adjusted TRONC pool based on weighted hours.".to_string(),
+            conditions: vec![Condition {
+                condition_type: Some(condition::ConditionType::Simple(SimpleCondition {
+                    field: "entity_type".to_string(),
+                    operator: SimpleOperator::Equal as i32,
+                    value: Some(Value {
+                        value: Some(value::Value::StringValue("employee_shift".to_string())),
+                    }),
+                })),
+            }],
+            actions: vec![Action {
+                action_type: Some(action::ActionType::CallCalculator(CallCalculatorAction {
+                    calculator_name: "allocate_proportional".to_string(),
+                    input_mapping: HashMap::from([
+                        ("total_amount_fact_id".to_string(), "tronc_config_2025-06-28".to_string()),
+                        ("total_amount_field".to_string(), "adjusted_tronc_amount".to_string()),
+                        ("individual_hours_field".to_string(), "hours_worked".to_string()),
+                        ("weight_field".to_string(), "role".to_string()),
+                        ("weight_lookup_type".to_string(), "role_weight_config".to_string()),
+                        ("total_hours_fact_id".to_string(), "tronc_config_2025-06-28".to_string()),
+                        ("total_hours_field".to_string(), "total_weighted_eligible_hours".to_string()),
+                    ]),
+                    output_field: "tronc_allocated_amount".to_string(),
+                })),
+            }],
+            priority: 100,
+            enabled: true,
+            tags: vec!["tronc".to_string(), "allocation".to_string()],
+            created_at: chrono::Utc::now().timestamp(),
+            updated_at: chrono::Utc::now().timestamp(),
+        },
+    ];
+
+    // Create facts for the TRONC distribution scenario
+    let facts = vec![
+        Fact {
+            id: "tronc_config_2025-06-28".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("tronc_distribution_config".to_string())) }),
+                ("total_tronc_amount".to_string(), Value { value: Some(value::Value::NumberValue(500.0)) }),
+                ("administration_fee_percentage".to_string(), Value { value: Some(value::Value::NumberValue(0.05)) }),
+                ("distribution_date".to_string(), Value { value: Some(value::Value::StringValue("2025-06-28".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "role_weight_waiter".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("role_weight_config".to_string())) }),
+                ("role".to_string(), Value { value: Some(value::Value::StringValue("waiter".to_string())) }),
+                ("weight".to_string(), Value { value: Some(value::Value::NumberValue(1.0)) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "role_weight_bartender".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("role_weight_config".to_string())) }),
+                ("role".to_string(), Value { value: Some(value::Value::StringValue("bartender".to_string())) }),
+                ("weight".to_string(), Value { value: Some(value::Value::NumberValue(1.2)) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "shift_001".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("employee_shift".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_A".to_string())) }),
+                ("hours_worked".to_string(), Value { value: Some(value::Value::NumberValue(8.0)) }),
+                ("shift_date".to_string(), Value { value: Some(value::Value::StringValue("2025-06-28".to_string())) }),
+                ("role".to_string(), Value { value: Some(value::Value::StringValue("waiter".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "shift_002".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("employee_shift".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_B".to_string())) }),
+                ("hours_worked".to_string(), Value { value: Some(value::Value::NumberValue(6.0)) }),
+                ("shift_date".to_string(), Value { value: Some(value::Value::StringValue("2025-06-28".to_string())) }),
+                ("role".to_string(), Value { value: Some(value::Value::StringValue("waiter".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+        Fact {
+            id: "shift_003".to_string(),
+            data: HashMap::from([
+                ("entity_type".to_string(), Value { value: Some(value::Value::StringValue("employee_shift".to_string())) }),
+                ("employee_id".to_string(), Value { value: Some(value::Value::StringValue("emp_C".to_string())) }),
+                ("hours_worked".to_string(), Value { value: Some(value::Value::NumberValue(10.0)) }),
+                ("shift_date".to_string(), Value { value: Some(value::Value::StringValue("2025-06-28".to_string())) }),
+                ("role".to_string(), Value { value: Some(value::Value::StringValue("bartender".to_string())) }),
+            ]),
+            created_at: chrono::Utc::now().timestamp(),
+        },
+    ];
+
+    // Use two-phase processing for optimal performance
+    let compile_request = CompileRulesRequest {
+        rules,
+        session_id: "tronc_distribution_session".to_string(),
+        options: None,
+    };
+
+    let compile_response = client.compile_rules(compile_request).await?.into_inner();
+    println!("Rules compiled successfully! Session: {}", compile_response.session_id);
+
+    // Stream facts through compiled rules
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let request_stream = tokio_stream::wrappers::UnboundedReceiverStream::new(rx);
+
+    let mut response_stream = client
+        .process_facts_stream(tonic::Request::new(request_stream))
+        .await?
+        .into_inner();
+
+    // Send session ID
+    tx.send(ProcessFactsStreamRequest {
+        request: Some(process_facts_stream_request::Request::SessionId(compile_response.session_id)),
+    })?;
+
+    // Send facts
+    for fact in facts {
+        tx.send(ProcessFactsStreamRequest {
+            request: Some(process_facts_stream_request::Request::FactBatch(fact)),
+        })?;
+    }
+
+    // Process results
+    while let Some(result) = response_stream.next().await {
+        match result {
+            Ok(execution_result) => {
+                println!("Rule '{}' fired for fact '{}'", 
+                    execution_result.rule_name, 
+                    execution_result.matched_fact.unwrap().id
+                );
+                
+                for action_result in execution_result.action_results {
+                    if action_result.success {
+                        println!("  Action executed successfully");
+                    } else {
+                        println!("  Action failed: {}", action_result.error_message);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Stream error: {}", e);
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+### Expected Results
 
 Assuming `adjusted_tronc_amount` is calculated as 475.00 (500 - 500 * 0.05) and `total_weighted_eligible_hours` is 26.0 (8*1.0 + 6*1.0 + 10*1.2):
 
@@ -246,76 +413,32 @@ Assuming `adjusted_tronc_amount` is calculated as 475.00 (500 - 500 * 0.05) and 
 *   `shift_002`: (6.0 / 26.0) * 475.00 = 109.62
 *   `shift_003`: (12.0 / 26.0) * 475.00 = 219.23
 
-```json
-{
-  "request_id": "req_example_tronc_distribution",
-  "results": [
-    {
-      "id": "tronc_config_2025-06-28",
-      "data": {
-        "entity_type": "tronc_distribution_config",
-        "total_tronc_amount": 500.00,
-        "administration_fee_percentage": 0.05,
-        "distribution_date": "2025-06-28",
-        "adjusted_tronc_amount": 475.00,
-        "total_weighted_eligible_hours": 26.0
-      }
-    },
-    {
-      "id": "role_weight_waiter",
-      "data": {
-        "entity_type": "role_weight_config",
-        "role": "waiter",
-        "weight": 1.0
-      }
-    },
-    {
-      "id": "role_weight_bartender",
-      "data": {
-        "entity_type": "role_weight_config",
-        "role": "bartender",
-        "weight": 1.2
-      }
-    },
-    {
-      "id": "shift_001",
-      "data": {
-        "entity_type": "employee_shift",
-        "employee_id": "emp_A",
-        "hours_worked": 8.0,
-        "shift_date": "2025-06-28",
-        "role": "waiter",
-        "tronc_allocated_amount": 146.15
-      }
-    },
-    {
-      "id": "shift_002",
-      "data": {
-        "entity_type": "employee_shift",
-        "employee_id": "emp_B",
-        "hours_worked": 6.0,
-        "shift_date": "2025-06-28",
-        "role": "waiter",
-        "tronc_allocated_amount": 109.62
-      }
-    },
-    {
-      "id": "shift_003",
-      "data": {
-        "entity_type": "employee_shift",
-        "employee_id": "emp_C",
-        "hours_worked": 10.0,
-        "shift_date": "2025-06-28",
-        "role": "bartender",
-        "tronc_allocated_amount": 219.23
-      }
-    }
-  ],
-  "facts_processed": 6,
-  "rules_evaluated": 3,
-  "rules_fired": 6
-}
+The gRPC streaming API will return a series of `RuleExecutionResult` messages as rules fire:
+
 ```
+Rule 'Deduct Administration Fee from TRONC Pool' fired for fact 'tronc_config_2025-06-28'
+  Action executed successfully
+  
+Rule 'Calculate Total Weighted Eligible Hours for TRONC Distribution' fired for fact 'tronc_config_2025-06-28'
+  Action executed successfully
+  
+Rule 'Allocate TRONC to Employee Shifts' fired for fact 'shift_001'
+  Action executed successfully
+  
+Rule 'Allocate TRONC to Employee Shifts' fired for fact 'shift_002'
+  Action executed successfully
+  
+Rule 'Allocate TRONC to Employee Shifts' fired for fact 'shift_003'
+  Action executed successfully
+```
+
+Each execution result contains:
+- The rule that fired
+- The fact that matched the conditions
+- Action results with calculated values
+- Execution timing metadata
+
+After processing, facts will be updated with calculated fields like `adjusted_tronc_amount`, `total_weighted_eligible_hours`, and `tronc_allocated_amount` for each shift.
 
 ## Available Predefined Calculators
 

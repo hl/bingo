@@ -278,7 +278,7 @@ grpcurl -plaintext localhost:50051 list
 grpcurl -plaintext localhost:50051 \
   rules_engine.v1.RulesEngineService/HealthCheck
 
-# Compile rules
+# Compile rules (using protobuf JSON format)
 grpcurl -plaintext -d '{
   "session_id": "test-session",
   "rules": [
@@ -302,11 +302,19 @@ grpcurl -plaintext -d '{
             }
           }
         }
-      ]
+      ],
+      "priority": 100,
+      "enabled": true,
+      "tags": ["test"],
+      "created_at": 1672531200,
+      "updated_at": 1672531200
     }
   ]
 }' localhost:50051 \
   rules_engine.v1.RulesEngineService/CompileRules
+
+# Note: This JSON format represents the protobuf message structure,
+# which is different from the old HTTP API JSON format
 ```
 
 ### Python Client
@@ -331,7 +339,30 @@ request = rules_engine_pb2.CompileRulesRequest(
         rules_engine_pb2.Rule(
             id="1",
             name="Python Test Rule",
-            # ... rule definition
+            description="A test rule for Python client",
+            conditions=[
+                rules_engine_pb2.Condition(
+                    simple=rules_engine_pb2.SimpleCondition(
+                        field="status",
+                        operator=rules_engine_pb2.SimpleOperator.SIMPLE_OPERATOR_EQUAL,
+                        value=rules_engine_pb2.Value(string_value="active")
+                    )
+                )
+            ],
+            actions=[
+                rules_engine_pb2.Action(
+                    create_fact=rules_engine_pb2.CreateFactAction(
+                        fields={
+                            "message": rules_engine_pb2.Value(string_value="Python rule fired!")
+                        }
+                    )
+                )
+            ],
+            priority=100,
+            enabled=True,
+            tags=["python", "test"],
+            created_at=int(time.time()),
+            updated_at=int(time.time())
         )
     ]
 )
