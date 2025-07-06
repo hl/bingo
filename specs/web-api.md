@@ -1,57 +1,117 @@
-# Web API Specification
+# gRPC API Specification
 
-This document details the HTTP API for the Bingo Rules Engine.
+This document details the gRPC streaming API for the Bingo Rules Engine.
 
-## Endpoints
+## Service Definition
 
-### Health & Monitoring
+The Bingo Rules Engine provides a gRPC service (`RulesEngineService`) with multiple processing patterns optimized for different use cases.
 
--   `GET /health`: Checks the health of the service.
--   `GET /engine/stats`: Provides statistics about the engine (stateless, so mostly informational).
--   `GET /cache/stats`: Returns detailed statistics for the ruleset and engine caches.
--   `GET /docs`: Serves the interactive OpenAPI documentation.
+### Core Methods
 
-### Core Functionality
+#### Two-Phase Processing
+-   **`CompileRules`**: Validates and compiles rules, returning a session ID for subsequent fact processing.
+-   **`ProcessFactsStream`**: Streams facts through pre-compiled rules with real-time processing control.
 
--   **`POST /rulesets`**: Registers and pre-compiles a set of rules. This is the recommended first step for production workloads. The rules are cached and can be referenced by a `ruleset_id`.
--   **`POST /evaluate`**: Evaluates a set of facts against rules. This endpoint supports two modes:
-    1.  **Cached Mode (High Performance)**: Provide a `ruleset_id` and a list of `facts`. The engine uses the pre-compiled rules from the cache.
-    2.  **Ad-hoc Mode**: Provide a list of `rules` and a list of `facts`. The rules are compiled on-the-fly (and cached for a short duration).
+#### Single-Call Processing
+-   **`ProcessWithRulesStream`**: Validates rules and processes facts in a single streaming call.
+-   **`ProcessFactsBatch`**: Batch processing with periodic status updates.
 
-## Request/Response Formats
+#### Cached Ruleset Processing
+-   **`RegisterRuleset`**: Registers and caches a compiled ruleset for high-performance repeated use.
+-   **`EvaluateRulesetStream`**: Streams facts through a cached ruleset.
 
-All endpoints use JSON for request and response bodies.
+#### Health & Monitoring
+-   **`HealthCheck`**: Returns service health status and version information.
 
-### Example: Cached Evaluation Workflow
+## Processing Patterns
 
-**1. Register a Ruleset**
+### Pattern 1: Two-Phase Processing (Recommended for High-Volume)
 
-`POST /rulesets`
-```json
-{
-  "ruleset_id": "payroll_v2",
-  "rules": [ /* ... array of rule objects ... */ ]
+**Phase 1: Compile Rules**
+```protobuf
+CompileRulesRequest {
+  repeated Rule rules = 1;
+  string session_id = 2;
+  ProcessingOptions options = 3;
 }
 ```
 
-**2. Evaluate Facts**
-
-`POST /evaluate`
-```json
-{
-  "ruleset_id": "payroll_v2",
-  "facts": [ /* ... array of fact objects ... */ ]
+**Phase 2: Stream Facts**
+```protobuf
+ProcessFactsStreamRequest {
+  oneof request {
+    string session_id = 1;
+    Fact fact_batch = 2;
+    ProcessingControl control = 3;
+  }
 }
 ```
+
+### Pattern 2: Single-Call Streaming (Recommended for General Use)
+
+```protobuf
+ProcessWithRulesRequest {
+  repeated Rule rules = 1;
+  repeated Fact facts = 2;
+  string request_id = 3;
+  ProcessingOptions options = 4;
+  bool validate_rules_only = 5;
+}
+```
+
+### Pattern 3: Cached Ruleset Processing (Recommended for Production)
+
+**Register Ruleset**
+```protobuf
+RegisterRulesetRequest {
+  string ruleset_id = 1;
+  repeated Rule rules = 2;
+}
+```
+
+**Evaluate with Cached Ruleset**
+```protobuf
+EvaluateRulesetRequest {
+  string ruleset_id = 1;
+  repeated Fact facts = 2;
+  string request_id = 3;
+  ProcessingOptions options = 4;
+}
+```
+
+## Data Types
+
+### Core Types
+-   **`Fact`**: Contains ID, data map, and timestamp
+-   **`Rule`**: Contains conditions, actions, priority, and metadata
+-   **`Value`**: Union type supporting string, number, boolean, and integer values
+-   **`Condition`**: Simple or complex logical conditions
+-   **`Action`**: Create fact, call calculator, or formula actions
+
+### Response Types
+-   **`RuleExecutionResult`**: Details of rule execution including matched facts and action results
+-   **`ProcessingStatus`**: Progress updates during batch processing
+-   **`ProcessingResponse`**: Union response type for streaming operations
+
+## Streaming Features
+
+### Real-Time Control
+-   **Pause/Resume**: Control processing flow during streaming
+-   **Stop**: Gracefully terminate processing
+-   **Flush**: Force processing of buffered facts
+
+### Progressive Responses
+-   **Compilation Results**: Immediate feedback on rule validation
+-   **Execution Results**: Real-time rule firing notifications
+-   **Status Updates**: Progress tracking for large datasets
+-   **Completion Summary**: Final processing statistics
 
 ## Error Handling
 
-The API uses standard HTTP status codes to indicate success or failure. Error responses are returned as a JSON object with a consistent structure:
+gRPC status codes are used to indicate errors:
+-   `INVALID_ARGUMENT`: Malformed rules or facts
+-   `FAILED_PRECONDITION`: Missing session or invalid state
+-   `INTERNAL`: Engine compilation or execution errors
+-   `UNIMPLEMENTED`: Features not yet available
 
-```json
-{
-  "error_code": "VALIDATION_ERROR",
-  "message": "Invalid request payload: 'facts' field is required.",
-  "request_id": "uuid-goes-here"
-}
-```
+Error details are provided in status messages with structured error information.
