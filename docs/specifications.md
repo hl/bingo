@@ -13,7 +13,7 @@ This document provides a high-level summary of the engine's specifications and l
 | **Core Architecture** | [architecture.md](specs/architecture.md) | System design, component relationships, and data flow |
 | **RETE Algorithm** | [rete-algorithm.md](specs/rete-algorithm.md) | RETE network implementation, nodes, and pattern matching |
 | **Performance** | [performance.md](specs/performance.md) | Memory management, benchmarking, and optimization strategies |
-| **Web API** | [web-api.md](specs/web-api.md) | HTTP endpoints, request/response formats, and error handling |
+| **gRPC API** | [grpc-api.md](docs/grpc-api.md) | gRPC services, request/response formats, and error handling |
 
 ### Implementation Details
 
@@ -23,13 +23,13 @@ This document provides a high-level summary of the engine's specifications and l
 - **Scalable Architecture**: Linear scaling from 100K to 1M+ facts
 - **Enterprise Ready**: Deterministic node IDs, comprehensive error handling
 
-#### Stateless JSON API with OpenAPI
-- **Primary Endpoint**: `/evaluate` endpoint supporting both ad-hoc (rules + facts) and cached (`ruleset_id` + facts) evaluation.
-- **Stateless Endpoints**: `/health` and `/engine/stats` for monitoring (no persistent state)
-- **OpenAPI 3.0**: Auto-generated documentation reflecting stateless architecture
-- **Type-Safe**: Native JSON types with mandatory field validation
+#### High-Performance gRPC API with Protocol Buffers
+- **Primary Service**: `EngineService` supporting both ad-hoc (rules + facts) and cached (`ruleset_id` + facts) evaluation
+- **Stateless Services**: Health check and engine stats services for monitoring (no persistent state)
+- **Protocol Buffers**: Type-safe message definitions with comprehensive field validation
 - **Production Ready**: Error handling, logging, structured responses, request validation
 - **Perfect Concurrency**: No shared state enables unlimited parallel requests
+- **Streaming Support**: Bidirectional streaming for large datasets
 
 #### Advanced Memory Optimizations
 - **Token Sharing**: Arc-based FactIdSet reduces memory duplication
@@ -44,7 +44,7 @@ This document provides a high-level summary of the engine's specifications and l
 - **Mandatory Input Validation**: Rules and facts must be provided in each evaluation request (enforced)
 - **Rules-with-Facts Pattern**: JSON rules sent alongside facts in every request
 - **Per-Request Scaling**: Handle large datasets (1M+ facts per request) with fresh engine instances
-- **Single Evaluation Endpoint**: `/evaluate` HTTP endpoint for complete stateless rule processing
+- **Single Evaluation Service**: `EngineService` gRPC service for complete stateless rule processing
 - **Built-in Calculators**: Hardcoded calculators compiled into engine for maximum performance
 
 ### Performance Requirements
@@ -75,13 +75,13 @@ This document provides a high-level summary of the engine's specifications and l
 - **Structured Errors**: Comprehensive error types with context
 - **Graceful Degradation**: Continue processing despite non-critical errors
 - **Error Tracing**: All errors captured in structured logging
-- **API Errors**: HTTP-specific errors with proper status codes
+- **API Errors**: gRPC-specific errors with proper status codes
 
 ### Configuration Management
 - **Environment Variables**: Runtime configuration via environment
 - **Default Values**: Sensible defaults for all parameters
 - **Validation**: Configuration validation at startup
-- **Documentation**: All options documented in OpenAPI
+- **Documentation**: All options documented in protocol buffer definitions
 
 ## Development Guidelines
 

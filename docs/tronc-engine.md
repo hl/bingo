@@ -147,7 +147,7 @@ The TRONC distribution is executed through a series of rules with different prio
 
 ## API Request Example
 
-Here is a complete example of what would be sent to the `/evaluate` endpoint.
+Here is a complete example of what would be sent to the gRPC `EngineService.Evaluate` method.
 
 ### Input
 

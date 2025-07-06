@@ -27,7 +27,7 @@ The engine delivers exceptional enterprise-scale performance, consistently excee
 - **🦀 Rust 2024**: Built on the latest Rust edition, ensuring full thread safety (`Send + Sync`).
 - **🎯 Production Ready**: Enforces a zero-warning policy and includes a comprehensive test suite (200+ tests).
 - **📊 Comprehensive Observability**: Provides structured logging, metrics, and performance tracing.
-- **🌐 HTTP API**: A RESTful interface with OpenAPI documentation and ETag caching.
+- **🌐 gRPC API**: A high-performance gRPC interface with protocol buffer definitions and streaming support.
 
 ## 💡 Business Engine Capabilities
 
@@ -50,11 +50,11 @@ The system is designed with a clear separation of concerns across a multi-crate 
 
 ```mermaid
 graph TD
-    A["🌐 bingo-api<br/>HTTP API server<br/>(OpenAPI + Docs)"] --> B["⚙️ bingo-core<br/>RETE engine + Fact Stores<br/>+ Memory optimizations"]
+    A["🌐 bingo-api<br/>gRPC API server<br/>(Protocol Buffers + Streaming)"] --> B["⚙️ bingo-core<br/>RETE engine + Fact Stores<br/>+ Memory optimizations"]
     B --> C["🧮 bingo-calculator<br/>Calculator DSL + Business Calculators"]
 ```
 
-- **`bingo-api`**: The public-facing HTTP API built with Axum. This crate handles web requests, serialization, and provides OpenAPI documentation.
+- **`bingo-api`**: The public-facing gRPC API built with Tonic. This crate handles gRPC requests, protocol buffer serialization, and provides streaming support.
 - **`bingo-core`**: The heart of the engine, containing the RETE network, fact stores, and the Calculator DSL.
 - **`bingo-core`**: The heart of the engine, containing the RETE network and fact stores.
 
@@ -78,16 +78,15 @@ graph TD
     cargo build --release
     ```
 
-3.  **Start the HTTP server:**
+3.  **Start the gRPC server:**
     ```bash
     cargo run --release --bin bingo
     ```
 
-The server will start on `http://127.0.0.1:3000`. You can access the following endpoints:
-- **Health Check**: `GET /health`
-- **Stateless Evaluation**: `POST /evaluate` (supports ad-hoc rules or cached rulesets)
-- **Ruleset Caching**: `POST /rulesets` (pre-compile and cache rules for high performance)
-- **OpenAPI Docs**: `GET /docs`
+The server will start on `127.0.0.1:50051`. You can access the following gRPC services:
+- **Health Check**: `grpc.health.v1.Health/Check`
+- **Engine Operations**: `bingo.v1.EngineService` (evaluate rules, manage rulesets)
+- **Streaming Support**: Bidirectional streaming for large datasets
 
 ## 🧪 Development
 

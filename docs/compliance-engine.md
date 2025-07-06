@@ -28,7 +28,7 @@ The engine handles this by breaking the problem into stages using rule prioritie
 
 This example shows how to structure the rules and facts to execute this staged process in a single call.
 
-**Endpoint:** `POST /evaluate`
+**gRPC Method:** `EngineService.Evaluate`
 
 ```json
 {
@@ -178,14 +178,13 @@ The response shows the result of the compliance check for the employee fact, whi
 
 ### Health Check
 ```bash
-curl http://localhost:3000/health
+grpcurl -plaintext localhost:50051 grpc.health.v1.Health/Check
 ```
 
 ### Compliance Evaluation
 ```bash
-curl -X POST http://localhost:3000/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{"rules": [...], "facts": [...]}'
+grpcurl -plaintext -d '{"rules": [...], "facts": [...]}' \
+  localhost:50051 bingo.v1.EngineService/Evaluate
 ```
 
 ## Performance Characteristics
