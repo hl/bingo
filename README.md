@@ -22,7 +22,7 @@ The engine delivers exceptional enterprise-scale performance, consistently excee
 - **💼 Multi-Domain Support**: A unified architecture supporting distinct business engines like Compliance, Payroll, and TRONC out-of-the-box.
 - **🔧 Extensible Calculator Ecosystem**: Includes advanced calculators for weighted aggregation, proportional allocation, and multi-tier validation, with a framework for adding custom business logic.
 - **🧠 Smart Caching**: Features a compiled rule cache, an engine template cache, a calculator result cache, and object pooling to minimize overhead.
-- **📡 Streaming API**: Supports NDJSON streaming with incremental processing for very large datasets.
+- **📡 Streaming API**: Supports gRPC streaming with bidirectional processing for very large datasets.
 - **🛡️ Operational Hardening**: Includes rate limiting, concurrency control, and security validation.
 - **🦀 Rust 2024**: Built on the latest Rust edition, ensuring full thread safety (`Send + Sync`).
 - **🎯 Production Ready**: Enforces a zero-warning policy and includes a comprehensive test suite (200+ tests).
