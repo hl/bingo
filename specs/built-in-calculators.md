@@ -32,6 +32,24 @@ This section enumerates the built-in calculators provided by the engine, detaili
 
 ### Mathematical Calculators
 
+#### `proportional_allocator`
+-   **Purpose**: Distributes a total amount proportionally based on an individual's value relative to a total value.
+-   **Use Cases**: Allocating shared costs, distributing bonuses based on performance metrics.
+-   **Inputs**:
+    -   `total_amount` (number): The total amount to be allocated.
+    -   `individual_value` (number): The value associated with the individual entity.
+    -   `total_value` (number): The sum of all individual values.
+-   **Output**: The proportionally allocated amount for the individual.
+
+#### `weighted_average`
+-   **Purpose**: Computes the weighted average of a set of items.
+-   **Use Cases**: Calculating average costs with varying quantities, determining average scores with different weights.
+-   **Inputs**:
+    -   `items` (array of objects): Each object must contain:
+        -   `value` (number): The value of the item.
+        -   `weight` (number): The weight of the item.
+-   **Output**: The weighted average of the items.
+
 #### `multiply`
 -   **Purpose**: Computes the product of two numerical inputs.
 -   **Use Cases**: Calculation of gross pay, application of multipliers (e.g., tax rates), determination of total costs.

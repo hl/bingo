@@ -1,23 +1,26 @@
-# RETE Algorithm Implementation
+# RETE Algorithm Specification
 
-This document describes the implementation of the RETE (REgular Tree) algorithm in the Bingo engine.
+This document provides a high-level overview of the RETE (REgular Tree) algorithm implementation within the Bingo engine. For a comprehensive technical deep-dive, including architectural diagrams, code snippets, and performance analysis, please refer to the [RETE Algorithm Implementation Guide](../docs/rete-algorithm-implementation.md).
 
 ## Core Concepts
 
-The RETE algorithm provides a highly efficient mechanism for matching a large number of rules against a large number of facts. It avoids re-evaluating rules from scratch for every fact by creating a data-flow network that "remembers" partial matches.
+The RETE algorithm provides a highly efficient mechanism for matching a large number of rules against a large number of facts. It avoids re-evaluating rules from scratch for every new fact by creating a data-flow network that "remembers" partial matches between rule conditions.
 
 ## Key Components
 
--   **Alpha Network**: Performs initial, intra-condition tests. It filters facts based on simple conditions (e.g., `fact.status == 'active'`).
-    -   **`AlphaMemory`**: An optimized index that maps field values to the rules that depend on them. This provides an O(1) lookup for candidate rules for a given fact, drastically reducing the number of rules to evaluate.
+The network consists of three primary node types:
 
--   **Beta Network**: Joins the results of the alpha network to test for inter-condition matches. It combines partial matches to form complete rule matches.
-    -   **`BetaMemory`**: Tracks partial matches for multi-condition rules. When a fact satisfies one condition, it creates or extends a `PartialMatch` object, which is stored until the rule is fully matched or the partial match expires.
-
+-   **Alpha Network**: Performs initial, single-condition tests on facts. It filters facts based on simple conditions (e.g., `fact.status == 'active'`).
+-   **Beta Network**: Joins the results from the alpha network to test for multi-condition matches. It combines partial matches to form complete rule matches.
 -   **Terminal Nodes**: Represent a fully matched rule. When a token reaches a terminal node, the rule's actions are scheduled for execution.
 
-## Optimizations
+## Core Optimization Strategies
 
--   **Fact ID Indexing**: The `FactStore` uses a `HashMap` to provide O(1) lookup of facts by their ID, which is crucial for rules that perform cross-fact lookups.
--   **Object Pooling**: The engine uses pools for frequently allocated objects like `HashMap`s (for calculator inputs) and `Vec<ActionResult>` to reduce allocation overhead and memory fragmentation.
--   **Result Caching**: The `CalculatorResultCache` stores the results of calculator executions. If the same calculator is called with the same inputs, the cached result is returned instantly, avoiding redundant computation.
+The engine employs several key optimization strategies to ensure high performance and efficient memory usage:
+
+-   **Alpha Memory Indexing**: An optimized index maps field values directly to the rules that depend on them, providing O(1) lookup for candidate rules and avoiding linear scans.
+-   **Fact ID Indexing & Caching**: The `FactStore` uses a `HashMap` and an LRU cache for O(1) lookup of facts by their ID, which is crucial for rules that perform cross-fact lookups.
+-   **Object Pooling**: The engine uses pools for frequently allocated objects (e.g., `HashMap`s, `Vec<ActionResult>`) to reduce allocation overhead and memory fragmentation.
+-   **Result Caching**: A dedicated cache stores the results of calculator executions, avoiding redundant computations for repeated calls with the same inputs.
+
+For detailed information on these components and optimizations, please see the full [implementation guide](../docs/rete-algorithm-implementation.md).

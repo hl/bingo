@@ -4,16 +4,16 @@ Bingo is a production-ready, high-performance RETE rules engine built in Rust (2
 
 ## 🏆 Performance Highlights
 
-The engine delivers exceptional enterprise-scale performance, consistently exceeding typical performance targets. The following benchmarks were run on a standard development machine.
+The engine is engineered for enterprise-scale workloads. The following benchmarks from the [Performance Test Suite](docs/performance-tests.md) represent realistic payroll scenarios with complex calculation-based rules.
 
-| Scale | Processing Time | Facts/Second | Memory Usage |
-|---|---|---|---|
-| 1M facts | 1.04s | 962K/s | <1GB |
-| 500K facts | 0.44s | 1.1M/s | <500MB |
-| 200K facts | 0.21s | 952K/s | <200MB |
-| 100K facts | 0.11s | 909K/s | <100MB |
+| Facts | Rules | Results | Memory (GB) | Facts/sec | Total Time |
+|---|---|---|---|---|---|
+| 100K | 200 | 2M | 15.1 | 47,885 | 2.09s |
+| 200K | 200 | 4M | 19.7 | 45,651 | 4.38s |
+| 100K | 500 | 5M | 17.9 | 18,437 | 5.42s |
+| 200K | 500 | 10M | 14.8 | 19,542 | 10.23s |
 
-*For more details, see the [Performance Specification](specs/performance.md).*
+*For more details, see the [Performance Tests Documentation](docs/performance-tests.md).*
 
 ## ⭐ Key Features
 
@@ -55,8 +55,8 @@ graph TD
 ```
 
 - **`bingo-api`**: The public-facing gRPC API built with Tonic. This crate handles gRPC requests, protocol buffer serialization, and provides streaming support.
-- **`bingo-core`**: The heart of the engine, containing the RETE network, fact stores, and the Calculator DSL.
 - **`bingo-core`**: The heart of the engine, containing the RETE network and fact stores.
+- **`bingo-calculator`**: A dedicated crate for the expression language, business calculators, and evaluation logic.
 
 *For a more detailed explanation, see the [Architecture Specification](specs/architecture.md).*
 
@@ -107,7 +107,7 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo check --workspace && c
 ## 📚 Documentation
 
 - **[docs/](docs/)**: Complete documentation including API references, client setup guides, and performance analysis
-- **[docs/grpc-api.md](docs/grpc-api.md)**: Comprehensive gRPC API documentation
+- **[specs/grpc-api.md](specs/grpc-api.md)**: Comprehensive gRPC API documentation
 - **[docs/client-setup.md](docs/client-setup.md)**: Step-by-step client setup for multiple languages
 - **[docs/performance-tests.md](docs/performance-tests.md)**: Detailed performance test suite documentation
 - **[specs/](specs/)**: Detailed technical specifications for architecture, API, and RETE algorithm

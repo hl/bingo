@@ -1,19 +1,6 @@
 # Performance Specification
 
-This document outlines the performance characteristics, benchmarks, and optimization strategies of the Bingo Rules Engine.
-
-## Performance Benchmarks
-
-The engine is benchmarked across various scales to ensure linear performance and efficient memory usage.
-
-| Scale      | Processing Time | Facts/Second | Memory Usage |
-|------------|-----------------|--------------|--------------|
-| 1M facts   | 1.04s           | 962K/s       | <1GB         |
-| 500K facts | 0.44s           | 1.1M/s       | <500MB       |
-| 200K facts | 0.21s           | 952K/s       | <200MB       |
-| 100K facts | 0.11s           | 909K/s       | <100MB       |
-
-*Performance tests can be run via `cargo test --release -- --ignored`.*
+This document outlines the high-level performance characteristics and optimization strategies of the Bingo Rules Engine. For detailed, up-to-date benchmark results and instructions on running the performance test suite, please refer to the [Performance Test Suite Documentation](../docs/performance-tests.md).
 
 ## Memory Management & Optimization
 
