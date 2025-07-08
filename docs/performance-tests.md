@@ -4,7 +4,9 @@ This document describes the performance and stress tests that are separated from
 
 ## Overview
 
-Performance tests are marked with `#[ignore]` to prevent them from blocking quality checks. These tests require explicit execution with the `--release` flag for accurate performance measurements.
+Performance tests are now managed by the adaptive performance testing framework. They are identified by the `#[performance_test]` attribute and will run as part of the regular test suite. The framework will automatically adjust thresholds based on the environment, but for accurate performance measurements, it is still recommended to run them with the `--release` flag.
+
+For more information on the performance testing framework and best practices, see the [Performance Testing Best Practices](performance-testing.md) guide.
 
 ## Current Performance Benchmarks (Release Mode)
 
@@ -50,21 +52,7 @@ cargo test --release test_api_correctness_after_concurrency_changes -- --ignored
 cargo test --release test_fact_processing_with_formula_actions -- --ignored
 ```
 
-## Running All Performance Tests
 
-### Run all ignored performance tests
-```bash
-cargo test --release -- --ignored
-```
-
-### Run specific performance test categories
-```bash
-# Core engine stress tests only
-cargo test --release --package bingo-core -- --ignored
-
-# API performance tests only  
-cargo test --release --package bingo-api -- --ignored
-```
 
 ## Scaling Validation Tests
 
@@ -145,21 +133,7 @@ The performance tests validate these enterprise targets:
 - **Criteria**: Validates performance targets
 - **Timing**: May take several minutes per test
 
-## Integration with CI/CD
 
-### Quality Gate (Required)
-```bash
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo check --workspace --all-targets
-cargo test --workspace  # Excludes performance tests
-```
-
-### Performance Gate (Optional/Nightly)
-```bash
-cargo test --release -- --ignored  # All performance tests
-cargo test --package bingo-core --test scaling_validation_test --release  # Scaling tests
-```
 
 ## Troubleshooting Performance Tests
 
