@@ -159,7 +159,7 @@ Each cache type has configurable parameters:
 
 ### Calculator Result Cache  
 - **Capacity**: Maximum cached results
-- **TTL**: Time-to-live for cached results (future enhancement)
+
 - **Key Strategy**: Combined calculator name + input hash
 
 ### Object Pools

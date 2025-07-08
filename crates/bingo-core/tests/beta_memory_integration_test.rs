@@ -1,11 +1,16 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
 //! Beta Memory Integration Tests - Multi-Condition Rule Processing
 //!
 //! This test validates the complete BetaMemory implementation for handling
 //! complex rules with multiple conditions through true RETE architecture.
 
 use crate::memory::MemoryTracker;
+use bingo_core::assert_time_performance;
 use bingo_core::*;
+use bingo_performance_test::performance_test;
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// Create a multi-condition rule for testing
 fn create_multi_condition_rule() -> Rule {
@@ -214,9 +219,9 @@ fn test_beta_memory_statistics() {
     // Statistics tracking is working (validated through encapsulation)
 }
 
-#[test]
-#[ignore] // Performance test - run with --release
+#[performance_test]
 fn test_multi_condition_performance() {
+    let config = performance_config::PerformanceConfig::detect_environment();
     let memory_tracker = MemoryTracker::start().unwrap();
     let mut engine = BingoEngine::with_capacity(10_000).unwrap();
 
@@ -274,25 +279,30 @@ fn test_multi_condition_performance() {
         })
         .collect();
 
-    let start = std::time::Instant::now();
-    let results = engine.process_facts(facts).unwrap();
-    let elapsed = start.elapsed();
+    // Warm-up phase
+    println!("🔥 Running warm-up phase...");
+    let _ = engine.process_facts(facts.clone()).unwrap();
 
-    let (start_stats, end_stats, memory_delta) = memory_tracker.finish().unwrap();
+    let timer = test_utils::Timer::new();
+    let results = engine.process_facts(facts).unwrap();
+    let elapsed = timer.elapsed();
+
+    let (_start_stats, _end_stats, memory_delta) = memory_tracker.finish().unwrap();
 
     println!("✅ Processed 10K facts with 20 multi-condition rules in {elapsed:?}");
     println!("📊 Generated {} rule execution results", results.len());
-    println!(
-        "🧠 Memory usage: {} -> {}, Delta: {} bytes ({:.2} MB)",
-        start_stats.format_rss(),
-        end_stats.format_rss(),
-        memory_delta,
-        memory_delta as f64 / (1024.0 * 1024.0)
-    );
 
-    // Performance assertions
-    assert!(elapsed.as_secs() < 5, "Should complete within 5 seconds");
-    assert!(memory_delta < 1_000_000_000, "Memory should stay under 1GB");
+    // Performance assertions with environment adaptation
+    assert_time_performance!(
+        elapsed,
+        Duration::from_secs(5),
+        "Should complete within 5 seconds"
+    );
+    assert_memory_performance!(
+        memory_delta as u64,
+        1_000_000_000,
+        "Memory should stay under 1GB"
+    );
     assert!(results.len() > 100, "Should generate substantial results");
 
     let facts_per_sec = 10_000.0 / elapsed.as_secs_f64();

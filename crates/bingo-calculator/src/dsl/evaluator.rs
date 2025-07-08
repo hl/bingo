@@ -76,7 +76,7 @@ fn evaluate_to_value(
             let object_val = evaluate_to_value(object, context, functions)?;
 
             // For now, field access is only supported on facts
-            // In the future, we could extend this to support complex objects
+            
             match object_val {
                 FactValue::String(fact_id_str) => {
                     // Try to find fact by ID string

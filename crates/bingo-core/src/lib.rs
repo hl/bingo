@@ -31,6 +31,8 @@ pub mod lazy_aggregation;
 pub mod memory;
 /// Memory pooling for frequently allocated objects
 pub mod memory_pools;
+/// Performance testing configuration and environment detection
+pub mod performance_config;
 /// Processing pipeline for staged rule execution
 pub mod pipeline;
 /// RETE network construction and execution
@@ -43,6 +45,8 @@ pub mod rule_visualization;
 pub mod serialization;
 /// Stream processing for real-time rule evaluation
 pub mod stream_processing;
+/// Performance testing utilities
+pub mod test_utils;
 
 /// Core types and functionality for the Bingo RETE rules engine
 pub mod types;
