@@ -124,7 +124,7 @@ message Fact {
 
 ### Prerequisites
 
-- Rust 1.70+ with 2024 edition support
+- Rust 1.88+ with 2024 edition support
 - Protocol Buffers compiler (`protoc`)
 - gRPC dependencies (tonic, prost)
 
@@ -161,7 +161,7 @@ export TOKIO_WORKER_THREADS="4"
 ### Docker Deployment
 
 ```dockerfile
-FROM rust:1.70 as builder
+FROM rust:1.88 as builder
 WORKDIR /app
 COPY . .
 RUN cargo build --release --bin bingo

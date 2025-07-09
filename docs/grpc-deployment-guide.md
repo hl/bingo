@@ -126,9 +126,10 @@ sudo apt install -y build-essential curl git pkg-config libssl-dev protobuf-comp
 sudo dnf groupinstall -y "Development Tools"
 sudo dnf install -y curl git openssl-devel protobuf-compiler
 
-# Install Rust
+# Install Rust (version 1.88, edition 2024)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
+# Ensure you are using Rust 1.88 and edition 2024 in your Cargo.toml files.
 ```
 
 #### Build and Install

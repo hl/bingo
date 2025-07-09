@@ -32,7 +32,8 @@ cd bingo-client
 [package]
 name = "bingo-client"
 version = "0.1.0"
-edition = "2021"
+edition = "2024" # Updated to Rust 2024 edition
+rust-version = "1.88" # Minimum Rust version
 
 [dependencies]
 tonic = "0.13"
