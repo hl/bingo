@@ -370,6 +370,18 @@ impl LazyAggregationResult {
                                 }
                                 _ => false,
                             },
+                            StartsWith => match (fact_val, value) {
+                                (FactValue::String(fact_str), FactValue::String(pattern)) => {
+                                    fact_str.starts_with(pattern)
+                                }
+                                _ => false,
+                            },
+                            EndsWith => match (fact_val, value) {
+                                (FactValue::String(fact_str), FactValue::String(pattern)) => {
+                                    fact_str.ends_with(pattern)
+                                }
+                                _ => false,
+                            },
                         };
                         Ok(result)
                     }

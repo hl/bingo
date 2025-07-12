@@ -2,13 +2,14 @@
 #![allow(missing_docs)]
 
 use std::env;
+use std::sync::Arc;
+
 use tonic::transport::Server;
 use tracing::info;
 
 use bingo_api::AppState;
 use bingo_api::generated::rules_engine_service_server::RulesEngineServiceServer;
 use bingo_api::grpc::service::RulesEngineServiceImpl;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

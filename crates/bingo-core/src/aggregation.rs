@@ -81,6 +81,21 @@ impl FactAggregator {
     }
 
     /// Group facts by specified fields
+    ///
+    /// ## Grouping Algorithm
+    ///
+    /// This method implements a hash-based grouping algorithm that efficiently
+    /// partitions facts into groups based on field values:
+    ///
+    /// 1. **Key Generation**: Create composite group key from specified fields
+    /// 2. **Hash Insertion**: Use HashMap for O(1) average case group lookup
+    /// 3. **Fact Cloning**: Clone facts into groups (required for ownership)
+    ///
+    /// ## Performance Characteristics
+    ///
+    /// - **Time Complexity**: O(n * k) where n = facts count, k = group_by fields count
+    /// - **Space Complexity**: O(n) for grouped facts storage
+    /// - **Hash Efficiency**: Leverages HashMap for fast group identification
     fn group_facts(
         &self,
         facts: &[&Fact],
@@ -88,8 +103,12 @@ impl FactAggregator {
     ) -> Result<HashMap<String, Vec<Fact>>> {
         let mut groups: HashMap<String, Vec<Fact>> = HashMap::new();
 
+        // Iterate through facts and assign each to appropriate group
         for fact in facts {
+            // Generate composite key from specified grouping fields
             let group_key = self.generate_group_key(fact, group_by_fields)?;
+
+            // Insert fact into corresponding group (creates group if doesn't exist)
             groups.entry(group_key).or_default().push((*fact).clone());
         }
 
@@ -112,6 +131,28 @@ impl FactAggregator {
     }
 
     /// Apply aggregation function to a group of facts
+    ///
+    /// ## Aggregation Processing Algorithm
+    ///
+    /// This method implements statistical aggregation functions across fact groups:
+    ///
+    /// ### Phase 1: Value Extraction
+    /// - **Field Lookup**: Extract values from specified source field in each fact
+    /// - **Type Coercion**: Convert FactValue types to f64 for numerical operations
+    /// - **Error Handling**: Provide detailed context for missing fields or invalid types
+    ///
+    /// ### Phase 2: Statistical Computation
+    /// - **Count**: Simple collection length (O(1))
+    /// - **Sum/Average**: Linear accumulation (O(n))
+    /// - **Min/Max**: Single-pass comparison (O(n))
+    /// - **Percentile**: Requires sorting (O(n log n))
+    /// - **Standard Deviation**: Two-pass algorithm for numerical stability
+    ///
+    /// ## Performance Characteristics
+    ///
+    /// - **Memory**: O(n) for value storage, O(1) for streaming aggregations
+    /// - **Time**: O(n) for most operations, O(n log n) for percentiles
+    /// - **Precision**: Uses f64 for all calculations to maintain accuracy
     fn apply_aggregation(
         &self,
         facts: &[Fact],
@@ -122,7 +163,7 @@ impl FactAggregator {
             return Ok(FactValue::Null);
         }
 
-        // Extract values from the source field
+        // Phase 1: Extract and convert values from source field to numeric format
         let values: Result<Vec<f64>, _> = facts
             .iter()
             .map(|fact| {
@@ -143,30 +184,47 @@ impl FactAggregator {
             return Ok(FactValue::Null);
         }
 
+        // Phase 2: Apply statistical aggregation function to extracted values
         let result = match aggregation_type {
-            AggregationType::Sum => FactValue::Float(values.iter().sum::<f64>()),
-            AggregationType::Count => FactValue::Integer(values.len() as i64),
+            AggregationType::Sum => {
+                // Simple linear accumulation - O(n) time complexity
+                FactValue::Float(values.iter().sum::<f64>())
+            }
+            AggregationType::Count => {
+                // Constant time operation using collection length
+                FactValue::Integer(values.len() as i64)
+            }
             AggregationType::Average => {
+                // Arithmetic mean calculation - single pass through values
                 let sum: f64 = values.iter().sum();
                 FactValue::Float(sum / values.len() as f64)
             }
             AggregationType::Min => {
+                // Single-pass minimum finding using fold with infinity as initial value
                 let min = values.iter().fold(f64::INFINITY, |a, &b| a.min(b));
                 FactValue::Float(min)
             }
             AggregationType::Max => {
+                // Single-pass maximum finding using fold with negative infinity as initial
                 let max = values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
                 FactValue::Float(max)
             }
             AggregationType::StandardDeviation => {
+                // Two-pass algorithm for numerical stability:
+                // Pass 1: Calculate mean
                 let mean: f64 = values.iter().sum::<f64>() / values.len() as f64;
+                // Pass 2: Calculate variance using squared deviations from mean
                 let variance: f64 =
                     values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
+                // Return population standard deviation (square root of variance)
                 FactValue::Float(variance.sqrt())
             }
             AggregationType::Percentile(p) => {
+                // Percentile calculation requires sorted values - O(n log n) complexity
                 let mut sorted_values = values.clone();
                 sorted_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+                // Calculate index using linear interpolation formula
                 let index = ((*p / 100.0) * (sorted_values.len() - 1) as f64) as usize;
                 FactValue::Float(sorted_values.get(index).copied().unwrap_or(0.0))
             }
@@ -250,6 +308,20 @@ impl FactAggregator {
                 // For string contains operation
                 match (fact_value, condition_value) {
                     (FactValue::String(s1), FactValue::String(s2)) => Ok(s1.contains(s2)),
+                    _ => Ok(false),
+                }
+            }
+            Operator::StartsWith => {
+                // For string starts with operation
+                match (fact_value, condition_value) {
+                    (FactValue::String(s1), FactValue::String(s2)) => Ok(s1.starts_with(s2)),
+                    _ => Ok(false),
+                }
+            }
+            Operator::EndsWith => {
+                // For string ends with operation
+                match (fact_value, condition_value) {
+                    (FactValue::String(s1), FactValue::String(s2)) => Ok(s1.ends_with(s2)),
                     _ => Ok(false),
                 }
             }

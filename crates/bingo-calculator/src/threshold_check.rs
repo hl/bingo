@@ -1,17 +1,32 @@
-use crate::{Calculator, CalculatorInputs};
-use anyhow::Result;
+use std::collections::HashMap;
+
+use bingo_types::FactValue;
+
+use crate::plugin::{CalculationResult, CalculatorPlugin};
 
 pub struct ThresholdCheckCalculator;
 
-impl Calculator for ThresholdCheckCalculator {
-    fn calculate(&self, inputs: &CalculatorInputs) -> Result<String> {
-        let value = inputs.get_f64("value")?;
-        let threshold = inputs.get_f64("threshold")?;
+impl CalculatorPlugin for ThresholdCheckCalculator {
+    fn name(&self) -> &str {
+        "threshold_check"
+    }
+
+    fn calculate(&self, args: &HashMap<String, &FactValue>) -> CalculationResult {
+        let value = match args.get("value") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'value': expected number".to_string()),
+        };
+        let threshold = match args.get("threshold") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'threshold': expected number".to_string()),
+        };
 
         if value > threshold {
-            Ok("true".to_string())
+            Ok(FactValue::Boolean(true))
         } else {
-            Ok("false".to_string())
+            Ok(FactValue::Boolean(false))
         }
     }
 }

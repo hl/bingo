@@ -128,7 +128,7 @@ impl AlphaMemory {
 /// Pool for ActionResult Vec reuse to reduce allocation overhead
 #[derive(Debug)]
 pub struct ActionResultPool {
-    /// Pool of reusable Vec<ActionResult> for action execution
+    /// Pool of reusable `Vec<ActionResult>` for action execution
     pool: RefCell<Vec<Vec<ActionResult>>>,
     /// Statistics for monitoring
     hits: RefCell<usize>,
@@ -144,7 +144,7 @@ impl ActionResultPool {
         }
     }
 
-    /// Get a Vec<ActionResult> from the pool (reuse if available)
+    /// Get a `Vec<ActionResult>` from the pool (reuse if available)
     pub fn get(&self) -> Vec<ActionResult> {
         if let Some(mut vec) = self.pool.borrow_mut().pop() {
             vec.clear(); // Clear previous contents but keep allocated capacity
@@ -156,7 +156,7 @@ impl ActionResultPool {
         }
     }
 
-    /// Return a Vec<ActionResult> to the pool for reuse
+    /// Return a `Vec<ActionResult>` to the pool for reuse
     pub fn return_vec(&self, vec: Vec<ActionResult>) {
         // Only pool if we haven't exceeded reasonable capacity
         if self.pool.borrow().len() < 200 {
@@ -531,6 +531,20 @@ impl BetaMemory {
                             ) => fact_str.contains(pattern),
                             _ => false,
                         },
+                        Operator::StartsWith => match (fact_value, value) {
+                            (
+                                crate::types::FactValue::String(fact_str),
+                                crate::types::FactValue::String(pattern),
+                            ) => fact_str.starts_with(pattern),
+                            _ => false,
+                        },
+                        Operator::EndsWith => match (fact_value, value) {
+                            (
+                                crate::types::FactValue::String(fact_str),
+                                crate::types::FactValue::String(pattern),
+                            ) => fact_str.ends_with(pattern),
+                            _ => false,
+                        },
                     }
                 } else {
                     false
@@ -898,6 +912,26 @@ impl ReteNetwork {
                                     _ => Ok(false),
                                 }
                             }
+                            Operator::StartsWith => {
+                                // Basic starts with implementation for strings
+                                match (fact_val, value) {
+                                    (
+                                        crate::types::FactValue::String(fact_str),
+                                        crate::types::FactValue::String(pattern),
+                                    ) => Ok(fact_str.starts_with(pattern)),
+                                    _ => Ok(false),
+                                }
+                            }
+                            Operator::EndsWith => {
+                                // Basic ends with implementation for strings
+                                match (fact_val, value) {
+                                    (
+                                        crate::types::FactValue::String(fact_str),
+                                        crate::types::FactValue::String(pattern),
+                                    ) => Ok(fact_str.ends_with(pattern)),
+                                    _ => Ok(false),
+                                }
+                            }
                         }
                     }
                     None => Ok(false), // Field doesn't exist
@@ -905,6 +939,14 @@ impl ReteNetwork {
             }
             Condition::Complex { operator: _, conditions: _ } => {
                 // Complex conditions are not supported in this simplified alpha node implementation
+                Ok(false)
+            }
+            Condition::And { conditions: _ } => {
+                // And conditions are not supported in this simplified alpha node implementation
+                Ok(false)
+            }
+            Condition::Or { conditions: _ } => {
+                // Or conditions are not supported in this simplified alpha node implementation
                 Ok(false)
             }
             Condition::Aggregation(_) => {
@@ -1821,7 +1863,7 @@ impl ActionResult {
 
 /// Evaluate a formula expression against fact fields
 /// Very simple implementation for BSSN - handle basic cases
-fn evaluate_formula_expression(
+pub fn evaluate_formula_expression(
     expression: &str,
     fact_fields: &HashMap<String, FactValue>,
 ) -> Result<FactValue> {

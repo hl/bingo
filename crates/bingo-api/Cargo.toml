@@ -2,6 +2,12 @@
 name = "bingo-api"
 version = "0.1.0"
 edition = "2024"
+description = "gRPC API server for the Bingo rules engine"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/bingo"
+readme = "README.md"
+keywords = ["api", "grpc", "rules-engine", "server", "microservice"]
+categories = ["web-programming", "api-bindings"]
 
 [[bin]]
 name = "bingo"
@@ -30,6 +36,7 @@ fnv = "1.0.7"
 md5 = "0.8.0"
 dashmap = { workspace = true }
 toml = "0.8.23"
+serde_yaml = "0.9"
 thiserror = { workspace = true }
 
 # Streaming support
@@ -38,6 +45,10 @@ tokio-stream = "0.1.17"
 
 # Basic observability
 once_cell = "1.21.3"
+
+# CLI and error handling
+clap = { version = "4.5", features = ["derive"] }
+base64 = "0.22"
 
 # Caching
 moka = { version = "0.12.10", features = ["future"] }

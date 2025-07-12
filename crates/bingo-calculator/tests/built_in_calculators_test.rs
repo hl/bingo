@@ -1,27 +1,25 @@
 use std::collections::HashMap;
 
+use bingo_calculator::FactValue;
 use bingo_calculator::built_in::add::AddCalculator;
 use bingo_calculator::built_in::multiply::MultiplyCalculator;
 use bingo_calculator::built_in::percentage_add::PercentageAddCalculator;
 use bingo_calculator::built_in::percentage_deduct::PercentageDeductCalculator;
 use bingo_calculator::built_in::proportional_allocator::ProportionalAllocatorCalculator;
 use bingo_calculator::built_in::time_between_datetime::TimeBetweenDatetimeCalculator;
-use bingo_calculator::{Calculator, CalculatorInputs, FactValue};
+use bingo_calculator::plugin::CalculatorPlugin;
 
-fn calculate_with<C: Calculator>(calculator: C, inputs: &[(&str, FactValue)]) -> String {
-    let mut vars = HashMap::new();
-    for (k, v) in inputs {
-        vars.insert((*k).to_string(), v.clone());
-    }
-    let input_ref = CalculatorInputs::new(&vars);
-    calculator.calculate(&input_ref).unwrap()
+fn calculate_with<C: CalculatorPlugin>(calculator: C, inputs: &[(&str, FactValue)]) -> String {
+    let var_refs: HashMap<String, &FactValue> =
+        inputs.iter().map(|(k, v)| (k.to_string(), v)).collect();
+    calculator.calculate(&var_refs).unwrap().as_string()
 }
 
 #[test]
 fn multiply_calculator_works() {
     let result = calculate_with(
         MultiplyCalculator,
-        &[("value1", FactValue::Float(2.0)), ("value2", FactValue::Float(3.5))],
+        &[("a", FactValue::Float(2.0)), ("b", FactValue::Float(3.5))],
     );
     assert_eq!(result, (2.0 * 3.5).to_string());
 }
@@ -30,7 +28,7 @@ fn multiply_calculator_works() {
 fn add_calculator_works() {
     let result = calculate_with(
         AddCalculator,
-        &[("addend1", FactValue::Float(10.0)), ("addend2", FactValue::Float(15.5))],
+        &[("a", FactValue::Float(10.0)), ("b", FactValue::Float(15.5))],
     );
     assert_eq!(result, 25.5.to_string());
 }
@@ -39,7 +37,7 @@ fn add_calculator_works() {
 fn percentage_add_calculator_works() {
     let result = calculate_with(
         PercentageAddCalculator,
-        &[("base_amount", FactValue::Float(100.0)), ("percentage", FactValue::Float(0.1))],
+        &[("amount", FactValue::Float(100.0)), ("percentage", FactValue::Float(0.1))],
     );
     assert_eq!(result, 110.0.to_string());
 }
@@ -48,10 +46,7 @@ fn percentage_add_calculator_works() {
 fn percentage_deduct_calculator_works() {
     let result = calculate_with(
         PercentageDeductCalculator,
-        &[
-            ("total_amount", FactValue::Float(200.0)),
-            ("percentage", FactValue::Float(0.25)),
-        ],
+        &[("amount", FactValue::Float(200.0)), ("percentage", FactValue::Float(0.25))],
     );
     assert_eq!(result, 150.0.to_string());
 }
@@ -75,13 +70,10 @@ fn time_between_datetime_works() {
         TimeBetweenDatetimeCalculator,
         &[
             (
-                "start_datetime",
+                "start",
                 FactValue::String("2024-01-01T00:00:00Z".to_string()),
             ),
-            (
-                "end_datetime",
-                FactValue::String("2024-01-02T00:00:00Z".to_string()),
-            ),
+            ("end", FactValue::String("2024-01-02T00:00:00Z".to_string())),
             ("unit", FactValue::String("hours".to_string())),
         ],
     );

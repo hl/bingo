@@ -1,0 +1,119 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bingo-grpc-monitor
+  namespace: bingo
+  labels:
+    app: bingo-grpc
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: bingo-grpc
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    scheme: http
+    scrapeTimeout: 10s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*|process_.*|promhttp_.*'
+      action: drop
+  - port: grpc
+    interval: 30s
+    path: /grpc.health.v1.Health/Check
+    scheme: http
+    scrapeTimeout: 5s
+    params:
+      format: ['prometheus']
+  namespaceSelector:
+    matchNames:
+    - bingo
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bingo-grpc-alerts
+  namespace: bingo
+  labels:
+    app: bingo-grpc
+    component: monitoring
+spec:
+  groups:
+  - name: bingo.grpc.availability
+    rules:
+    - alert: BingoGrpcServiceDown
+      expr: up{job="bingo-grpc-service"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: bingo-grpc
+      annotations:
+        summary: "Bingo gRPC service is down"
+        description: "Bingo gRPC service has been down for more than 1 minute"
+        
+    - alert: BingoGrpcHighErrorRate
+      expr: rate(grpc_server_handled_total{grpc_code!="OK"}[5m]) / rate(grpc_server_handled_total[5m]) > 0.05
+      for: 2m
+      labels:
+        severity: warning
+        service: bingo-grpc
+      annotations:
+        summary: "High error rate in Bingo gRPC service"
+        description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+        
+    - alert: BingoGrpcHighLatency
+      expr: histogram_quantile(0.95, rate(grpc_server_handling_seconds_bucket[5m])) > 1
+      for: 2m
+      labels:
+        severity: warning
+        service: bingo-grpc
+      annotations:
+        summary: "High latency in Bingo gRPC service"
+        description: "95th percentile latency is {{ $value }}s for the last 5 minutes"
+        
+  - name: bingo.grpc.resources
+    rules:
+    - alert: BingoGrpcHighMemoryUsage
+      expr: container_memory_usage_bytes{pod=~"bingo-grpc-.*"} / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        service: bingo-grpc
+      annotations:
+        summary: "High memory usage in Bingo gRPC pod"
+        description: "Memory usage is {{ $value | humanizePercentage }} of limit in pod {{ $labels.pod }}"
+        
+    - alert: BingoGrpcHighCpuUsage
+      expr: rate(container_cpu_usage_seconds_total{pod=~"bingo-grpc-.*"}[5m]) / container_spec_cpu_quota * container_spec_cpu_period > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: bingo-grpc
+      annotations:
+        summary: "High CPU usage in Bingo gRPC pod"
+        description: "CPU usage is {{ $value | humanizePercentage }} of limit in pod {{ $labels.pod }}"
+        
+  - name: bingo.grpc.business
+    rules:
+    - alert: BingoLowRulesProcessedRate
+      expr: rate(bingo_rules_processed_total[10m]) < 10
+      for: 5m
+      labels:
+        severity: warning
+        service: bingo-grpc
+      annotations:
+        summary: "Low rules processing rate"
+        description: "Rules processing rate is {{ $value }} rules/sec, below expected threshold"
+        
+    - alert: BingoHighViolationRate
+      expr: rate(bingo_rule_violations_total[5m]) / rate(bingo_rules_processed_total[5m]) > 0.1
+      for: 3m
+      labels:
+        severity: critical
+        service: bingo-grpc
+      annotations:
+        summary: "High rule violation rate detected"
+        description: "Rule violation rate is {{ $value | humanizePercentage }}, indicating potential compliance issues"

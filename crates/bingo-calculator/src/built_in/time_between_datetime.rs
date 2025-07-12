@@ -1,42 +1,51 @@
-//! Time Between Datetime Calculator
+//! Calculator for computing time differences between datetime values
 //!
-//! Computes the duration between two ISO-8601 datetimes.
-//! Inputs:
-//!   * `start_datetime` / `start` / `from`
-//!   * `end_datetime` / `end` / `to`
-//!   * optional `unit`: `hours` (default) | `minutes` | `seconds`
+//! This calculator computes the difference between two datetime values and returns
+//! the result in the specified unit (seconds, minutes, hours, days).
 
-use crate::{Calculator, CalculatorInputs};
-use anyhow::{Result, anyhow};
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 
-fn parse_datetime(value: &str) -> Result<DateTime<Utc>> {
-    Ok(DateTime::parse_from_rfc3339(value)
-        .map_err(|e| anyhow!("Invalid datetime '{}': {}", value, e))?
-        .with_timezone(&Utc))
+use bingo_types::FactValue;
+
+use crate::plugin::{CalculationResult, CalculatorPlugin};
+
+fn parse_datetime(value: &FactValue) -> Result<DateTime<Utc>, String> {
+    match value {
+        FactValue::String(s) => Ok(DateTime::parse_from_rfc3339(s)
+            .map_err(|e| format!("Invalid datetime '{s}': {e}"))?
+            .with_timezone(&Utc)),
+        _ => Err("Invalid datetime argument: expected string".to_string()),
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct TimeBetweenDatetimeCalculator;
 
-impl Calculator for TimeBetweenDatetimeCalculator {
-    fn calculate(&self, inputs: &CalculatorInputs) -> Result<String> {
-        let start_raw = inputs
-            .get_string("start_datetime")
-            .or_else(|_| inputs.get_string("start"))
-            .or_else(|_| inputs.get_string("from"))?;
+impl CalculatorPlugin for TimeBetweenDatetimeCalculator {
+    fn name(&self) -> &str {
+        "time_between_datetime"
+    }
 
-        let end_raw = inputs
-            .get_string("end_datetime")
-            .or_else(|_| inputs.get_string("end"))
-            .or_else(|_| inputs.get_string("to"))?;
+    fn calculate(&self, args: &HashMap<String, &FactValue>) -> CalculationResult {
+        let start_dt = match args.get("start") {
+            Some(value) => parse_datetime(value)?,
+            None => return Err("missing 'start' argument".to_string()),
+        };
 
-        let start_dt = parse_datetime(&start_raw)?;
-        let end_dt = parse_datetime(&end_raw)?;
+        let end_dt = match args.get("end") {
+            Some(value) => parse_datetime(value)?,
+            None => return Err("missing 'end' argument".to_string()),
+        };
+
+        let unit = match args.get("unit") {
+            Some(FactValue::String(s)) => s.to_lowercase(),
+            Some(_) => return Err("unit argument must be a string".to_string()),
+            None => "hours".to_string(),
+        };
 
         let duration = end_dt - start_dt;
-
-        let unit = inputs.get_string("unit").unwrap_or_else(|_| "hours".to_string()).to_lowercase();
 
         let value = match unit.as_str() {
             "seconds" => duration.num_seconds() as f64,
@@ -44,6 +53,6 @@ impl Calculator for TimeBetweenDatetimeCalculator {
             _ => duration.num_seconds() as f64 / 3600.0, // default hours
         };
 
-        Ok(value.to_string())
+        Ok(FactValue::Float(value))
     }
 }

@@ -76,7 +76,7 @@ pub struct ApiRule {
 /// Simple comparison operators using JSON-native terminology
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 // Accept both the canonical `snake_case` representation used in the OpenAPI schema
-// as well as the `PascalCase` style that some legacy clients (and our test-suite)
+// as well as the `PascalCase` style that some clients (and our test-suite)
 // still emit.  We achieve this by keeping the global `snake_case` rename while
 // adding explicit `alias`es for the alternative representations on each variant.
 #[serde(rename_all = "snake_case")]

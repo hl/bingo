@@ -14,15 +14,20 @@
 //! This module provides a gRPC streaming API for the Bingo RETE rules engine
 //! with efficient memory usage and real-time processing.
 
-use anyhow::anyhow;
-use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::time::Duration;
+
+use anyhow::anyhow;
+use chrono::{DateTime, Utc};
 use tracing::{info, warn};
 
 // Only keep what we need for gRPC
 pub mod grpc;
 pub mod tracing_setup;
+
+// Enhanced error handling modules
+pub mod error_cli;
+pub mod grpc_error_handler;
 
 // Generated protocol buffer code
 pub mod generated {

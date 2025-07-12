@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  # Main Bingo gRPC Service
+  bingo-grpc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bingo-grpc
+    restart: unless-stopped
+    ports:
+      - "50051:50051"
+    environment:
+      - GRPC_LISTEN_ADDRESS=0.0.0.0:50051
+      - RUST_LOG=info
+      - SERVICE_NAME=bingo-grpc-api
+      - SERVICE_VERSION=1.0.0
+      - BINGO_ENVIRONMENT=production
+      # Monitoring
+      - OTEL_SERVICE_NAME=bingo-grpc
+      - OTEL_SERVICE_VERSION=1.0.0
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=bingo-grpc,service.version=1.0.0
+    volumes:
+      - ./config:/app/config:ro
+    networks:
+      - bingo-network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=:50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # HTTP-to-gRPC Proxy (for HTTP clients)
+  envoy-proxy:
+    image: envoyproxy/envoy:v1.28-latest
+    container_name: bingo-envoy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # HTTP port
+      - "9901:9901"  # Admin port
+    volumes:
+      - ./deployment/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    networks:
+      - bingo-network
+    depends_on:
+      - bingo-grpc
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9901/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # gRPC Load Balancer
+  nginx-grpc-lb:
+    image: nginx:1.25-alpine
+    container_name: bingo-nginx-lb
+    restart: unless-stopped
+    ports:
+      - "50052:50052"  # Load-balanced gRPC port
+    volumes:
+      - ./deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deployment/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - bingo-network
+    depends_on:
+      - bingo-grpc
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (for distributed caching)
+  redis:
+    image: redis:7.2-alpine
+    container_name: bingo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./deployment/redis/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      - bingo-network
+    command: redis-server /etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: bingo-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployment/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - bingo-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # Grafana Monitoring Dashboard
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: bingo-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deployment/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deployment/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - bingo-network
+    depends_on:
+      - prometheus
+
+  # Jaeger Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.49
+    container_name: bingo-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger collector
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    volumes:
+      - jaeger-data:/badger
+    networks:
+      - bingo-network
+
+networks:
+  bingo-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  jaeger-data:
+    driver: local

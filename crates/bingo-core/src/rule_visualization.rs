@@ -341,6 +341,16 @@ impl RuleDependencyAnalyzer {
                     self.extract_fields_from_condition(having, fields);
                 }
             }
+            Condition::And { conditions } => {
+                for cond in conditions {
+                    self.extract_fields_from_condition(cond, fields);
+                }
+            }
+            Condition::Or { conditions } => {
+                for cond in conditions {
+                    self.extract_fields_from_condition(cond, fields);
+                }
+            }
         }
     }
 

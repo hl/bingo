@@ -1,32 +1,48 @@
-//! Proportional Allocator Calculator
+//! Calculator for proportional allocation of amounts
 //!
-//! Distributes `total_amount` proportionally based on an `individual_value`
-//! relative to a `total_value`.
-//!
-//! result = total_amount * (individual_value / total_value)
-//!
-//! Returns 0 when `total_value` is 0.
+//! This calculator allocates a total amount proportionally based on individual values
+//! relative to the sum of all values.
 
-use crate::{Calculator, CalculatorInputs};
-use anyhow::Result;
+use std::collections::HashMap;
+
+use bingo_types::FactValue;
+
+use crate::plugin::{CalculationResult, CalculatorPlugin};
 
 #[derive(Debug, Default)]
 pub struct ProportionalAllocatorCalculator;
 
-impl Calculator for ProportionalAllocatorCalculator {
-    fn calculate(&self, inputs: &CalculatorInputs) -> Result<String> {
-        let total_amount = inputs.get_f64("total_amount").or_else(|_| inputs.get_f64("amount"))?;
+impl CalculatorPlugin for ProportionalAllocatorCalculator {
+    fn name(&self) -> &str {
+        "proportional_allocator"
+    }
 
-        let individual_value =
-            inputs.get_f64("individual_value").or_else(|_| inputs.get_f64("value"))?;
+    fn calculate(&self, args: &HashMap<String, &FactValue>) -> CalculationResult {
+        let total_amount = match args.get("total_amount") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'total_amount': expected number".to_string()),
+        };
+        let individual_value = match args.get("individual_value") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'individual_value': expected number".to_string()),
+        };
+        let total_value = match args.get("total_value") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'total_value': expected number".to_string()),
+        };
 
-        let total_value = inputs.get_f64("total_value").or_else(|_| inputs.get_f64("aggregate"))?;
-
+        // Prevent division by zero in proportional allocation
         if total_value == 0.0 {
-            return Ok("0.0".to_string());
+            return Ok(FactValue::Float(0.0));
         }
 
+        // Calculate proportional allocation using the formula:
+        // allocation = total_amount × (individual_value / total_value)
+        // This distributes the total amount proportionally based on individual contribution
         let allocation = total_amount * (individual_value / total_value);
-        Ok(allocation.to_string())
+        Ok(FactValue::Float(allocation))
     }
 }

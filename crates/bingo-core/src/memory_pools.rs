@@ -3,17 +3,20 @@
 //! This module provides various memory pools to reduce allocation overhead
 //! and improve performance in high-throughput scenarios.
 
+use crate::beta_network::Token;
 use crate::rete_nodes::RuleExecutionResult;
 use crate::types::{FactId, FactValue, RuleId};
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
-/// Pool for Vec<RuleExecutionResult> to reduce allocation overhead during rule processing
+/// Pool for `Vec<RuleExecutionResult>` to reduce allocation overhead during rule processing
+/// Thread-safe implementation using Arc<Mutex<T>> and atomic counters
 #[derive(Debug, Clone)]
 pub struct RuleExecutionResultPool {
-    pool: RefCell<Vec<Vec<RuleExecutionResult>>>,
-    hits: RefCell<usize>,
-    misses: RefCell<usize>,
+    pool: Arc<Mutex<Vec<Vec<RuleExecutionResult>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
     max_pool_size: usize,
 }
 
@@ -24,45 +27,53 @@ impl RuleExecutionResultPool {
 
     pub fn with_capacity(max_size: usize) -> Self {
         Self {
-            pool: RefCell::new(Vec::with_capacity(max_size / 4)),
-            hits: RefCell::new(0),
-            misses: RefCell::new(0),
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
             max_pool_size: max_size,
         }
     }
 
-    /// Get a Vec<RuleExecutionResult> from the pool
+    /// Get a `Vec<RuleExecutionResult>` from the pool
     pub fn get(&self) -> Vec<RuleExecutionResult> {
-        if let Some(mut vec) = self.pool.borrow_mut().pop() {
-            vec.clear();
-            *self.hits.borrow_mut() += 1;
-            vec
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                vec
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
         } else {
-            *self.misses.borrow_mut() += 1;
+            // If lock is poisoned, create a new vector
+            self.misses.fetch_add(1, Ordering::Relaxed);
             Vec::new()
         }
     }
 
-    /// Return a Vec<RuleExecutionResult> to the pool
+    /// Return a `Vec<RuleExecutionResult>` to the pool
     pub fn return_vec(&self, vec: Vec<RuleExecutionResult>) {
-        if self.pool.borrow().len() < self.max_pool_size {
-            self.pool.borrow_mut().push(vec);
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
         }
+        // If lock is poisoned, just drop the vector
     }
 
     /// Get pool statistics (hits, misses, pool_size)
     pub fn stats(&self) -> (usize, usize, usize) {
-        (
-            *self.hits.borrow(),
-            *self.misses.borrow(),
-            self.pool.borrow().len(),
-        )
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
     }
 
     /// Calculate hit rate as percentage
     pub fn hit_rate(&self) -> f64 {
-        let hits = *self.hits.borrow() as f64;
-        let total = hits + *self.misses.borrow() as f64;
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
         if total > 0.0 {
             (hits / total) * 100.0
         } else {
@@ -77,12 +88,12 @@ impl Default for RuleExecutionResultPool {
     }
 }
 
-/// Pool for Vec<RuleId> to reduce allocation overhead during rule matching
+/// Pool for `Vec<RuleId>` to reduce allocation overhead during rule matching
 #[derive(Debug, Clone)]
 pub struct RuleIdVecPool {
-    pool: RefCell<Vec<Vec<RuleId>>>,
-    hits: RefCell<usize>,
-    misses: RefCell<usize>,
+    pool: Arc<Mutex<Vec<Vec<RuleId>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
     max_pool_size: usize,
 }
 
@@ -93,45 +104,53 @@ impl RuleIdVecPool {
 
     pub fn with_capacity(max_size: usize) -> Self {
         Self {
-            pool: RefCell::new(Vec::with_capacity(max_size / 4)),
-            hits: RefCell::new(0),
-            misses: RefCell::new(0),
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
             max_pool_size: max_size,
         }
     }
 
-    /// Get a Vec<RuleId> from the pool
+    /// Get a `Vec<RuleId>` from the pool
     pub fn get(&self) -> Vec<RuleId> {
-        if let Some(mut vec) = self.pool.borrow_mut().pop() {
-            vec.clear();
-            *self.hits.borrow_mut() += 1;
-            vec
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                vec
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
         } else {
-            *self.misses.borrow_mut() += 1;
+            // If lock is poisoned, create a new vector
+            self.misses.fetch_add(1, Ordering::Relaxed);
             Vec::new()
         }
     }
 
-    /// Return a Vec<RuleId> to the pool
+    /// Return a `Vec<RuleId>` to the pool
     pub fn return_vec(&self, vec: Vec<RuleId>) {
-        if self.pool.borrow().len() < self.max_pool_size {
-            self.pool.borrow_mut().push(vec);
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
         }
+        // If lock is poisoned, just drop the vector
     }
 
     /// Get pool statistics
     pub fn stats(&self) -> (usize, usize, usize) {
-        (
-            *self.hits.borrow(),
-            *self.misses.borrow(),
-            self.pool.borrow().len(),
-        )
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
     }
 
     /// Calculate hit rate as percentage
     pub fn hit_rate(&self) -> f64 {
-        let hits = *self.hits.borrow() as f64;
-        let total = hits + *self.misses.borrow() as f64;
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
         if total > 0.0 {
             (hits / total) * 100.0
         } else {
@@ -146,12 +165,12 @@ impl Default for RuleIdVecPool {
     }
 }
 
-/// Pool for Vec<FactId> to reduce allocation overhead during fact processing
+/// Pool for `Vec<FactId>` to reduce allocation overhead during fact processing
 #[derive(Debug, Clone)]
 pub struct FactIdVecPool {
-    pool: RefCell<Vec<Vec<FactId>>>,
-    hits: RefCell<usize>,
-    misses: RefCell<usize>,
+    pool: Arc<Mutex<Vec<Vec<FactId>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
     max_pool_size: usize,
 }
 
@@ -162,45 +181,53 @@ impl FactIdVecPool {
 
     pub fn with_capacity(max_size: usize) -> Self {
         Self {
-            pool: RefCell::new(Vec::with_capacity(max_size / 4)),
-            hits: RefCell::new(0),
-            misses: RefCell::new(0),
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
             max_pool_size: max_size,
         }
     }
 
-    /// Get a Vec<FactId> from the pool
+    /// Get a `Vec<FactId>` from the pool
     pub fn get(&self) -> Vec<FactId> {
-        if let Some(mut vec) = self.pool.borrow_mut().pop() {
-            vec.clear();
-            *self.hits.borrow_mut() += 1;
-            vec
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                vec
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
         } else {
-            *self.misses.borrow_mut() += 1;
+            // If lock is poisoned, create a new vector
+            self.misses.fetch_add(1, Ordering::Relaxed);
             Vec::new()
         }
     }
 
-    /// Return a Vec<FactId> to the pool
+    /// Return a `Vec<FactId>` to the pool
     pub fn return_vec(&self, vec: Vec<FactId>) {
-        if self.pool.borrow().len() < self.max_pool_size {
-            self.pool.borrow_mut().push(vec);
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
         }
+        // If lock is poisoned, just drop the vector
     }
 
     /// Get pool statistics
     pub fn stats(&self) -> (usize, usize, usize) {
-        (
-            *self.hits.borrow(),
-            *self.misses.borrow(),
-            self.pool.borrow().len(),
-        )
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
     }
 
     /// Calculate hit rate as percentage  
     pub fn hit_rate(&self) -> f64 {
-        let hits = *self.hits.borrow() as f64;
-        let total = hits + *self.misses.borrow() as f64;
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
         if total > 0.0 {
             (hits / total) * 100.0
         } else {
@@ -218,9 +245,9 @@ impl Default for FactIdVecPool {
 /// Pool for HashMap<String, FactValue> used in fact processing and aggregations
 #[derive(Debug, Clone)]
 pub struct FactFieldMapPool {
-    pool: RefCell<Vec<HashMap<String, FactValue>>>,
-    hits: RefCell<usize>,
-    misses: RefCell<usize>,
+    pool: Arc<Mutex<Vec<HashMap<String, FactValue>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
     max_pool_size: usize,
 }
 
@@ -231,45 +258,53 @@ impl FactFieldMapPool {
 
     pub fn with_capacity(max_size: usize) -> Self {
         Self {
-            pool: RefCell::new(Vec::with_capacity(max_size / 4)),
-            hits: RefCell::new(0),
-            misses: RefCell::new(0),
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
             max_pool_size: max_size,
         }
     }
 
     /// Get a HashMap<String, FactValue> from the pool
     pub fn get(&self) -> HashMap<String, FactValue> {
-        if let Some(mut map) = self.pool.borrow_mut().pop() {
-            map.clear();
-            *self.hits.borrow_mut() += 1;
-            map
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut map) = pool.pop() {
+                map.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                map
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                HashMap::new()
+            }
         } else {
-            *self.misses.borrow_mut() += 1;
+            // If lock is poisoned, create a new map
+            self.misses.fetch_add(1, Ordering::Relaxed);
             HashMap::new()
         }
     }
 
     /// Return a HashMap<String, FactValue> to the pool
     pub fn return_map(&self, map: HashMap<String, FactValue>) {
-        if self.pool.borrow().len() < self.max_pool_size {
-            self.pool.borrow_mut().push(map);
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(map);
+            }
         }
+        // If lock is poisoned, just drop the map
     }
 
     /// Get pool statistics
     pub fn stats(&self) -> (usize, usize, usize) {
-        (
-            *self.hits.borrow(),
-            *self.misses.borrow(),
-            self.pool.borrow().len(),
-        )
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
     }
 
     /// Calculate hit rate as percentage
     pub fn hit_rate(&self) -> f64 {
-        let hits = *self.hits.borrow() as f64;
-        let total = hits + *self.misses.borrow() as f64;
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
         if total > 0.0 {
             (hits / total) * 100.0
         } else {
@@ -284,12 +319,12 @@ impl Default for FactFieldMapPool {
     }
 }
 
-/// Pool for Vec<f64> used in aggregation calculations
+/// Pool for `Vec<f64>` used in aggregation calculations
 #[derive(Debug, Clone)]
 pub struct NumericVecPool {
-    pool: RefCell<Vec<Vec<f64>>>,
-    hits: RefCell<usize>,
-    misses: RefCell<usize>,
+    pool: Arc<Mutex<Vec<Vec<f64>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
     max_pool_size: usize,
 }
 
@@ -300,45 +335,53 @@ impl NumericVecPool {
 
     pub fn with_capacity(max_size: usize) -> Self {
         Self {
-            pool: RefCell::new(Vec::with_capacity(max_size / 4)),
-            hits: RefCell::new(0),
-            misses: RefCell::new(0),
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
             max_pool_size: max_size,
         }
     }
 
-    /// Get a Vec<f64> from the pool
+    /// Get a `Vec<f64>` from the pool
     pub fn get(&self) -> Vec<f64> {
-        if let Some(mut vec) = self.pool.borrow_mut().pop() {
-            vec.clear();
-            *self.hits.borrow_mut() += 1;
-            vec
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                vec
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
         } else {
-            *self.misses.borrow_mut() += 1;
+            // If lock is poisoned, create a new vector
+            self.misses.fetch_add(1, Ordering::Relaxed);
             Vec::new()
         }
     }
 
-    /// Return a Vec<f64> to the pool
+    /// Return a `Vec<f64>` to the pool
     pub fn return_vec(&self, vec: Vec<f64>) {
-        if self.pool.borrow().len() < self.max_pool_size {
-            self.pool.borrow_mut().push(vec);
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
         }
+        // If lock is poisoned, just drop the vector
     }
 
     /// Get pool statistics
     pub fn stats(&self) -> (usize, usize, usize) {
-        (
-            *self.hits.borrow(),
-            *self.misses.borrow(),
-            self.pool.borrow().len(),
-        )
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
     }
 
     /// Calculate hit rate as percentage
     pub fn hit_rate(&self) -> f64 {
-        let hits = *self.hits.borrow() as f64;
-        let total = hits + *self.misses.borrow() as f64;
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
         if total > 0.0 {
             (hits / total) * 100.0
         } else {
@@ -353,6 +396,83 @@ impl Default for NumericVecPool {
     }
 }
 
+/// Pool for `Vec<Token>` used in beta network processing
+#[derive(Debug, Clone)]
+pub struct TokenVecPool {
+    pool: Arc<Mutex<Vec<Vec<Token>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
+    max_pool_size: usize,
+}
+
+impl TokenVecPool {
+    pub fn new() -> Self {
+        Self::with_capacity(200)
+    }
+
+    pub fn with_capacity(max_size: usize) -> Self {
+        Self {
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
+            max_pool_size: max_size,
+        }
+    }
+
+    /// Get a `Vec<Token>` from the pool
+    pub fn get(&self) -> Vec<Token> {
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                vec
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
+        } else {
+            // If lock is poisoned, create a new vector
+            self.misses.fetch_add(1, Ordering::Relaxed);
+            Vec::new()
+        }
+    }
+
+    /// Return a `Vec<Token>` to the pool
+    pub fn return_vec(&self, vec: Vec<Token>) {
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
+        }
+        // If lock is poisoned, just drop the vector
+    }
+
+    /// Get pool statistics
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
+    }
+
+    /// Calculate hit rate as percentage
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
+        if total > 0.0 {
+            (hits / total) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Default for TokenVecPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Centralized memory pool manager that coordinates all pools
 #[derive(Debug, Clone)]
 pub struct MemoryPoolManager {
@@ -361,6 +481,7 @@ pub struct MemoryPoolManager {
     pub fact_id_vecs: FactIdVecPool,
     pub fact_field_maps: FactFieldMapPool,
     pub numeric_vecs: NumericVecPool,
+    pub token_vecs: TokenVecPool,
 }
 
 impl MemoryPoolManager {
@@ -372,6 +493,7 @@ impl MemoryPoolManager {
             fact_id_vecs: FactIdVecPool::new(),
             fact_field_maps: FactFieldMapPool::new(),
             numeric_vecs: NumericVecPool::new(),
+            token_vecs: TokenVecPool::new(),
         }
     }
 
@@ -383,6 +505,7 @@ impl MemoryPoolManager {
             fact_id_vecs: FactIdVecPool::with_capacity(1500),
             fact_field_maps: FactFieldMapPool::with_capacity(800),
             numeric_vecs: NumericVecPool::with_capacity(400),
+            token_vecs: TokenVecPool::with_capacity(600),
         }
     }
 
@@ -393,6 +516,7 @@ impl MemoryPoolManager {
         let (fid_hits, fid_misses, fid_size) = self.fact_id_vecs.stats();
         let (ffm_hits, ffm_misses, ffm_size) = self.fact_field_maps.stats();
         let (nv_hits, nv_misses, nv_size) = self.numeric_vecs.stats();
+        let (tv_hits, tv_misses, tv_size) = self.token_vecs.stats();
 
         MemoryPoolStats {
             rule_execution_result_pool: PoolStats {
@@ -425,6 +549,12 @@ impl MemoryPoolManager {
                 pool_size: nv_size,
                 hit_rate: self.numeric_vecs.hit_rate(),
             },
+            token_vec_pool: PoolStats {
+                hits: tv_hits,
+                misses: tv_misses,
+                pool_size: tv_size,
+                hit_rate: self.token_vecs.hit_rate(),
+            },
         }
     }
 
@@ -435,14 +565,16 @@ impl MemoryPoolManager {
             + stats.rule_id_vec_pool.hits
             + stats.fact_id_vec_pool.hits
             + stats.fact_field_map_pool.hits
-            + stats.numeric_vec_pool.hits;
+            + stats.numeric_vec_pool.hits
+            + stats.token_vec_pool.hits;
 
         let total_requests = total_hits
             + stats.rule_execution_result_pool.misses
             + stats.rule_id_vec_pool.misses
             + stats.fact_id_vec_pool.misses
             + stats.fact_field_map_pool.misses
-            + stats.numeric_vec_pool.misses;
+            + stats.numeric_vec_pool.misses
+            + stats.token_vec_pool.misses;
 
         if total_requests > 0 {
             (total_hits as f64 / total_requests as f64) * 100.0
@@ -475,6 +607,7 @@ pub struct MemoryPoolStats {
     pub fact_id_vec_pool: PoolStats,
     pub fact_field_map_pool: PoolStats,
     pub numeric_vec_pool: PoolStats,
+    pub token_vec_pool: PoolStats,
 }
 
 impl MemoryPoolStats {
@@ -486,19 +619,325 @@ impl MemoryPoolStats {
         let fid_saved = self.fact_id_vec_pool.hits * 64; // ~64 bytes per FactId vec
         let ffm_saved = self.fact_field_map_pool.hits * 256; // ~256 bytes per HashMap
         let nv_saved = self.numeric_vec_pool.hits * 96; // ~96 bytes per numeric vec
+        let tv_saved = self.token_vec_pool.hits * 80; // ~80 bytes per Token vec
 
-        rer_saved + rid_saved + fid_saved + ffm_saved + nv_saved
+        rer_saved + rid_saved + fid_saved + ffm_saved + nv_saved + tv_saved
     }
 
     /// Get total pool utilization
     pub fn total_pool_utilization(&self) -> f64 {
-        let total_capacity = 100 + 200 + 300 + 150 + 100; // Default capacities
+        let total_capacity = 100 + 200 + 300 + 150 + 100 + 200; // Default capacities including token pool
         let total_used = self.rule_execution_result_pool.pool_size
             + self.rule_id_vec_pool.pool_size
             + self.fact_id_vec_pool.pool_size
             + self.fact_field_map_pool.pool_size
-            + self.numeric_vec_pool.pool_size;
+            + self.numeric_vec_pool.pool_size
+            + self.token_vec_pool.pool_size;
 
+        (total_used as f64 / total_capacity as f64) * 100.0
+    }
+}
+
+// ============================================================================
+// CONCURRENT MEMORY POOLS
+// ============================================================================
+// Thread-safe memory pools for concurrent access in parallel processing scenarios
+
+/// Thread-safe pool for `Vec<RuleExecutionResult>` with atomic statistics
+#[derive(Debug)]
+pub struct ConcurrentRuleExecutionResultPool {
+    pool: Arc<Mutex<Vec<Vec<RuleExecutionResult>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
+    max_pool_size: usize,
+}
+
+impl ConcurrentRuleExecutionResultPool {
+    pub fn new() -> Self {
+        Self::with_capacity(100)
+    }
+
+    pub fn with_capacity(max_size: usize) -> Self {
+        Self {
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
+            max_pool_size: max_size,
+        }
+    }
+
+    /// Get a `Vec<RuleExecutionResult>` from the pool (thread-safe)
+    pub fn get(&self) -> Vec<RuleExecutionResult> {
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                return vec;
+            }
+        }
+        self.misses.fetch_add(1, Ordering::Relaxed);
+        Vec::new()
+    }
+
+    /// Return a `Vec<RuleExecutionResult>` to the pool (thread-safe)
+    pub fn return_vec(&self, vec: Vec<RuleExecutionResult>) {
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
+        }
+    }
+
+    /// Get pool statistics (hits, misses, pool_size)
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let pool_size = self.pool.lock().map(|p| p.len()).unwrap_or(0);
+        (
+            self.hits.load(Ordering::Relaxed),
+            self.misses.load(Ordering::Relaxed),
+            pool_size,
+        )
+    }
+
+    /// Calculate hit rate as percentage
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let misses = self.misses.load(Ordering::Relaxed) as f64;
+        let total = hits + misses;
+        if total > 0.0 {
+            (hits / total) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Clone for ConcurrentRuleExecutionResultPool {
+    fn clone(&self) -> Self {
+        Self {
+            pool: Arc::clone(&self.pool),
+            hits: Arc::clone(&self.hits),
+            misses: Arc::clone(&self.misses),
+            max_pool_size: self.max_pool_size,
+        }
+    }
+}
+
+impl Default for ConcurrentRuleExecutionResultPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Thread-safe pool for `Vec<RuleId>` with atomic statistics
+#[derive(Debug)]
+pub struct ConcurrentRuleIdVecPool {
+    pool: Arc<Mutex<Vec<Vec<RuleId>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
+    max_pool_size: usize,
+}
+
+impl ConcurrentRuleIdVecPool {
+    pub fn new() -> Self {
+        Self::with_capacity(200)
+    }
+
+    pub fn with_capacity(max_size: usize) -> Self {
+        Self {
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
+            max_pool_size: max_size,
+        }
+    }
+
+    /// Get a `Vec<RuleId>` from the pool (thread-safe)
+    pub fn get(&self) -> Vec<RuleId> {
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                return vec;
+            }
+        }
+        self.misses.fetch_add(1, Ordering::Relaxed);
+        Vec::new()
+    }
+
+    /// Return a `Vec<RuleId>` to the pool (thread-safe)
+    pub fn return_vec(&self, vec: Vec<RuleId>) {
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
+        }
+    }
+
+    /// Get pool statistics (hits, misses, pool_size)
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let pool_size = self.pool.lock().map(|p| p.len()).unwrap_or(0);
+        (
+            self.hits.load(Ordering::Relaxed),
+            self.misses.load(Ordering::Relaxed),
+            pool_size,
+        )
+    }
+
+    /// Calculate hit rate as percentage
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let misses = self.misses.load(Ordering::Relaxed) as f64;
+        let total = hits + misses;
+        if total > 0.0 {
+            (hits / total) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Clone for ConcurrentRuleIdVecPool {
+    fn clone(&self) -> Self {
+        Self {
+            pool: Arc::clone(&self.pool),
+            hits: Arc::clone(&self.hits),
+            misses: Arc::clone(&self.misses),
+            max_pool_size: self.max_pool_size,
+        }
+    }
+}
+
+impl Default for ConcurrentRuleIdVecPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Thread-safe centralized memory pool manager for concurrent scenarios
+#[derive(Debug)]
+pub struct ConcurrentMemoryPoolManager {
+    pub rule_execution_results: ConcurrentRuleExecutionResultPool,
+    pub rule_id_vecs: ConcurrentRuleIdVecPool,
+    pub enabled: Arc<AtomicUsize>, // 1 = enabled, 0 = disabled
+}
+
+impl ConcurrentMemoryPoolManager {
+    /// Create a new concurrent memory pool manager with default capacities
+    pub fn new() -> Self {
+        Self {
+            rule_execution_results: ConcurrentRuleExecutionResultPool::new(),
+            rule_id_vecs: ConcurrentRuleIdVecPool::new(),
+            enabled: Arc::new(AtomicUsize::new(1)),
+        }
+    }
+
+    /// Create a concurrent memory pool manager with high-throughput configuration
+    pub fn with_high_throughput_config() -> Self {
+        Self {
+            rule_execution_results: ConcurrentRuleExecutionResultPool::with_capacity(1000),
+            rule_id_vecs: ConcurrentRuleIdVecPool::with_capacity(2000),
+            enabled: Arc::new(AtomicUsize::new(1)),
+        }
+    }
+
+    /// Enable or disable concurrent memory pooling
+    pub fn set_enabled(&self, enabled: bool) {
+        self.enabled.store(if enabled { 1 } else { 0 }, Ordering::Relaxed);
+    }
+
+    /// Check if concurrent memory pooling is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed) == 1
+    }
+
+    /// Get comprehensive statistics for all concurrent pools
+    pub fn get_concurrent_stats(&self) -> ConcurrentMemoryPoolStats {
+        let (rer_hits, rer_misses, rer_size) = self.rule_execution_results.stats();
+        let (rid_hits, rid_misses, rid_size) = self.rule_id_vecs.stats();
+
+        ConcurrentMemoryPoolStats {
+            rule_execution_result_pool: ConcurrentPoolStats {
+                hits: rer_hits,
+                misses: rer_misses,
+                pool_size: rer_size,
+                hit_rate: self.rule_execution_results.hit_rate(),
+            },
+            rule_id_vec_pool: ConcurrentPoolStats {
+                hits: rid_hits,
+                misses: rid_misses,
+                pool_size: rid_size,
+                hit_rate: self.rule_id_vecs.hit_rate(),
+            },
+            enabled: self.is_enabled(),
+        }
+    }
+
+    /// Calculate total memory efficiency across all pools
+    pub fn total_efficiency(&self) -> f64 {
+        let stats = self.get_concurrent_stats();
+        let total_hits = stats.rule_execution_result_pool.hits + stats.rule_id_vec_pool.hits;
+        let total_requests =
+            total_hits + stats.rule_execution_result_pool.misses + stats.rule_id_vec_pool.misses;
+
+        if total_requests > 0 {
+            (total_hits as f64 / total_requests as f64) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Clone for ConcurrentMemoryPoolManager {
+    fn clone(&self) -> Self {
+        Self {
+            rule_execution_results: self.rule_execution_results.clone(),
+            rule_id_vecs: self.rule_id_vecs.clone(),
+            enabled: Arc::clone(&self.enabled),
+        }
+    }
+}
+
+impl Default for ConcurrentMemoryPoolManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Statistics for individual concurrent pools
+#[derive(Debug, Clone)]
+pub struct ConcurrentPoolStats {
+    pub hits: usize,
+    pub misses: usize,
+    pub pool_size: usize,
+    pub hit_rate: f64,
+}
+
+/// Comprehensive statistics for all concurrent memory pools
+#[derive(Debug, Clone)]
+pub struct ConcurrentMemoryPoolStats {
+    pub rule_execution_result_pool: ConcurrentPoolStats,
+    pub rule_id_vec_pool: ConcurrentPoolStats,
+    pub enabled: bool,
+}
+
+impl ConcurrentMemoryPoolStats {
+    /// Calculate total memory saved through concurrent pooling
+    pub fn estimated_memory_saved_bytes(&self) -> usize {
+        let rer_saved = self.rule_execution_result_pool.hits * 128; // ~128 bytes per vec
+        let rid_saved = self.rule_id_vec_pool.hits * 64; // ~64 bytes per vec
+        rer_saved + rid_saved
+    }
+
+    /// Get average hit rate across all concurrent pools
+    pub fn average_hit_rate(&self) -> f64 {
+        (self.rule_execution_result_pool.hit_rate + self.rule_id_vec_pool.hit_rate) / 2.0
+    }
+
+    /// Get total concurrent pool utilization
+    pub fn total_pool_utilization(&self) -> f64 {
+        let total_capacity = 100 + 200; // Default capacities for concurrent pools
+        let total_used =
+            self.rule_execution_result_pool.pool_size + self.rule_id_vec_pool.pool_size;
         (total_used as f64 / total_capacity as f64) * 100.0
     }
 }
@@ -540,6 +979,7 @@ mod tests {
         let _fact_ids = manager.fact_id_vecs.get();
         let _fact_map = manager.fact_field_maps.get();
         let _numbers = manager.numeric_vecs.get();
+        let _tokens = manager.token_vecs.get();
 
         let stats = manager.get_comprehensive_stats();
 
@@ -549,6 +989,7 @@ mod tests {
         assert_eq!(stats.fact_id_vec_pool.misses, 1);
         assert_eq!(stats.fact_field_map_pool.misses, 1);
         assert_eq!(stats.numeric_vec_pool.misses, 1);
+        assert_eq!(stats.token_vec_pool.misses, 1);
 
         // Overall efficiency should be 0% (all misses)
         assert_eq!(manager.overall_efficiency(), 0.0);

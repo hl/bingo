@@ -67,7 +67,7 @@ grpcurl -plaintext localhost:50051 list
 
 **Included Services:**
 - **bingo-grpc**: Main gRPC service on port 50051
-- **envoy**: HTTP-to-gRPC proxy on port 8080 (for legacy clients)
+- **envoy**: HTTP-to-gRPC proxy on port 8080 (for HTTP clients)
 - **nginx-grpc-lb**: gRPC load balancer on port 50052
 
 ### 2. Kubernetes Deployment

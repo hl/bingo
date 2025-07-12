@@ -2,9 +2,16 @@
 name = "bingo-calculator"
 version = "0.1.0"
 edition = "2024"
+description = "Extensible calculator framework for business rules"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/bingo"
+readme = "README.md"
+keywords = ["calculator", "business-rules", "computation", "formula", "math"]
+categories = ["mathematics", "algorithms"]
 
 [dependencies]
 anyhow = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 chrono = { workspace = true }
+bingo-types = { path = "../bingo-types" }

@@ -1,26 +1,42 @@
-//! Percentage Deduct Calculator
+//! Calculator for deducting a percentage from a base amount
 //!
-//! Deducts a percentage from a total amount.
-//! Inputs (aliases):
-//!   * `total_amount` / `base_amount` / `value` / `amount`
-//!   * `percentage` (decimal e.g., 0.05 for 5%)
-//!
-use crate::{Calculator, CalculatorInputs};
-use anyhow::{Result, anyhow};
+//! This calculator subtracts a percentage of the base amount from the original amount.
+//! For example, deducting 20% from 100 results in 80 (100 - 100*0.2).
 
+use std::collections::HashMap;
+
+use bingo_types::FactValue;
+
+use crate::plugin::{CalculationResult, CalculatorPlugin};
+
+/// Calculator for percentage deduction operations
+///
+/// # Arguments
+/// * `amount` - Base amount from which percentage will be deducted
+/// * `percentage` - Percentage to deduct (e.g., 0.2 for 20%)
+///
+/// # Returns
+/// The amount minus the percentage of the amount as a FactValue::Float
 #[derive(Debug, Default)]
 pub struct PercentageDeductCalculator;
 
-impl Calculator for PercentageDeductCalculator {
-    fn calculate(&self, inputs: &CalculatorInputs) -> Result<String> {
-        let amount = ["total_amount", "base_amount", "value", "amount"]
-            .iter()
-            .find_map(|&n| inputs.get_f64(n).ok())
-            .ok_or_else(|| anyhow!("Required numeric 'total_amount' not provided"))?;
+impl CalculatorPlugin for PercentageDeductCalculator {
+    fn name(&self) -> &str {
+        "percentage_deduct"
+    }
 
-        let percentage = inputs.get_f64("percentage").or_else(|_| inputs.get_f64("percent"))?;
-
+    fn calculate(&self, args: &HashMap<String, &FactValue>) -> CalculationResult {
+        let amount = match args.get("amount") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'amount': expected number".to_string()),
+        };
+        let percentage = match args.get("percentage") {
+            Some(FactValue::Float(f)) => *f,
+            Some(FactValue::Integer(i)) => *i as f64,
+            _ => return Err("Invalid argument 'percentage': expected number".to_string()),
+        };
         let result = amount - (amount * percentage);
-        Ok(result.to_string())
+        Ok(FactValue::Float(result))
     }
 }

@@ -219,6 +219,18 @@ fn test_increment_field_action() {
         results.len()
     );
 
+    // Debug: Print what actions were actually executed
+    for (i, result) in results.iter().enumerate() {
+        println!(
+            "🔍 Rule {}: {} actions executed",
+            i,
+            result.actions_executed.len()
+        );
+        for (j, action) in result.actions_executed.iter().enumerate() {
+            println!("   Action {j}: {action:?}");
+        }
+    }
+
     // Verify IncrementField results
     let increment_results: Vec<_> = results
         .iter()

@@ -1,9 +1,24 @@
 # Built-in Calculators Specification
 
 ## Overview
-The Bingo Rules Engine utilizes a system of **predefined, compiled calculators** to execute all calculations. This architectural choice prioritizes maximum performance, type safety, and auditability. Unlike systems that interpret user-defined formulas at runtime, Bingo invokes these highly optimized, built-in calculators directly.
+The Bingo RETE Rules Engine features a **high-performance plugin-based calculator system** with **predefined, compiled calculators** optimized for enterprise workloads. This architecture delivers exceptional performance (10-100x faster than interpreted formulas), type safety, and full auditability through version-controlled business logic.
 
-This specification details the available built-in calculators and their integration within the rule engine.
+The calculator system integrates seamlessly with the RETE algorithm, supporting complex business domains including compliance monitoring, payroll processing, and TRONC (tip distribution) calculations.
+
+## 🚀 Calculator System Architecture
+
+### Plugin Interface Design
+- **Unified Interface**: All calculators implement the same `Calculator` trait for consistent behavior
+- **Type Safety**: Compile-time input validation prevents runtime errors
+- **Performance**: Compiled Rust code with optimized algorithms
+- **Error Handling**: Structured error facts for graceful failure handling
+- **Extensibility**: Plugin architecture allows custom calculator development
+
+### Integration with RETE Engine
+- **Lazy Evaluation**: Calculators are invoked only when rule conditions are met
+- **Result Caching**: Calculator outputs are cached within session scope
+- **Parallel Execution**: Independent calculations can run concurrently
+- **Memory Efficiency**: Optimized memory usage with object pooling
 
 ## The `call_calculator` Action
 To integrate a calculator into a rule, the `call_calculator` action type is used. This action facilitates the execution of a specified built-in calculator and requires the following properties:
@@ -114,14 +129,25 @@ This section enumerates the built-in calculators provided by the engine, detaili
     -   `warning_threshold` (number, optional): The threshold for a `Warning` severity level.
 -   **Output**: A JSON object containing the `severity` (`Ok`, `Warning`, `Critical`, or `Breach`), a descriptive `status`, the original `value`, and the `utilization_percent` relative to the `max_threshold`.
 
-## Benefits of Built-in Calculators
-The adoption of built-in calculators offers several significant advantages:
+## 🏆 Benefits of Plugin-based Calculator System
 
-1.  **High Performance**: Implemented as compiled Rust code, these calculators deliver substantially faster execution (typically 10-100x) compared to interpreted formula engines.
-2.  **Type Safety**: Input validation occurs at compile time, effectively preventing a broad spectrum of runtime errors and ensuring data integrity.
-3.  **Reusability**: Generic calculator implementations can be seamlessly applied across diverse business domains, including compliance, payroll, and cost management, promoting code reuse and consistency.
-4.  **Auditability**: As part of the version-controlled codebase, all changes to calculator logic are fully auditable, providing a clear historical record of business rule evolution.
-5.  **Operational Simplicity**: The calculator logic is embedded within the standard application deployment, eliminating the need for separate rule distribution or complex management systems.
+### Performance Benefits
+1.  **Exceptional Speed**: Compiled Rust implementations deliver 10-100x faster execution than interpreted formula engines
+2.  **Memory Efficiency**: Optimized memory usage with object pooling and arena allocation
+3.  **Parallel Processing**: Calculators can execute concurrently for independent calculations
+4.  **RETE Integration**: Seamless integration with O(Δfacts) complexity optimization
+
+### Enterprise Features
+5.  **Type Safety**: Compile-time input validation prevents runtime errors and ensures data integrity
+6.  **Full Auditability**: Version-controlled business logic with complete change history
+7.  **Production Hardening**: Zero-warning policy, comprehensive testing, and enterprise-grade error handling
+8.  **Thread Safety**: Full Send + Sync implementation for concurrent processing
+
+### Operational Advantages
+9.  **Deployment Simplicity**: Embedded calculator logic eliminates separate rule distribution systems
+10. **Extensibility**: Plugin architecture enables custom calculator development without core engine changes
+11. **Consistency**: Uniform interface across all calculators ensures predictable behavior
+12. **Business Domain Support**: Pre-built calculators for compliance, payroll, and TRONC workflows
 
 ## Error Handling
 In the event of an error during calculator execution (e.g., a missing required input field), the engine generates a structured error fact. This mechanism enables the creation of rules specifically designed to gracefully handle such errors, for instance, by triggering notifications or applying alternative fallback logic.

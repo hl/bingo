@@ -1,19 +1,42 @@
 # Architecture Specification
 
-This document details the system design, component relationships, and data flow of the Bingo Rules Engine.
+This document details the complete system architecture of the Bingo RETE Rules Engine, including the RETE algorithm implementation, advanced optimizations, and enterprise-grade components.
+
+## 🧠 RETE Algorithm Architecture
+
+The Bingo engine implements a complete RETE (Rapid, Efficient, Truth-maintenance) algorithm with advanced optimizations:
+
+### Core RETE Components
+- **Alpha Memory Network**: Hash-indexed single-condition fact matching with O(1) lookup performance
+- **Beta Memory Network**: Token-based multi-condition processing with efficient join operations
+- **Working Memory**: Incremental fact lifecycle management with proper retraction propagation
+- **Conflict Resolution System**: Multiple strategies (Priority, Salience, Specificity, Lexicographic) with tie-breaking
+- **Rule Optimization Engine**: Automatic condition reordering based on selectivity and cost analysis
+- **Dependency Analysis**: Kahn's topological sorting algorithm for rule execution order optimization
+
+### Advanced Optimizations
+- **Rule Reordering**: Conditions are automatically reordered for optimal evaluation performance
+- **Parallel Processing**: Multi-threaded RETE processing with work-stealing queues
+- **Memory Management**: Arena allocation and object pooling for high-performance memory usage
+- **Incremental Processing**: O(Δfacts) complexity - only processes new/changed facts
 
 ## Multi-Crate Workspace
 
 The engine is structured as a Rust workspace with clear separation of concerns:
 
 -   **`bingo-api`**: The gRPC streaming API built with Tonic. This crate handles protobuf serialization, streaming coordination, and provides the gRPC service interface.
--   **`bingo-core`**: The heart of the engine, containing the RETE network, fact stores, and the Calculator DSL.
--   **`bingo-calculator`**: A dedicated crate for the expression language, business calculators, and evaluation logic.
+-   **`bingo-core`**: The heart of the engine, containing the RETE network, fact stores, and rule processing logic.
+-   **`bingo-calculator`**: A plugin-based calculator system with built-in business calculators and extensible architecture for custom calculations.
+-   **`bingo-types`**: Shared type definitions and core data structures, providing `FactValue` and eliminating circular dependencies between crates.
+-   **`bingo-web`**: Web interface for engine management, monitoring, and rule configuration.
 
 ```mermaid
 graph TD
     A["🌐 bingo-api<br/>gRPC Streaming API<br/>(Protocol Buffers)"] --> B["⚙️ bingo-core<br/>RETE engine + Fact Stores<br/>+ Memory optimizations"]
-    B --> C["🧮 bingo-calculator<br/>Calculator DSL + Business Calculators"]
+    B --> C["🧮 bingo-calculator<br/>Plugin-based Calculator System<br/>+ Business Calculators"]
+    B --> D["🔧 bingo-types<br/>Shared Type Definitions<br/>+ FactValue System"]
+    C --> D
+    A --> E["🌐 bingo-web<br/>Web Interface<br/>+ Management UI"]
 ```
 
 ## gRPC Service Architecture
@@ -83,12 +106,18 @@ graph TD
 -   **Session Isolation**: Each client session maintains independent state
 
 ### RETE Network Optimizations
--   **Alpha Memory**: Efficient fact indexing and pattern matching
--   **Beta Memory**: Join operations with optimized memory layouts
--   **Node Reuse**: Shared computation across similar rule patterns
--   **Incremental Updates**: Only affected nodes are re-evaluated when facts change
+-   **Alpha Memory**: Hash-based fact indexing with O(1) pattern matching and efficient memory management
+-   **Beta Memory**: Token propagation with optimized join operations and memory layouts
+-   **Node Reuse**: Shared computation across similar rule patterns to minimize memory usage
+-   **Incremental Updates**: Only affected nodes are re-evaluated when facts change (O(Δfacts) complexity)
+-   **Rule Dependency Analysis**: Kahn's algorithm ensures optimal rule execution order
+-   **Conflict Resolution**: Configurable strategies with priority-based execution and tie-breaking
+-   **Parallel Processing**: Multi-threaded execution with work-stealing queues for high throughput
 
 ### Calculator Integration
+-   **Plugin Architecture**: Calculators are implemented as plugins with a common interface
 -   **Lazy Evaluation**: Calculators are only invoked when needed
 -   **Result Caching**: Calculator outputs are cached within session scope
 -   **Parallel Execution**: Independent calculations can run concurrently
+-   **Built-in Calculators**: Comprehensive set of pre-built calculators for common business operations
+-   **Extensible System**: New calculators can be added without modifying core engine code

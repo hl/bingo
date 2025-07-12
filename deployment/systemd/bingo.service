@@ -1,0 +1,81 @@
+[Unit]
+Description=Bingo RETE Rules Engine gRPC Service
+Documentation=https://github.com/your-org/bingo
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=bingo
+Group=bingo
+WorkingDirectory=/opt/bingo
+
+# Binary and startup
+ExecStart=/opt/bingo/bin/bingo
+ExecStartPre=/opt/bingo/scripts/start-production.sh --check-only
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Environment
+Environment=SERVICE_NAME=bingo-grpc
+Environment=SERVICE_VERSION=1.0.0
+Environment=BINGO_ENVIRONMENT=production
+Environment=GRPC_LISTEN_ADDRESS=0.0.0.0:50051
+Environment=RUST_LOG=info
+Environment=TLS_ENABLED=true
+Environment=AUTH_REQUIRED=true
+Environment=METRICS_ENABLED=true
+Environment=RATE_LIMIT_RPM=10000
+Environment=MAX_CONNECTIONS=1000
+Environment=REQUEST_TIMEOUT_MS=30000
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/bingo /var/run/bingo /opt/bingo/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryHigh=3G
+MemoryMax=4G
+CPUQuota=200%
+
+# Capabilities
+CapabilityBoundingSet=
+AmbientCapabilities=
+SeccompFilter=@system-service
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bingo-grpc
+
+# PID file
+PIDFile=/var/run/bingo/bingo-grpc.pid
+
+# Health check
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

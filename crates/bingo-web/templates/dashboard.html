@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="px-4 py-5 my-5 text-center">
+        <h1 class="display-5 fw-bold">Bingo Dashboard</h1>
+        <div class="col-lg-6 mx-auto">
+            <p class="lead mb-4">Welcome to the Bingo dashboard! Here are the current metrics.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-header">
+                    Total Facts
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ metrics.total_facts }}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-header">
+                    Rules Loaded
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ metrics.rules_loaded }}</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-center">
+                <div class="card-header">
+                    Processing Time
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ metrics.processing_time }}s</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

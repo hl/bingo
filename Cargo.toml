@@ -3,8 +3,8 @@ members = [
     "crates/bingo-core", 
     "crates/bingo-api",
     "crates/bingo-calculator",
-    "crates/bingo-prelude"
-, "crates/bingo-performance-test"]
+    "crates/bingo-types"
+, "crates/bingo-performance-test", "crates/bingo-web"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -34,7 +34,7 @@ async-trait = "0.1.85"
 bumpalo = { version = "3.17.0", features = ["collections"] }
 ahash = "0.8.12"
 dashmap = "6.1.0"
-crossbeam = "0.8.5"
+crossbeam = "0.8.4"
 roaring = "0.10.11"
 
 # CLI
