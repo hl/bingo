@@ -548,7 +548,7 @@ mod tests {
         let metrics = profiler.get_operation_metrics("test_op");
         assert!(metrics.is_some());
         assert_eq!(metrics.unwrap().invocations, 1);
-        
+
         // Use the sum to prevent compiler optimization
         assert!(sum > 0);
     }
@@ -592,7 +592,7 @@ mod tests {
 
         let metrics = profiler.get_operation_metrics("test_op");
         assert!(metrics.is_none());
-        
+
         // Use the sum to prevent compiler optimization
         assert!(sum > 0);
     }
