@@ -464,9 +464,7 @@ jobs:
         # Run coverage only on unit tests and fast integration tests
         cargo llvm-cov --workspace --lcov --output-path lcov.info \
           --lib --bins \
-          --ignore-filename-regex '(performance|benchmark|scaling|profiling|debug_|comprehensive_|million_fact|engine_bench)' \
-          --ignore-filename-regex '(concurrency|threaded|parallel|rete_.*performance|beta_.*performance|alpha_.*performance)' \
-          --ignore-filename-regex '(validation|monitoring|optimization|component_profiling|bottleneck_analysis)'
+          --ignore-filename-regex '(performance|benchmark|scaling|profiling|debug_|comprehensive_|million_fact|engine_bench|concurrency|threaded|parallel|rete_.*performance|beta_.*performance|alpha_.*performance|validation|monitoring|optimization|component_profiling|bottleneck_analysis)'
       timeout-minutes: 15
       env:
         BINGO_SKIP_SLOW_TESTS: "1"

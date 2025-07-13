@@ -463,16 +463,16 @@ impl BingoEngine {
         // Use RETE network results directly - our simplified RETE implementation is correct and doesn't need validation
         let filtered_results = network_results;
 
-        // Skip performance metrics recording to isolate performance issue
-        // let processing_duration = processing_start.elapsed();
-        // if let Err(e) = self.record_performance_metrics(
-        //     processing_duration,
-        //     facts.len(),
-        //     filtered_results.len(),
-        // ) {
-        //     // Log error but don't fail the operation
-        //     info!("Failed to record performance metrics: {}", e);
-        // }
+        // Record performance metrics
+        let processing_duration = processing_start.elapsed();
+        if let Err(e) = self.record_performance_metrics(
+            processing_duration,
+            facts.len(),
+            filtered_results.len(),
+        ) {
+            // Log error but don't fail the operation
+            info!("Failed to record performance metrics: {}", e);
+        }
 
         Ok(filtered_results)
     }
