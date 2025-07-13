@@ -1,13 +1,11 @@
 name: CI
+# Core CI pipeline - performance and benchmark tests are run locally only
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-  schedule:
-    # Run performance tests nightly at 2 AM UTC
-    - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
       test_category:
@@ -20,11 +18,7 @@ on:
         - unit
         - integration
         - concurrency
-        - performance
-        - profiling
-        - debug
         - validation
-        - benchmark
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,6 +29,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'unit' || github.event.inputs.test_category == 'all'))
     steps:
     - uses: actions/checkout@v4
 
@@ -67,6 +62,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'integration' || github.event.inputs.test_category == 'all'))
     steps:
     - uses: actions/checkout@v4
 
@@ -118,6 +114,7 @@ jobs:
   api-tests:
     name: API Tests
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'integration' || github.event.inputs.test_category == 'all'))
     steps:
     - uses: actions/checkout@v4
 
@@ -154,6 +151,7 @@ jobs:
   quality-checks:
     name: Code Quality
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:
     - uses: actions/checkout@v4
 
@@ -190,7 +188,7 @@ jobs:
   concurrency-tests:
     name: Concurrency Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'concurrency' || github.event.inputs.test_category == 'all'))
     steps:
     - uses: actions/checkout@v4
 
@@ -229,7 +227,7 @@ jobs:
   validation-tests:
     name: Validation Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'validation' || github.event.inputs.test_category == 'all'))
     steps:
     - uses: actions/checkout@v4
 
@@ -267,151 +265,6 @@ jobs:
       env:
         BINGO_SKIP_SLOW_TESTS: "1"
 
-  # Performance tests - run on main branch pushes and nightly
-  performance-tests:
-    name: Performance Tests
-    runs-on: ubuntu-latest
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'performance' || github.event.inputs.test_category == 'all'))
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
-
-    - name: Install protoc
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
-
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-performance-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Run performance tests
-      run: |
-        cargo test --test scaling_validation_test --release -- --skip test_extreme_scaling
-        cargo test --test alpha_memory_performance_test --release
-        cargo test --test complex_rule_performance_test --release
-        cargo test --test serialization_performance_test --release
-        cargo test --test simple_rete_performance_test --release
-        cargo test --test rete_network_performance_benchmarks --release
-      timeout-minutes: 30
-
-  # Profiling tests - manual trigger only
-  profiling-tests:
-    name: Profiling Tests
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'profiling' || github.event.inputs.test_category == 'all')
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
-
-    - name: Install protoc
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
-
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-profiling-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Run profiling tests
-      run: |
-        cargo test --test comprehensive_rete_benchmark --release
-        cargo test --test comprehensive_performance_benchmarks --release
-        cargo test --test comprehensive_component_profiling --release
-        cargo test --test fact_store_profiling --release
-        cargo test --test performance_profiling --release
-        cargo test --test performance_bottleneck_analysis --release
-        cargo test --test quick_performance_analysis --release
-        cargo test --test simple_profiling_report --release
-      timeout-minutes: 60
-
-  # Debug/Scaling tests - manual trigger only
-  debug-tests:
-    name: Debug Tests
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'debug' || github.event.inputs.test_category == 'all')
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
-
-    - name: Install protoc
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
-
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-debug-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Run debug tests
-      run: |
-        cargo test --test debug_10k_scaling --release
-        cargo test --test debug_1k_scaling --release
-        cargo test --test debug_action_execution --release
-        cargo test --test debug_beta_test --release
-        cargo test --test debug_threaded_processing --release
-      timeout-minutes: 120
-
-  # Benchmark tests - nightly only
-  benchmark-tests:
-    name: Benchmark Tests
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'benchmark' || github.event.inputs.test_category == 'all'))
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: "1.88.0"
-
-    - name: Install protoc
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler
-
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-benchmark-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Run benchmarks
-      run: |
-        cargo bench --bench million_fact_bench
-        cargo bench --bench engine_bench
-        cargo bench --bench performance_suite
-      timeout-minutes: 60
 
   # Security audit - only on main branch
   security-audit:
