@@ -212,10 +212,7 @@ impl ParallelWorker {
         info!(worker_id = self.worker_id, "Starting parallel worker");
 
         let start_time = std::time::Instant::now();
-        let mut local_stats = ParallelReteStats {
-            worker_count: 1,
-            ..Default::default()
-        };
+        let mut local_stats = ParallelReteStats { worker_count: 1, ..Default::default() };
 
         // Main processing loop
         while let Some(work_item) = self.get_work() {
@@ -422,10 +419,7 @@ impl ParallelWorker {
         );
 
         let start_time = std::time::Instant::now();
-        let mut local_stats = ParallelReteStats {
-            worker_count: 1,
-            ..Default::default()
-        };
+        let mut local_stats = ParallelReteStats { worker_count: 1, ..Default::default() };
 
         // Main processing loop
         while let Some(work_item) = self.get_work() {
@@ -705,10 +699,7 @@ impl ParallelReteProcessor {
         let final_results = results
             .lock()
             .map_err(|e| {
-                BingoError::rete_network(
-                    "results",
-                    format!("Failed to acquire final results: {e}"),
-                )
+                BingoError::rete_network("results", format!("Failed to acquire final results: {e}"))
             })?
             .clone();
 
@@ -785,10 +776,7 @@ impl ParallelReteProcessor {
         let final_results = results
             .lock()
             .map_err(|e| {
-                BingoError::rete_network(
-                    "results",
-                    format!("Failed to acquire final results: {e}"),
-                )
+                BingoError::rete_network("results", format!("Failed to acquire final results: {e}"))
             })?
             .clone();
 

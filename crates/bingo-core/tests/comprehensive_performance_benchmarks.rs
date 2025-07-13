@@ -259,9 +259,7 @@ fn benchmark_threading_performance(workload: &WorkloadSize) -> PerformanceBenchm
         (workload.rule_count * 1024 + workload.fact_count * 512) as f64 / 1024.0 / 1024.0;
     let rule_matching_efficiency = facts_per_second / workload.rule_count as f64;
 
-    println!(
-        "    Optimal worker count: {best_worker_count} (speedup: {parallel_speedup:.2}x)"
-    );
+    println!("    Optimal worker count: {best_worker_count} (speedup: {parallel_speedup:.2}x)");
 
     PerformanceBenchmarkResult {
         test_name: "Threading Optimization",
@@ -397,11 +395,20 @@ fn print_performance_result(result: &PerformanceBenchmarkResult) {
             "       Parallel Time:   {:>8.2?}",
             result.rete_parallel_time
         );
-        println!("       Speedup:         {speedup:>8.2}x", speedup=result.parallel_speedup);
+        println!(
+            "       Speedup:         {speedup:>8.2}x",
+            speedup = result.parallel_speedup
+        );
     }
 
-    println!("       Facts/sec:       {facts_per_sec:>8.0}", facts_per_sec=result.facts_per_second);
-    println!("       Memory (MB):     {memory:>8.1}", memory=result.memory_usage_mb);
+    println!(
+        "       Facts/sec:       {facts_per_sec:>8.0}",
+        facts_per_sec = result.facts_per_second
+    );
+    println!(
+        "       Memory (MB):     {memory:>8.1}",
+        memory = result.memory_usage_mb
+    );
     println!(
         "       Efficiency:      {:>8.2}",
         result.rule_matching_efficiency
@@ -446,9 +453,7 @@ fn print_comprehensive_summary(results: &[PerformanceBenchmarkResult]) {
             .sum();
         let total_time: Duration = rete_results.iter().map(|r| r.rete_sequential_time).sum();
 
-        println!(
-            "   Average Rule Matching Efficiency: {avg_efficiency:.2} facts/rule/sec"
-        );
+        println!("   Average Rule Matching Efficiency: {avg_efficiency:.2} facts/rule/sec");
         println!("   Total Facts Processed: {total_facts}");
         println!("   Total Processing Time: {total_time:?}");
         println!(
@@ -469,9 +474,7 @@ fn print_comprehensive_summary(results: &[PerformanceBenchmarkResult]) {
         let max_speedup = parallel_results.iter().map(|r| r.parallel_speedup).fold(0.0, f64::max);
 
         println!("   Average Speedup: {avg_speedup:.2}x");
-        println!(
-            "   Speedup Range: {min_speedup:.2}x - {max_speedup:.2}x"
-        );
+        println!("   Speedup Range: {min_speedup:.2}x - {max_speedup:.2}x");
         let cpu_count = num_cpus::get();
         println!("   CPU Core Count: {cpu_count}");
 
@@ -488,9 +491,7 @@ fn print_comprehensive_summary(results: &[PerformanceBenchmarkResult]) {
         if let Some(best) = best_threading_result {
             let best_speedup = best.parallel_speedup;
             let best_workload_name = best.workload_size.name;
-            println!(
-                "   Best Threading Speedup: {best_speedup:.2}x ({best_workload_name})"
-            );
+            println!("   Best Threading Speedup: {best_speedup:.2}x ({best_workload_name})");
             let best_facts_per_sec = best.facts_per_second;
             println!("   Best Facts/sec: {best_facts_per_sec:.0}");
         }

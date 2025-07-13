@@ -230,9 +230,7 @@ fn test_incremental_vs_batch_processing() {
     );
 
     println!("✅ Incremental vs batch processing test passed");
-    println!(
-        "   Incremental activations: {incremental_total_activations}"
-    );
+    println!("   Incremental activations: {incremental_total_activations}");
     let batch_len = batch_results.len();
     println!("   Batch activations: {batch_len}");
     println!("   Facts in working memory: {incremental_facts}");
@@ -266,10 +264,7 @@ fn test_working_memory_lifecycle() {
     for i in 1..=3 {
         let mut fields = HashMap::new();
         fields.insert("type".to_string(), FactValue::String("order".to_string()));
-        fields.insert(
-            "order_id".to_string(),
-            FactValue::String(format!("ORD{i}")),
-        );
+        fields.insert("order_id".to_string(), FactValue::String(format!("ORD{i}")));
 
         let fact = Fact::new(i, FactData { fields });
         let results = engine.add_fact_to_working_memory(fact).expect("Fact addition failed");

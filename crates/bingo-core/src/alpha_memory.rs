@@ -302,12 +302,11 @@ impl AlphaMemoryManager {
 
         // Check all alpha memories for matches
         for (pattern_key, alpha_memory) in &mut self.alpha_memories {
-            if alpha_memory.pattern.matches_fact(fact)
-                && alpha_memory.add_fact(fact_id) {
-                    matching_patterns.push(pattern_key.clone());
-                    self.total_matches_found += 1;
-                    debug!("Fact {} matches pattern {}", fact_id, pattern_key);
-                }
+            if alpha_memory.pattern.matches_fact(fact) && alpha_memory.add_fact(fact_id) {
+                matching_patterns.push(pattern_key.clone());
+                self.total_matches_found += 1;
+                debug!("Fact {} matches pattern {}", fact_id, pattern_key);
+            }
         }
 
         matching_patterns

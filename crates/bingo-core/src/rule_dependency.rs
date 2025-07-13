@@ -524,7 +524,7 @@ impl RuleDependencyAnalyzer {
                 .or_default()
                 .push(dependency.source_rule);
 
-            // Reverse graph: source -> target  
+            // Reverse graph: source -> target
             self.reverse_graph
                 .entry(dependency.source_rule)
                 .or_default()
@@ -787,8 +787,10 @@ impl RuleDependencyAnalyzer {
         let mut patterns = HashSet::new();
 
         for dependency in &self.dependencies {
-            if rules.contains(&dependency.source_rule) && rules.contains(&dependency.target_rule)
-                && dependency.dependency_type == DependencyType::ConditionSimilarity {
+            if rules.contains(&dependency.source_rule)
+                && rules.contains(&dependency.target_rule)
+                && dependency.dependency_type == DependencyType::ConditionSimilarity
+            {
                 patterns.extend(dependency.involved_fields.clone());
             }
         }
