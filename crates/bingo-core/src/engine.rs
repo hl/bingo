@@ -436,7 +436,7 @@ impl BingoEngine {
     /// ```
     #[instrument(skip(self, facts))]
     pub fn process_facts(&mut self, facts: Vec<Fact>) -> BingoResult<Vec<RuleExecutionResult>> {
-        let _processing_start = Instant::now();
+        let processing_start = Instant::now();
         info!(fact_count = facts.len(), "Processing facts through engine");
 
         // Store facts in the fact store using bulk insert for better performance
