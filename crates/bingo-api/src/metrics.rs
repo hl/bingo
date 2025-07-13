@@ -315,14 +315,20 @@ mod tests {
 
         let tracker = middleware.start_request();
 
-        // Simulate some work
-        std::thread::sleep(Duration::from_millis(1));
+        // Simulate some work with computation instead of sleep
+        let mut result = 0;
+        for i in 0..100 {
+            result += i * i;
+        }
 
         tracker.finish("POST", "/evaluate", 200);
 
         // Verify metrics were recorded (basic sanity check)
         let stats = metrics.get_performance_stats();
         assert_eq!(stats.get("active_requests").unwrap_or(&1.0), &0.0);
+        
+        // Use the result to prevent compiler optimization
+        assert!(result > 0);
     }
 
     #[test]

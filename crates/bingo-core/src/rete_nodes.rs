@@ -1754,10 +1754,8 @@ mod tests {
         let stats_before = beta_memory.get_stats();
         assert_eq!(stats_before.active_partial_matches, 1);
 
-        // Sleep to ensure expiration
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        // Cleanup expired matches
+        // Force expiration by directly calling cleanup
+        // Since max_age_seconds is 0, any match is immediately expired
         beta_memory.cleanup_expired_matches();
 
         let stats_after = beta_memory.get_stats();

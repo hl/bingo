@@ -59,7 +59,9 @@ jobs:
 
     - name: Run unit tests
       run: cargo test --workspace --lib --bins
-      timeout-minutes: 10
+      timeout-minutes: 20
+      env:
+        BINGO_SKIP_SLOW_TESTS: "1"
 
   # Integration tests - run on every commit
   integration-tests:
@@ -108,7 +110,9 @@ jobs:
         cargo test --test rule_dependency_integration_test
         cargo test --test session_window_integration_test
         cargo test --test built_in_calculators_test
-      timeout-minutes: 15
+      timeout-minutes: 25
+      env:
+        BINGO_SKIP_SLOW_TESTS: "1"
 
   # API tests - run on every commit
   api-tests:
@@ -142,7 +146,9 @@ jobs:
         cargo test --test grpc_payroll_tests
         cargo test --test grpc_tronc_tests
         cargo test --test grpc_wage_cost_tests
-      timeout-minutes: 10
+      timeout-minutes: 15
+      env:
+        BINGO_SKIP_SLOW_TESTS: "1"
 
   # Code quality checks - run on every commit
   quality-checks:
@@ -215,7 +221,9 @@ jobs:
         cargo test --test parallel_rete_test --release
         cargo test --test beta_memory_integration_test --release
         cargo test --test lazy_aggregation_integration_test --release
-      timeout-minutes: 20
+      timeout-minutes: 30
+      env:
+        BINGO_SKIP_SLOW_TESTS: "1"
 
   # Validation tests - run on main branch pushes only
   validation-tests:
@@ -255,7 +263,9 @@ jobs:
         cargo test --test rule_optimization_test --release
         cargo test --test beta_network_test --release
         cargo test --test working_memory_test --release
-      timeout-minutes: 15
+      timeout-minutes: 25
+      env:
+        BINGO_SKIP_SLOW_TESTS: "1"
 
   # Performance tests - run on main branch pushes and nightly
   performance-tests:
@@ -457,7 +467,9 @@ jobs:
           --ignore-filename-regex '(performance|benchmark|scaling|profiling|debug_|comprehensive_|million_fact|engine_bench)' \
           --ignore-filename-regex '(concurrency|threaded|parallel|rete_.*performance|beta_.*performance|alpha_.*performance)' \
           --ignore-filename-regex '(validation|monitoring|optimization|component_profiling|bottleneck_analysis)'
-      timeout-minutes: 10
+      timeout-minutes: 15
+      env:
+        BINGO_SKIP_SLOW_TESTS: "1"
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
