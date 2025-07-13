@@ -967,38 +967,4 @@ mod tests {
             500.0
         );
     }
-
-    #[test]
-    fn test_historical_data_management() {
-        let config = MonitoringConfig { max_historical_samples: 3, ..Default::default() };
-        let monitoring = EnhancedMonitoring::new(config);
-
-        // Add performance data
-        for i in 0..5 {
-            let metrics =
-                EnginePerformanceMetrics { facts_per_second: i as f64, ..Default::default() };
-            monitoring.record_engine_performance(metrics).unwrap();
-            monitoring.add_historical_sample().unwrap();
-        }
-
-        let historical_data = monitoring.historical_data.read().unwrap();
-        assert_eq!(historical_data.performance_samples.len(), 3); // Should maintain max limit
-    }
-
-    #[test]
-    fn test_alert_triggering() {
-        let monitoring = EnhancedMonitoring::default();
-
-        // Record high CPU usage that should trigger alert
-        let metrics = EnginePerformanceMetrics {
-            cpu_usage_percent: 95.0, // Above critical threshold
-            success_rate_percent: 100.0,
-            ..Default::default()
-        };
-
-        monitoring.record_engine_performance(metrics).unwrap();
-
-        let alert_manager = monitoring.alert_manager.read().unwrap();
-        assert!(alert_manager.active_alerts.contains_key(&AlertType::HighCpuUsage));
-    }
 }

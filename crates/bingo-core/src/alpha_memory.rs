@@ -245,12 +245,19 @@ pub struct AlphaMemoryStats {
 /// - Automatic creation of alpha memories as needed
 /// - Efficient fact addition/removal propagation
 /// - Memory cleanup when alpha memories are no longer needed
+/// - Optimized indexing for frequently accessed field patterns
 #[derive(Debug)]
 pub struct AlphaMemoryManager {
     /// Alpha memories indexed by pattern key
     alpha_memories: HashMap<String, AlphaMemory>,
     /// Pattern index for efficient lookups
     pattern_index: HashMap<String, Vec<String>>, // field -> [pattern_keys]
+    /// Fast lookup index for common equality patterns (field=value)
+    equality_index: HashMap<String, HashMap<FactValue, Vec<String>>>, // field -> value -> [pattern_keys]
+    /// Range index for numeric comparisons (field -> sorted list of thresholds)
+    range_index: HashMap<String, Vec<(f64, Vec<String>)>>, // field -> [(threshold, pattern_keys)]
+    /// Pattern access frequency tracking for optimization
+    pattern_frequency: HashMap<String, u64>,
     /// Next alpha memory ID
     next_id: NodeId,
     /// Total facts processed
@@ -265,6 +272,9 @@ impl AlphaMemoryManager {
         Self {
             alpha_memories: HashMap::new(),
             pattern_index: HashMap::new(),
+            equality_index: HashMap::new(),
+            range_index: HashMap::new(),
+            pattern_frequency: HashMap::new(),
             next_id: 1,
             total_facts_processed: 0,
             total_matches_found: 0,
@@ -288,28 +298,82 @@ impl AlphaMemoryManager {
                 .or_default()
                 .push(pattern_key.clone());
 
+            // Add to optimized indexes based on operator type
+            self.add_to_optimized_indexes(&pattern, &pattern_key);
+
             self.alpha_memories.insert(pattern_key.clone(), alpha_memory);
         }
 
         self.alpha_memories.get_mut(&pattern_key).unwrap()
     }
 
-    /// Process a new fact through all alpha memories
+    /// Process a new fact through all alpha memories using optimized indexing
     #[instrument(skip(self, fact))]
     pub fn process_fact_addition(&mut self, fact_id: FactId, fact: &Fact) -> Vec<String> {
         self.total_facts_processed += 1;
-        let mut matching_patterns = Vec::new();
+        let mut matching_patterns = HashSet::new(); // Use HashSet to avoid duplicates
 
-        // Check all alpha memories for matches
-        for (pattern_key, alpha_memory) in &mut self.alpha_memories {
-            if alpha_memory.pattern.matches_fact(fact) && alpha_memory.add_fact(fact_id) {
-                matching_patterns.push(pattern_key.clone());
-                self.total_matches_found += 1;
-                debug!("Fact {} matches pattern {}", fact_id, pattern_key);
+        // Use optimized indexing for faster pattern matching
+        for (field_name, field_value) in &fact.data.fields {
+            // Check equality patterns using equality index
+            if let Some(value_map) = self.equality_index.get(field_name) {
+                if let Some(pattern_keys) = value_map.get(field_value) {
+                    for pattern_key in pattern_keys {
+                        // Track pattern access frequency
+                        *self.pattern_frequency.entry(pattern_key.clone()).or_insert(0) += 1;
+
+                        if let Some(alpha_memory) = self.alpha_memories.get_mut(pattern_key) {
+                            if alpha_memory.add_fact(fact_id) {
+                                matching_patterns.insert(pattern_key.clone());
+                                self.total_matches_found += 1;
+                                debug!("Fact {} matches equality pattern {}", fact_id, pattern_key);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check range patterns using range index for numeric values
+            if let Some(threshold_list) = self.range_index.get(field_name) {
+                if let Some(_numeric_value) = field_value.to_comparable() {
+                    for (_threshold, pattern_keys) in threshold_list {
+                        for pattern_key in pattern_keys {
+                            // Track pattern access frequency
+                            *self.pattern_frequency.entry(pattern_key.clone()).or_insert(0) += 1;
+
+                            if let Some(alpha_memory) = self.alpha_memories.get_mut(pattern_key) {
+                                if alpha_memory.pattern.matches_fact(fact)
+                                    && alpha_memory.add_fact(fact_id)
+                                {
+                                    matching_patterns.insert(pattern_key.clone());
+                                    self.total_matches_found += 1;
+                                    debug!(
+                                        "Fact {} matches range pattern {}",
+                                        fact_id, pattern_key
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        matching_patterns
+        // Fallback: check any remaining patterns not covered by optimized indexes
+        for (pattern_key, alpha_memory) in &mut self.alpha_memories {
+            if !matching_patterns.contains(pattern_key) {
+                // Track pattern access frequency
+                *self.pattern_frequency.entry(pattern_key.clone()).or_insert(0) += 1;
+
+                if alpha_memory.pattern.matches_fact(fact) && alpha_memory.add_fact(fact_id) {
+                    matching_patterns.insert(pattern_key.clone());
+                    self.total_matches_found += 1;
+                    debug!("Fact {} matches fallback pattern {}", fact_id, pattern_key);
+                }
+            }
+        }
+
+        matching_patterns.into_iter().collect()
     }
 
     /// Process fact removal through all alpha memories
@@ -420,6 +484,100 @@ impl AlphaMemoryManager {
 
         total_size
     }
+
+    /// Add pattern to optimized indexes based on operator type
+    fn add_to_optimized_indexes(&mut self, pattern: &FactPattern, pattern_key: &str) {
+        match pattern.operator {
+            Operator::Equal => {
+                // Add to equality index for fast O(1) equality lookups
+                self.equality_index
+                    .entry(pattern.field.clone())
+                    .or_default()
+                    .entry(pattern.value.clone())
+                    .or_default()
+                    .push(pattern_key.to_string());
+            }
+            Operator::GreaterThan
+            | Operator::LessThan
+            | Operator::GreaterThanOrEqual
+            | Operator::LessThanOrEqual => {
+                // Add to range index for numeric comparisons
+                if let Some(threshold) = pattern.value.to_comparable() {
+                    let range_list = self.range_index.entry(pattern.field.clone()).or_default();
+
+                    // Find the right position to insert (keep sorted by threshold)
+                    let insert_pos = range_list
+                        .binary_search_by(|(t, _)| {
+                            t.partial_cmp(&threshold).unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                        .unwrap_or_else(|e| e);
+
+                    if insert_pos < range_list.len()
+                        && (range_list[insert_pos].0 - threshold).abs() < f64::EPSILON
+                    {
+                        // Same threshold exists, add to existing entry
+                        range_list[insert_pos].1.push(pattern_key.to_string());
+                    } else {
+                        // Insert new threshold entry
+                        range_list.insert(insert_pos, (threshold, vec![pattern_key.to_string()]));
+                    }
+                }
+            }
+            _ => {
+                // Other operators don't have specialized indexes yet
+                // They will be handled by the fallback linear search
+            }
+        }
+    }
+
+    /// Get pattern access frequency statistics (most frequently accessed patterns)
+    pub fn get_pattern_frequency_stats(&self) -> Vec<(String, u64)> {
+        let mut frequencies: Vec<_> = self
+            .pattern_frequency
+            .iter()
+            .map(|(pattern, count)| (pattern.clone(), *count))
+            .collect();
+        frequencies.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by frequency descending
+        frequencies
+    }
+
+    /// Get optimization statistics showing index effectiveness
+    pub fn get_optimization_stats(&self) -> OptimizationStats {
+        let equality_patterns = self
+            .equality_index
+            .values()
+            .map(|value_map| value_map.values().map(|patterns| patterns.len()).sum::<usize>())
+            .sum::<usize>();
+
+        let range_patterns = self
+            .range_index
+            .values()
+            .map(|threshold_list| {
+                threshold_list.iter().map(|(_, patterns)| patterns.len()).sum::<usize>()
+            })
+            .sum::<usize>();
+
+        let total_patterns = self.alpha_memories.len();
+        let unoptimized_patterns =
+            total_patterns.saturating_sub(equality_patterns + range_patterns);
+
+        OptimizationStats {
+            total_patterns,
+            equality_patterns,
+            range_patterns,
+            unoptimized_patterns,
+            optimization_coverage_percentage: if total_patterns > 0 {
+                ((equality_patterns + range_patterns) as f64 / total_patterns as f64) * 100.0
+            } else {
+                0.0
+            },
+            most_accessed_patterns: self
+                .get_pattern_frequency_stats()
+                .into_iter()
+                .take(10)
+                .collect(),
+        }
+    }
 }
 
 impl Default for AlphaMemoryManager {
@@ -436,6 +594,17 @@ pub struct AlphaMemoryManagerStats {
     pub total_facts_processed: u64,
     pub total_matches_found: u64,
     pub memory_stats: Vec<AlphaMemoryStats>,
+}
+
+/// Statistics about alpha memory optimization effectiveness
+#[derive(Debug, Clone)]
+pub struct OptimizationStats {
+    pub total_patterns: usize,
+    pub equality_patterns: usize,
+    pub range_patterns: usize,
+    pub unoptimized_patterns: usize,
+    pub optimization_coverage_percentage: f64,
+    pub most_accessed_patterns: Vec<(String, u64)>,
 }
 
 impl std::fmt::Display for AlphaMemoryManagerStats {

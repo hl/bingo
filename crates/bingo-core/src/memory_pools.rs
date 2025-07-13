@@ -5,7 +5,7 @@
 
 use crate::beta_network::Token;
 use crate::rete_nodes::RuleExecutionResult;
-use crate::types::{FactId, FactValue, RuleId};
+use crate::types::{Condition, FactId, FactValue, RuleId};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -482,6 +482,8 @@ pub struct MemoryPoolManager {
     pub fact_field_maps: FactFieldMapPool,
     pub numeric_vecs: NumericVecPool,
     pub token_vecs: TokenVecPool,
+    pub condition_vecs: ConditionVecPool,
+    pub string_fact_value_maps: StringFactValueHashMapPool,
 }
 
 impl MemoryPoolManager {
@@ -494,6 +496,8 @@ impl MemoryPoolManager {
             fact_field_maps: FactFieldMapPool::new(),
             numeric_vecs: NumericVecPool::new(),
             token_vecs: TokenVecPool::new(),
+            condition_vecs: ConditionVecPool::new(),
+            string_fact_value_maps: StringFactValueHashMapPool::new(),
         }
     }
 
@@ -506,6 +510,8 @@ impl MemoryPoolManager {
             fact_field_maps: FactFieldMapPool::with_capacity(800),
             numeric_vecs: NumericVecPool::with_capacity(400),
             token_vecs: TokenVecPool::with_capacity(600),
+            condition_vecs: ConditionVecPool::with_capacity(300),
+            string_fact_value_maps: StringFactValueHashMapPool::with_capacity(400),
         }
     }
 
@@ -1024,5 +1030,147 @@ mod tests {
 
         // Should estimate some memory savings
         assert!(memory_saved > 0);
+    }
+}
+
+/// Pool for `Vec<Condition>` to reduce allocation overhead during rule processing
+#[derive(Debug, Clone)]
+pub struct ConditionVecPool {
+    pool: Arc<Mutex<Vec<Vec<Condition>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
+    max_pool_size: usize,
+}
+
+impl ConditionVecPool {
+    pub fn new() -> Self {
+        Self::with_capacity(100)
+    }
+
+    pub fn with_capacity(max_size: usize) -> Self {
+        Self {
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
+            max_pool_size: max_size,
+        }
+    }
+
+    pub fn get(&self) -> Vec<Condition> {
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut vec) = pool.pop() {
+                vec.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                vec
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                Vec::new()
+            }
+        } else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
+            Vec::new()
+        }
+    }
+
+    pub fn return_vec(&self, vec: Vec<Condition>) {
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(vec);
+            }
+        }
+    }
+
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
+    }
+
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
+        if total > 0.0 {
+            (hits / total) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Default for ConditionVecPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Pool for `HashMap<String, FactValue>` to reduce allocation overhead during fact processing
+#[derive(Debug, Clone)]
+pub struct StringFactValueHashMapPool {
+    pool: Arc<Mutex<Vec<HashMap<String, FactValue>>>>,
+    hits: Arc<AtomicUsize>,
+    misses: Arc<AtomicUsize>,
+    max_pool_size: usize,
+}
+
+impl StringFactValueHashMapPool {
+    pub fn new() -> Self {
+        Self::with_capacity(200)
+    }
+
+    pub fn with_capacity(max_size: usize) -> Self {
+        Self {
+            pool: Arc::new(Mutex::new(Vec::with_capacity(max_size / 4))),
+            hits: Arc::new(AtomicUsize::new(0)),
+            misses: Arc::new(AtomicUsize::new(0)),
+            max_pool_size: max_size,
+        }
+    }
+
+    pub fn get(&self) -> HashMap<String, FactValue> {
+        if let Ok(mut pool) = self.pool.lock() {
+            if let Some(mut map) = pool.pop() {
+                map.clear();
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                map
+            } else {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                HashMap::new()
+            }
+        } else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
+            HashMap::new()
+        }
+    }
+
+    pub fn return_map(&self, map: HashMap<String, FactValue>) {
+        if let Ok(mut pool) = self.pool.lock() {
+            if pool.len() < self.max_pool_size {
+                pool.push(map);
+            }
+        }
+    }
+
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let hits = self.hits.load(Ordering::Relaxed);
+        let misses = self.misses.load(Ordering::Relaxed);
+        let pool_size = self.pool.lock().map(|pool| pool.len()).unwrap_or(0);
+        (hits, misses, pool_size)
+    }
+
+    pub fn hit_rate(&self) -> f64 {
+        let hits = self.hits.load(Ordering::Relaxed) as f64;
+        let total = hits + self.misses.load(Ordering::Relaxed) as f64;
+        if total > 0.0 {
+            (hits / total) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+impl Default for StringFactValueHashMapPool {
+    fn default() -> Self {
+        Self::new()
     }
 }

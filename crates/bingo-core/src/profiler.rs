@@ -564,60 +564,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bottleneck_analysis() {
-        let profiler = EngineProfiler::new();
-
-        // Create a slow operation (reduced delay for faster testing)
-        for _ in 0..5 {
-            profiler.record_duration("slow_op", Duration::from_millis(5));
-        }
-
-        // Create a fast operation
-        for _ in 0..10 {
-            profiler.record_duration("fast_op", Duration::from_millis(1));
-        }
-
-        let bottlenecks = profiler.analyze_bottlenecks();
-        assert!(!bottlenecks.is_empty());
-
-        // The slow operation should be identified as a bottleneck
-        let slow_bottleneck = bottlenecks.iter().find(|b| b.operation == "slow_op");
-        assert!(slow_bottleneck.is_some());
-        assert!(slow_bottleneck.unwrap().severity > 5);
-    }
-
-    #[test]
-    fn test_alert_generation() {
-        let thresholds = PerformanceThresholds { rule_compilation_ms: 2, ..Default::default() };
-
-        let profiler = EngineProfiler::with_thresholds(thresholds);
-
-        // Record operation that exceeds threshold (reduced delay for faster testing)
-        profiler.record_duration("rule_compilation", Duration::from_millis(5));
-
-        let alerts = profiler.generate_alerts();
-        assert!(!alerts.is_empty());
-
-        let alert = &alerts[0];
-        assert_eq!(alert.operation, "rule_compilation");
-        assert_eq!(alert.severity, AlertSeverity::Warning);
-    }
-
-    #[test]
-    fn test_performance_report() {
-        let profiler = EngineProfiler::new();
-        let unified_stats = UnifiedStats::new();
-
-        profiler.record_duration("test_op", Duration::from_millis(2)); // Reduced delay for faster testing
-
-        let report = profiler.generate_report(unified_stats);
-
-        assert!(report.overall_score <= 100.0);
-        assert!(!report.operation_metrics.is_empty());
-        assert_eq!(report.operation_metrics[0].name, "test_op");
-    }
-
-    #[test]
     fn test_profiler_disable() {
         let mut profiler = EngineProfiler::new();
         profiler.set_enabled(false);

@@ -507,11 +507,46 @@ impl BingoEngine {
         self.fact_store.clear();
         self.rete_network = ReteNetwork::new();
 
-        // Add rules
-        self.add_rules(rules)?;
+        // Automatically choose between sequential and parallel processing
+        // based on workload size and system capabilities
+        let cpu_count = num_cpus::get();
+        let parallel_threshold = 50; // Facts threshold for parallel processing
+        let rule_threshold = 5; // Rules threshold for parallel processing
 
-        // Process facts
-        self.process_facts(facts)
+        let rule_count = rules.len();
+        let fact_count = facts.len();
+
+        if fact_count >= parallel_threshold && rule_count >= rule_threshold && cpu_count >= 2 {
+            // Add rules
+            self.add_rules(rules)?;
+            info!(
+                fact_count = fact_count,
+                rule_count = rule_count,
+                cpu_count = cpu_count,
+                "Using parallel processing for large workload"
+            );
+
+            // Use parallel processing for large workloads
+            let config = crate::parallel_rete::ParallelReteConfig {
+                parallel_threshold,
+                worker_count: cpu_count,
+                fact_chunk_size: (fact_count / cpu_count).max(10),
+                token_chunk_size: 10,
+                enable_parallel_alpha: true,
+                enable_parallel_beta: true,
+                enable_parallel_execution: true,
+                enable_work_stealing: true,
+                work_queue_capacity: 1000,
+            };
+
+            self.process_facts_advanced_parallel(facts, &config)
+        } else {
+            // Add rules
+            self.add_rules(rules)?;
+            info!("Using sequential processing for workload");
+            // Use sequential processing for smaller workloads
+            self.process_facts(facts)
+        }
     }
 
     /// Fact Processing: Look up a fact by its external string ID

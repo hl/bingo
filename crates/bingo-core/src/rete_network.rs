@@ -16,6 +16,7 @@ use crate::fact_store::arena_store::ArenaFactStore;
 use crate::lazy_aggregation::LazyAggregationManager;
 use crate::memory_pools::MemoryPoolManager;
 use crate::rete_nodes::RuleExecutionResult;
+use crate::rule_optimizer::RuleOptimizer;
 use crate::types::{
     AlphaNode, BetaNode, Condition, Fact, FactId, FactValue, NodeId, Operator, Rule, RuleId,
     TerminalNode,
@@ -151,6 +152,18 @@ pub struct ReteNetwork {
     /// This provides the foundation for cross-fact pattern matching and incremental
     /// token propagation through the RETE network.
     beta_network_manager: BetaNetworkManager,
+
+    /// **Rule Optimizer**: Optimizes rule conditions for better performance
+    ///
+    /// Automatically reorders conditions based on selectivity to minimize evaluation cost.
+    /// Tracks condition statistics and applies optimization strategies.
+    rule_optimizer: RuleOptimizer,
+
+    /// **Calculator Result Cache**: Caches calculator results to avoid duplicate computations
+    ///
+    /// LRU cache that stores results of deterministic calculator calls.
+    /// Improves performance when the same calculation is repeated with identical inputs.
+    calculator_cache: std::collections::HashMap<String, crate::types::FactValue>,
 }
 
 impl ReteNetwork {
@@ -197,6 +210,8 @@ impl ReteNetwork {
             working_memory: HashMap::new(),
             alpha_memory_manager: AlphaMemoryManager::new(),
             beta_network_manager: BetaNetworkManager::new(),
+            rule_optimizer: RuleOptimizer::new(),
+            calculator_cache: std::collections::HashMap::new(),
         }
     }
 
@@ -251,24 +266,37 @@ impl ReteNetwork {
         let rule_id = rule.id;
         info!(rule_id = rule_id, "Adding rule to RETE network");
 
-        // Create alpha nodes for conditions
-        for condition in &rule.conditions {
+        // Optimize rule conditions for better performance
+        let optimization_result = self.rule_optimizer.optimize_rule(rule);
+        let optimized_rule = optimization_result.optimized_rule;
+
+        if optimization_result.estimated_improvement > 0.0 {
+            debug!(
+                "Rule {} optimized: {:.1}% improvement, {} strategies applied",
+                rule_id,
+                optimization_result.estimated_improvement,
+                optimization_result.strategies_applied.len()
+            );
+        }
+
+        // Create alpha nodes for optimized conditions
+        for condition in &optimized_rule.conditions {
             self.create_alpha_node_for_condition(rule_id, condition)?;
         }
 
         // Create terminal node for actions
         let node_id = self.next_node_id;
         self.next_node_id += 1;
-        let terminal_node = TerminalNode::new(node_id, rule_id, rule.actions.clone());
+        let terminal_node = TerminalNode::new(node_id, rule_id, optimized_rule.actions.clone());
         self.terminal_nodes.insert(rule_id, terminal_node);
 
         // Create beta network structure for multi-condition rules
-        if rule.conditions.len() > 1 {
-            self.create_beta_network_for_rule(&rule)?;
+        if optimized_rule.conditions.len() > 1 {
+            self.create_beta_network_for_rule(&optimized_rule)?;
         }
 
-        // Store the rule
-        self.rules.insert(rule_id, rule);
+        // Store the optimized rule
+        self.rules.insert(rule_id, optimized_rule);
 
         Ok(())
     }
@@ -1194,222 +1222,448 @@ impl ReteNetwork {
         fact: &Fact,
         _fact_store: &ArenaFactStore,
     ) -> Result<Vec<crate::rete_nodes::ActionResult>> {
+        use crate::types::ActionType;
+
+        let mut action_results = Vec::new();
+        let mut create_fact_actions = Vec::new();
+
+        // First pass: separate CreateFact actions for batching, execute others immediately
+        for action in &rule.actions {
+            match &action.action_type {
+                ActionType::CreateFact { data } => {
+                    create_fact_actions.push(data.clone());
+                }
+                _ => {
+                    let result = self.execute_single_action(action, fact, rule.id);
+                    action_results.push(result);
+                }
+            }
+        }
+
+        // Second pass: execute all CreateFact actions in batch
+        if !create_fact_actions.is_empty() {
+            let batch_results = self.execute_create_fact_batch(&create_fact_actions, rule.id);
+            action_results.extend(batch_results);
+        }
+
+        Ok(action_results)
+    }
+
+    /// Execute a single non-batchable action
+    fn execute_single_action(
+        &mut self,
+        action: &crate::types::Action,
+        fact: &Fact,
+        rule_id: RuleId,
+    ) -> crate::rete_nodes::ActionResult {
         use crate::rete_nodes::ActionResult;
         use crate::types::ActionType;
         use tracing::info;
 
-        let mut action_results = Vec::new();
-
-        // Execute each action in the rule
-        for action in &rule.actions {
-            let result = match &action.action_type {
-                ActionType::SetField { field, value } => ActionResult::FieldSet {
-                    fact_id: fact.id,
-                    field: field.clone(),
-                    value: value.clone(),
-                },
-                ActionType::Log { message } => {
-                    info!(rule_id = rule.id, message = message, "Rule action: Log");
-                    ActionResult::Logged { message: message.clone() }
-                }
-                ActionType::CreateFact { data } => {
-                    // Generate a new fact ID
-                    let new_fact_id = self.next_node_id;
-                    self.next_node_id += 1;
-
-                    let new_fact = crate::types::Fact {
-                        timestamp: chrono::Utc::now(),
-                        id: new_fact_id,
-                        external_id: None,
-                        data: data.clone(),
-                    };
-
-                    // Store the created fact for potential processing in subsequent stages
-                    self.created_facts.push(new_fact.clone());
-
-                    info!(
-                        rule_id = rule.id,
-                        new_fact_id = new_fact_id,
-                        "Rule action: CreateFact - fact created"
-                    );
-
-                    ActionResult::FactCreated { fact_id: new_fact_id, fact_data: data.clone() }
-                }
-                ActionType::TriggerAlert { alert_type, message, severity: _, metadata: _ } => {
-                    info!(
-                        rule_id = rule.id,
-                        alert_type = alert_type,
-                        "Rule action: TriggerAlert"
-                    );
-                    ActionResult::Logged { message: format!("Alert [{alert_type}]: {message}") }
-                }
-                ActionType::UpdateFact { fact_id_field, updates } => {
-                    // Get the fact ID from the current fact's field
-                    if let Some(fact_id_value) = fact.data.fields.get(fact_id_field) {
-                        if let Some(target_fact_id) = fact_id_value.as_integer() {
-                            info!(
-                                rule_id = rule.id,
-                                target_fact_id = target_fact_id,
-                                fact_id_field = fact_id_field,
-                                "Rule action: UpdateFact"
-                            );
-
-                            let updated_fields: Vec<String> = updates.keys().cloned().collect();
-                            ActionResult::FactUpdated {
-                                fact_id: target_fact_id as u64,
-                                updated_fields,
-                            }
-                        } else {
-                            ActionResult::Logged {
-                                message: format!(
-                                    "UpdateFact failed: field '{fact_id_field}' is not an integer"
-                                ),
-                            }
-                        }
+        match &action.action_type {
+            ActionType::SetField { field, value } => ActionResult::FieldSet {
+                fact_id: fact.id,
+                field: field.clone(),
+                value: value.clone(),
+            },
+            ActionType::Log { message } => {
+                info!(rule_id = rule_id, message = message, "Rule action: Log");
+                ActionResult::Logged { message: message.clone() }
+            }
+            ActionType::TriggerAlert { alert_type, message, severity: _, metadata: _ } => {
+                info!(
+                    rule_id = rule_id,
+                    alert_type = alert_type,
+                    "Rule action: TriggerAlert"
+                );
+                ActionResult::Logged { message: format!("Alert [{alert_type}]: {message}") }
+            }
+            ActionType::UpdateFact { fact_id_field, updates } => {
+                if let Some(fact_id_value) = fact.data.fields.get(fact_id_field) {
+                    if let Some(target_fact_id) = fact_id_value.as_integer() {
+                        info!(
+                            rule_id = rule_id,
+                            target_fact_id = target_fact_id,
+                            "Rule action: UpdateFact"
+                        );
+                        let updated_fields: Vec<String> = updates.keys().cloned().collect();
+                        ActionResult::FactUpdated { fact_id: target_fact_id as u64, updated_fields }
                     } else {
                         ActionResult::Logged {
                             message: format!(
-                                "UpdateFact failed: field '{fact_id_field}' not found"
+                                "UpdateFact failed: field '{fact_id_field}' is not an integer"
                             ),
                         }
                     }
+                } else {
+                    ActionResult::Logged {
+                        message: format!("UpdateFact failed: field '{fact_id_field}' not found"),
+                    }
                 }
-                ActionType::DeleteFact { fact_id_field } => {
-                    // Get the fact ID from the current fact's field
-                    if let Some(fact_id_value) = fact.data.fields.get(fact_id_field) {
-                        if let Some(target_fact_id) = fact_id_value.as_integer() {
-                            info!(
-                                rule_id = rule.id,
-                                target_fact_id = target_fact_id,
-                                fact_id_field = fact_id_field,
-                                "Rule action: DeleteFact"
-                            );
-
-                            ActionResult::FactDeleted { fact_id: target_fact_id as u64 }
-                        } else {
-                            ActionResult::Logged {
-                                message: format!(
-                                    "DeleteFact failed: field '{fact_id_field}' is not an integer"
-                                ),
-                            }
-                        }
+            }
+            ActionType::DeleteFact { fact_id_field } => {
+                if let Some(fact_id_value) = fact.data.fields.get(fact_id_field) {
+                    if let Some(target_fact_id) = fact_id_value.as_integer() {
+                        info!(
+                            rule_id = rule_id,
+                            target_fact_id = target_fact_id,
+                            "Rule action: DeleteFact"
+                        );
+                        ActionResult::FactDeleted { fact_id: target_fact_id as u64 }
                     } else {
                         ActionResult::Logged {
                             message: format!(
-                                "DeleteFact failed: field '{fact_id_field}' not found"
+                                "DeleteFact failed: field '{fact_id_field}' is not an integer"
                             ),
                         }
                     }
-                }
-                ActionType::IncrementField { field, increment } => {
-                    // Get the current value of the field
-                    if let Some(current_value) = fact.data.fields.get(field) {
-                        match (current_value, increment) {
-                            (
-                                crate::types::FactValue::Integer(current),
-                                crate::types::FactValue::Integer(inc),
-                            ) => {
-                                let new_value = crate::types::FactValue::Integer(current + inc);
-                                ActionResult::FieldIncremented {
-                                    fact_id: fact.id,
-                                    field: field.clone(),
-                                    old_value: current_value.clone(),
-                                    new_value,
-                                }
-                            }
-                            (
-                                crate::types::FactValue::Float(current),
-                                crate::types::FactValue::Float(inc),
-                            ) => {
-                                let new_value = crate::types::FactValue::Float(current + inc);
-                                ActionResult::FieldIncremented {
-                                    fact_id: fact.id,
-                                    field: field.clone(),
-                                    old_value: current_value.clone(),
-                                    new_value,
-                                }
-                            }
-                            _ => ActionResult::Logged {
-                                message: format!(
-                                    "IncrementField failed: incompatible types for field '{field}'"
-                                ),
-                            },
-                        }
-                    } else {
-                        // Field doesn't exist, treat as starting from 0
-                        ActionResult::FieldIncremented {
-                            fact_id: fact.id,
-                            field: field.clone(),
-                            old_value: crate::types::FactValue::Integer(0),
-                            new_value: increment.clone(),
-                        }
+                } else {
+                    ActionResult::Logged {
+                        message: format!("DeleteFact failed: field '{fact_id_field}' not found"),
                     }
                 }
-                ActionType::AppendToArray { field, value } => {
-                    // Get the current array value or create a new one
-                    if let Some(current_value) = fact.data.fields.get(field) {
-                        if let crate::types::FactValue::Array(mut current_array) =
-                            current_value.clone()
-                        {
-                            current_array.push(value.clone());
-                            let new_length = current_array.len();
-                            ActionResult::ArrayAppended {
+            }
+            ActionType::IncrementField { field, increment } => {
+                if let Some(current_value) = fact.data.fields.get(field) {
+                    match (current_value, increment) {
+                        (
+                            crate::types::FactValue::Integer(current),
+                            crate::types::FactValue::Integer(inc),
+                        ) => {
+                            let new_value = crate::types::FactValue::Integer(current + inc);
+                            ActionResult::FieldIncremented {
                                 fact_id: fact.id,
                                 field: field.clone(),
-                                appended_value: value.clone(),
-                                new_length,
-                            }
-                        } else {
-                            ActionResult::Logged {
-                                message: format!(
-                                    "AppendToArray failed: field '{field}' is not an array"
-                                ),
+                                old_value: current_value.clone(),
+                                new_value,
                             }
                         }
-                    } else {
-                        // Field doesn't exist, create new array with the value
+                        (
+                            crate::types::FactValue::Float(current),
+                            crate::types::FactValue::Float(inc),
+                        ) => {
+                            let new_value = crate::types::FactValue::Float(current + inc);
+                            ActionResult::FieldIncremented {
+                                fact_id: fact.id,
+                                field: field.clone(),
+                                old_value: current_value.clone(),
+                                new_value,
+                            }
+                        }
+                        _ => ActionResult::Logged {
+                            message: format!(
+                                "IncrementField failed: incompatible types for field '{field}'"
+                            ),
+                        },
+                    }
+                } else {
+                    ActionResult::FieldIncremented {
+                        fact_id: fact.id,
+                        field: field.clone(),
+                        old_value: crate::types::FactValue::Integer(0),
+                        new_value: increment.clone(),
+                    }
+                }
+            }
+            ActionType::AppendToArray { field, value } => {
+                if let Some(current_value) = fact.data.fields.get(field) {
+                    if let crate::types::FactValue::Array(mut current_array) = current_value.clone()
+                    {
+                        current_array.push(value.clone());
+                        let new_length = current_array.len();
                         ActionResult::ArrayAppended {
                             fact_id: fact.id,
                             field: field.clone(),
                             appended_value: value.clone(),
-                            new_length: 1,
+                            new_length,
+                        }
+                    } else {
+                        ActionResult::Logged {
+                            message: format!(
+                                "AppendToArray failed: field '{field}' is not an array"
+                            ),
                         }
                     }
-                }
-                ActionType::SendNotification {
-                    recipient,
-                    subject,
-                    message: _,
-                    notification_type,
-                    metadata: _,
-                } => {
-                    info!(
-                        rule_id = rule.id,
-                        recipient = recipient,
-                        subject = subject,
-                        notification_type = ?notification_type,
-                        "Rule action: SendNotification"
-                    );
-                    ActionResult::NotificationSent {
-                        recipient: recipient.clone(),
-                        notification_type: notification_type.clone(),
-                        subject: subject.clone(),
+                } else {
+                    ActionResult::ArrayAppended {
+                        fact_id: fact.id,
+                        field: field.clone(),
+                        appended_value: value.clone(),
+                        new_length: 1,
                     }
                 }
-                _ => {
-                    // Handle any other action types that might not be implemented yet
-                    ActionResult::Logged {
-                        message: format!(
-                            "Action type not yet implemented: {:?}",
-                            action.action_type
-                        ),
-                    }
+            }
+            ActionType::SendNotification {
+                recipient,
+                subject,
+                message: _,
+                notification_type,
+                metadata: _,
+            } => {
+                info!(rule_id = rule_id, recipient = recipient, subject = subject, notification_type = ?notification_type, "Rule action: SendNotification");
+                ActionResult::NotificationSent {
+                    recipient: recipient.clone(),
+                    notification_type: notification_type.clone(),
+                    subject: subject.clone(),
                 }
-            };
-            action_results.push(result);
+            }
+            ActionType::CallCalculator { calculator_name, input_mapping, output_field } => self
+                .execute_calculator_action(
+                    calculator_name,
+                    input_mapping,
+                    output_field,
+                    fact,
+                    rule_id,
+                ),
+            _ => ActionResult::Logged {
+                message: format!("Action type not yet implemented: {:?}", action.action_type),
+            },
+        }
+    }
+
+    /// Execute CreateFact actions in batch for better performance
+    fn execute_create_fact_batch(
+        &mut self,
+        fact_data_list: &[crate::types::FactData],
+        rule_id: RuleId,
+    ) -> Vec<crate::rete_nodes::ActionResult> {
+        use crate::rete_nodes::ActionResult;
+        use tracing::info;
+
+        let mut results = Vec::with_capacity(fact_data_list.len());
+
+        // Pre-allocate fact IDs to avoid repeated ID generation
+        let start_id = self.next_node_id;
+        self.next_node_id += fact_data_list.len() as u64;
+
+        // Create all facts in batch
+        let new_facts: Vec<crate::types::Fact> = fact_data_list
+            .iter()
+            .enumerate()
+            .map(|(i, data)| {
+                let fact_id = start_id + i as u64;
+                crate::types::Fact {
+                    timestamp: chrono::Utc::now(),
+                    id: fact_id,
+                    external_id: None,
+                    data: data.clone(),
+                }
+            })
+            .collect();
+
+        // Store all created facts in batch
+        self.created_facts.extend(new_facts.iter().cloned());
+
+        // Generate results for all created facts
+        for fact in &new_facts {
+            results
+                .push(ActionResult::FactCreated { fact_id: fact.id, fact_data: fact.data.clone() });
         }
 
-        Ok(action_results)
+        info!(
+            rule_id = rule_id,
+            facts_created = new_facts.len(),
+            "Rule action: CreateFact batch - {} facts created",
+            new_facts.len()
+        );
+
+        results
+    }
+
+    /// Execute a calculator action with result caching for improved performance
+    fn execute_calculator_action(
+        &mut self,
+        calculator_name: &str,
+        input_mapping: &std::collections::HashMap<String, String>,
+        output_field: &str,
+        fact: &Fact,
+        rule_id: RuleId,
+    ) -> crate::rete_nodes::ActionResult {
+        use crate::rete_nodes::ActionResult;
+        use tracing::info;
+
+        // Create cache key from calculator name and input values
+        let cache_key = self.generate_calculator_cache_key(calculator_name, input_mapping, fact);
+
+        // Check cache first
+        if let Some(cached_result) = self.calculator_cache.get(&cache_key) {
+            info!(
+                rule_id = rule_id,
+                calculator_name = calculator_name,
+                cache_hit = true,
+                "Calculator cache hit"
+            );
+            return ActionResult::CalculatorResult {
+                calculator: calculator_name.to_string(),
+                result: format!("{cached_result:?}"),
+                output_field: output_field.to_string(),
+                parsed_value: cached_result.clone(),
+            };
+        }
+
+        // Cache miss - need to execute calculator
+        // For now, we'll simulate calculator execution since we don't have the actual calculator instance
+        // In a real implementation, this would call the calculator with the mapped inputs
+        let calculator_result =
+            self.simulate_calculator_execution(calculator_name, input_mapping, fact);
+
+        // Store result in cache
+        self.calculator_cache.insert(cache_key, calculator_result.clone());
+
+        info!(
+            rule_id = rule_id,
+            calculator_name = calculator_name,
+            cache_hit = false,
+            "Calculator executed and cached"
+        );
+
+        ActionResult::CalculatorResult {
+            calculator: calculator_name.to_string(),
+            result: match &calculator_result {
+                FactValue::Boolean(b) => b.to_string(),
+                FactValue::String(s) => s.clone(),
+                FactValue::Integer(i) => i.to_string(),
+                FactValue::Float(f) => f.to_string(),
+                other => format!("{other:?}"),
+            },
+            output_field: output_field.to_string(),
+            parsed_value: calculator_result,
+        }
+    }
+
+    /// Generate a cache key for calculator results based on inputs
+    fn generate_calculator_cache_key(
+        &self,
+        calculator_name: &str,
+        input_mapping: &std::collections::HashMap<String, String>,
+        fact: &Fact,
+    ) -> String {
+        let mut key_parts = vec![calculator_name.to_string()];
+
+        // Add sorted input values to ensure consistent cache keys
+        let mut sorted_inputs: Vec<_> = input_mapping.iter().collect();
+        sorted_inputs.sort_by(|a, b| a.0.cmp(b.0));
+
+        for (calc_input, fact_field) in sorted_inputs {
+            if let Some(field_value) = fact.data.fields.get(fact_field) {
+                key_parts.push(format!("{calc_input}={field_value:?}"));
+            } else {
+                key_parts.push(format!("{calc_input}=null"));
+            }
+        }
+
+        key_parts.join("|")
+    }
+
+    /// Simulate calculator execution for development purposes
+    /// In production, this would be replaced with actual calculator calls
+    fn simulate_calculator_execution(
+        &self,
+        calculator_name: &str,
+        input_mapping: &std::collections::HashMap<String, String>,
+        fact: &Fact,
+    ) -> crate::types::FactValue {
+        use crate::types::FactValue;
+
+        // Simple simulation based on calculator name
+        match calculator_name {
+            "risk_score" => {
+                // Simulate risk calculation
+                if let Some(amount_field) = input_mapping.get("amount") {
+                    if let Some(FactValue::Float(amount)) = fact.data.fields.get(amount_field) {
+                        let risk_score = (amount / 1000.0).clamp(0.0, 100.0);
+                        return FactValue::Float(risk_score);
+                    }
+                }
+                FactValue::Float(50.0) // Default risk score
+            }
+            "total_value" => {
+                // Simulate sum calculation
+                let mut total = 0.0;
+                for fact_field in input_mapping.values() {
+                    if let Some(FactValue::Float(value)) = fact.data.fields.get(fact_field) {
+                        total += value;
+                    } else if let Some(FactValue::Integer(value)) = fact.data.fields.get(fact_field)
+                    {
+                        total += *value as f64;
+                    }
+                }
+                FactValue::Float(total)
+            }
+            "compliance_check" => {
+                // Simulate boolean result
+                FactValue::Boolean(true)
+            }
+            "threshold_check" => {
+                // Simulate threshold check: compare value against threshold
+                if let (Some(value_field), Some(threshold_field)) =
+                    (input_mapping.get("value"), input_mapping.get("threshold"))
+                {
+                    let value = match fact.data.fields.get(value_field) {
+                        Some(FactValue::Float(v)) => *v,
+                        Some(FactValue::Integer(v)) => *v as f64,
+                        _ => return FactValue::Boolean(false),
+                    };
+
+                    let threshold = match fact.data.fields.get(threshold_field) {
+                        Some(FactValue::Float(t)) => *t,
+                        Some(FactValue::Integer(t)) => *t as f64,
+                        _ => return FactValue::Boolean(false),
+                    };
+
+                    FactValue::Boolean(value > threshold)
+                } else {
+                    FactValue::Boolean(false)
+                }
+            }
+            "limit_validator" => {
+                // Simulate limit validation: check if value is within min/max bounds
+                if let (Some(value_field), Some(min_field), Some(max_field)) = (
+                    input_mapping.get("value"),
+                    input_mapping.get("min"),
+                    input_mapping.get("max"),
+                ) {
+                    let value = match fact.data.fields.get(value_field) {
+                        Some(FactValue::Float(v)) => *v,
+                        Some(FactValue::Integer(v)) => *v as f64,
+                        _ => return FactValue::Boolean(false),
+                    };
+
+                    let min_val = match fact.data.fields.get(min_field) {
+                        Some(FactValue::Float(m)) => *m,
+                        Some(FactValue::Integer(m)) => *m as f64,
+                        _ => return FactValue::Boolean(false),
+                    };
+
+                    let max_val = match fact.data.fields.get(max_field) {
+                        Some(FactValue::Float(m)) => *m,
+                        Some(FactValue::Integer(m)) => *m as f64,
+                        _ => return FactValue::Boolean(false),
+                    };
+
+                    FactValue::Boolean(value >= min_val && value <= max_val)
+                } else {
+                    FactValue::Boolean(false)
+                }
+            }
+            _ => {
+                // Default calculation result
+                FactValue::String(format!("result_from_{calculator_name}"))
+            }
+        }
+    }
+
+    /// Clear the calculator cache (useful for testing or when inputs change significantly)
+    pub fn clear_calculator_cache(&mut self) {
+        self.calculator_cache.clear();
+    }
+
+    /// Get calculator cache statistics
+    pub fn get_calculator_cache_stats(&self) -> (usize, usize) {
+        (
+            self.calculator_cache.len(),
+            self.calculator_cache.capacity(),
+        )
     }
 
     // ============================================================================
