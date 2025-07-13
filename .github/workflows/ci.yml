@@ -259,7 +259,8 @@ jobs:
       uses: taiki-e/install-action@cargo-llvm-cov
 
     - name: Generate code coverage (exclude heavy tests)
-      run: cargo llvm-cov --lib --lcov --output-path lcov.info
+      run: cargo llvm-cov --workspace --lcov --output-path lcov.info --ignore-filename-regex '(performance|benchmark|scaling|profiling)'
+      timeout-minutes: 30
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
