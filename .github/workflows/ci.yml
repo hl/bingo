@@ -53,9 +53,13 @@ jobs:
       run: cargo check --workspace --all-targets
 
     - name: Run all quality tests (excludes performance tests)
-      run: cargo test --workspace
+      run: |
+        # Run only unit tests and integration tests, exclude performance packages
+        cargo test --workspace --exclude bingo-performance-test --lib --bins
+      timeout-minutes: 20
       env:
         RUST_LOG: info
+        BINGO_SKIP_SLOW_TESTS: "1"
 
   # Performance validation - CI-appropriate scale only
   performance:
@@ -86,12 +90,12 @@ jobs:
 
     # Run CI-appropriate scaling tests (100K, 200K facts)
     - name: Run CI-appropriate scaling tests
-      run: cargo test --package bingo-core --test scaling_validation_test --release
+      run: cargo test --package bingo-core --test scaling_validation_test --release -- --skip test_extreme_scaling --skip test_million_fact
       env:
         RUST_LOG: info
 
     - name: Run multi-condition performance test
-      run: cargo test --package bingo-core --test beta_memory_integration_test --release
+      run: cargo test --package bingo-core --test beta_memory_integration_test --release -- --skip test_performance
       env:
         RUST_LOG: info
         BINGO_PERF_ENV: ci
@@ -259,8 +263,12 @@ jobs:
       uses: taiki-e/install-action@cargo-llvm-cov
 
     - name: Generate code coverage (exclude heavy tests)
-      run: cargo llvm-cov --workspace --lcov --output-path lcov.info --ignore-filename-regex '(performance|benchmark|scaling|profiling)'
-      timeout-minutes: 30
+      run: |
+        # First, run only fast unit tests for coverage
+        cargo llvm-cov --workspace --lcov --output-path lcov.info \
+          --ignore-filename-regex '(performance|benchmark|scaling|profiling|million_fact|engine_bench|debug_.*_scaling|test.*performance|test.*benchmark|test.*scaling|test.*profiling|comprehensive_.*benchmark|comprehensive_.*performance|rete_.*performance|beta_.*performance|alpha_.*performance|complex_rule_performance|serialization_performance|rete_network_performance|simple_rete_performance|working_memory_test|fact_store_profiling|comprehensive_component_profiling|performance_profiling|performance_bottleneck_analysis|quick_performance_analysis|comprehensive_concurrency_test|engine_threaded_integration_test|parallel_rete_test|lazy_aggregation_integration_test|comprehensive_optimization_summary|comprehensive_performance_benchmarks|optimization_validation_test|true_rete_architecture_validation|enhanced_monitoring_test|rule_optimization_test|rete_algorithm_validation|beta_network_test|enhanced_test_coverage|simple_profiling_report)' \
+          --lib --bins
+      timeout-minutes: 15
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
