@@ -181,11 +181,14 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo check --workspace && c
 
 ## 📚 Documentation
 
-### 📖 Complete Documentation Suite
+### 📖 Documentation Index
+- **[📋 Documentation Hub](DOCS.md)**: Complete documentation index and navigation guide
 
-- **[📋 Comprehensive Guide](docs/COMPREHENSIVE_GUIDE.md)**: Master index with complete navigation to all documentation
-- **[🔧 API Reference](docs/API_REFERENCE.md)**: Complete API documentation with examples and performance notes
-- **[👨‍💻 Developer Guide](docs/DEVELOPER_GUIDE.md)**: In-depth development guide with best practices and workflows
+### 📖 Essential Documentation
+
+- **[📋 Comprehensive Guide](docs/comprehensive-guide.md)**: Master index with complete navigation to all documentation
+- **[🔧 API Reference](docs/api-reference.md)**: Complete API documentation with examples and performance notes
+- **[👨‍💻 Developer Guide](docs/developer-guide.md)**: In-depth development guide with best practices and workflows
 
 ### 📁 Detailed Documentation
 

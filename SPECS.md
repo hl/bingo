@@ -16,7 +16,13 @@ This document provides a comprehensive index to all technical specifications for
 | Document | Description | Technical Focus |
 |----------|-------------|-----------------|
 | [Architecture](specs/architecture.md) | Complete system design with RETE algorithm architecture | Multi-crate workspace, Alpha/Beta networks, memory management |
+| [RETE Algorithm](specs/rete-algorithm.md) | Core RETE pattern matching algorithm | Alpha/Beta networks, token propagation, working memory |
+| [RETE Algorithm Implementation](specs/rete-algorithm-implementation.md) | Detailed implementation specifics | Pattern matching internals, optimization strategies |
+| [Rule Specification](specs/rule-specification.md) | Rule design patterns and syntax | Cross-language implementation guide, rule semantics |
 | [Built-in Calculators](specs/built-in-calculators.md) | Plugin-based calculator system with business logic | Calculator plugins, business domain implementations |
+| [Calculator DSL Guide](specs/calculator-dsl-guide.md) | Domain-specific language for calculations | Expression syntax, function library |
+| [gRPC API](specs/grpc-api.md) | Complete protocol specifications | Service definitions, streaming, error handling |
+| [Performance](specs/performance.md) | Performance characteristics and benchmarks | Throughput metrics, scalability analysis |
 
 ## 🔬 Technical Implementation Details
 
@@ -44,10 +50,12 @@ For implementing the Bingo Rules Engine, follow this recommended reading order:
 
 1. **[Architecture](specs/architecture.md)** - Start here to understand the overall system design
 2. **[RETE Algorithm](specs/rete-algorithm.md)** - Learn the core pattern matching implementation
-3. **[Rule Specification](specs/rule-specification.md)** - Use as comprehensive implementation guide
-4. **[Built-in Calculators](specs/built-in-calculators.md)** - Implement plugin-based calculator system for business logic
-5. **[Performance](specs/performance.md)** - Optimize implementation to meet performance targets
-6. **[gRPC API](specs/grpc-api.md)** - Add API layer for client integration
+3. **[RETE Algorithm Implementation](specs/rete-algorithm-implementation.md)** - Detailed implementation specifics
+4. **[Rule Specification](specs/rule-specification.md)** - Use as comprehensive implementation guide
+5. **[Built-in Calculators](specs/built-in-calculators.md)** - Implement plugin-based calculator system for business logic
+6. **[Calculator DSL Guide](specs/calculator-dsl-guide.md)** - Domain-specific language for calculations
+7. **[Performance](specs/performance.md)** - Optimize implementation to meet performance targets
+8. **[gRPC API](specs/grpc-api.md)** - Add API layer for client integration
 
 ## Quick Reference
 
@@ -55,5 +63,6 @@ For implementing the Bingo Rules Engine, follow this recommended reading order:
 - **Performance Tuning**: See [Performance](specs/performance.md) for benchmarks and optimization strategies  
 - **API Integration**: Refer to [gRPC API](specs/grpc-api.md) for service interface details
 - **Calculator Development**: Check [Built-in Calculators](specs/built-in-calculators.md) for plugin-based business logic patterns
+- **Calculator DSL**: Use [Calculator DSL Guide](specs/calculator-dsl-guide.md) for expression syntax and functions
 - **Algorithm Details**: Consult [RETE Algorithm Implementation](specs/rete-algorithm-implementation.md) for pattern matching internals
 - **System Design**: Review [Architecture](specs/architecture.md) for component relationships
