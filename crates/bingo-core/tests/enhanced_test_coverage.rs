@@ -196,7 +196,7 @@ fn test_large_dataset_processing_performance() {
     println!("Dataset creation took: {creation_time:?}");
 
     // Initialize and test engine
-    let mut engine = BingoEngine::new().expect("Failed to create engine");
+    let engine = BingoEngine::new().expect("Failed to create engine");
 
     let process_start = Instant::now();
     let results = engine.evaluate(rules, facts).expect("Failed to evaluate rules");
@@ -242,7 +242,7 @@ fn test_concurrent_engine_instances() {
 
         let handle = thread::spawn(move || {
             // Each thread gets its own engine instance
-            let mut engine = BingoEngine::new().expect("Failed to create engine");
+            let engine = BingoEngine::new().expect("Failed to create engine");
 
             // Create thread-specific data
             let mut facts = Vec::new();
@@ -362,7 +362,7 @@ fn test_memory_pressure_handling() {
         facts.push(create_test_fact(i as u64, fields));
     }
 
-    let mut engine = BingoEngine::new().expect("Failed to create engine");
+    let engine = BingoEngine::new().expect("Failed to create engine");
 
     // Rule that processes large facts
     let rules = vec![Rule {
@@ -436,7 +436,7 @@ fn test_edge_case_data_handling() {
     fields4.insert("amount".to_string(), FactValue::Float(50.0));
     facts.push(create_test_fact(4, fields4));
 
-    let mut engine = BingoEngine::new().expect("Failed to create engine");
+    let engine = BingoEngine::new().expect("Failed to create engine");
 
     // Rules that handle edge cases
     let rules = vec![
@@ -596,7 +596,7 @@ fn test_complex_rule_combinations() {
         },
     ];
 
-    let mut engine = BingoEngine::new().expect("Failed to create engine");
+    let engine = BingoEngine::new().expect("Failed to create engine");
 
     let start_time = Instant::now();
     let results = engine.evaluate(rules, facts).expect("Failed to evaluate complex rules");

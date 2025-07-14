@@ -236,13 +236,13 @@ fn analyze_resource_usage(engine: &BingoEngine) {
     // Rule execution result pool
     let rule_pool = &pool_stats.rule_execution_result_pool;
     if rule_pool.hits + rule_pool.misses > 0 {
-        println!("Rule result pool hit rate: {:.1}%", rule_pool.hit_rate);
+        println!("Rule result pool hit rate: {:.1}%", rule_pool.hit_rate());
     }
 
     // Rule ID vec pool
     let rule_id_pool = &pool_stats.rule_id_vec_pool;
     if rule_id_pool.hits + rule_id_pool.misses > 0 {
-        println!("Rule ID pool hit rate: {:.1}%", rule_id_pool.hit_rate);
+        println!("Rule ID pool hit rate: {:.1}%", rule_id_pool.hit_rate());
     }
 
     // Serialization stats

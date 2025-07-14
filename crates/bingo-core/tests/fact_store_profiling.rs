@@ -10,7 +10,7 @@ fn test_fact_store_insertion_performance() {
     for fact_count in [100, 500, 1000, 2000, 5000] {
         println!("\n📊 Testing fact store with {fact_count} facts...");
 
-        let mut fact_store = bingo_core::fact_store::arena_store::ArenaFactStore::new();
+        let fact_store = bingo_core::fact_store::arena_store::ArenaFactStore::new();
 
         let fact_gen_start = Instant::now();
         let facts: Vec<Fact> = (0..fact_count)

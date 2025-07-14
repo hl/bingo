@@ -245,7 +245,7 @@ fn test_batch_rule_optimization() {
 
 #[test]
 fn test_engine_rule_optimization_integration() {
-    let mut engine = BingoEngine::new().expect("Failed to create engine");
+    let engine = BingoEngine::new().expect("Failed to create engine");
 
     // Create a rule that can benefit from optimization
     let rule = Rule {
@@ -445,7 +445,7 @@ mod integration_tests {
         println!("\n🚀 Starting Phase 5 Complete Optimization Workflow Test");
 
         // Step 1: Create engine with optimization capabilities
-        let mut engine = BingoEngine::new().expect("Failed to create engine");
+        let engine = BingoEngine::new().expect("Failed to create engine");
         println!("✅ Created BingoEngine with rule optimization support");
 
         // Step 2: Create test rules with optimization opportunities

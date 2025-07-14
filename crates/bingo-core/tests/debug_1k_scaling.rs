@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_1k_fact_scaling() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add a simple rule
     let rule = Rule {

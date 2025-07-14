@@ -163,7 +163,7 @@ impl PipelineOrchestrator {
             for _action_result in &rule_result.actions_executed {
                 // Action results are now simplified strings for compilation
                 // Fact modifications would be handled differently in a full implementation
-                modified_count += 0; // No modifications in simplified implementation
+                modified_count += 0; // Facts are immutable in this implementation
             }
         }
 

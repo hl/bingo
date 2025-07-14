@@ -22,7 +22,7 @@ Performance tests use the adaptive testing framework with automatic threshold ad
 ### 🏆 RETE Algorithm Performance (Individual Test Results)
 
 **Core RETE Components (Optimized Implementation):**
-- **Alpha Memory Network**: 462K facts/sec - Hash-indexed single-condition pattern matching with O(1) lookups
+- **Alpha Memory Network**: 634K facts/sec - Hash-indexed single-condition pattern matching with O(1) lookups and redundant check elimination
 - **Beta Network Processing**: 407K facts/sec - Multi-condition token propagation with efficient join operations
 - **Working Memory Updates**: 1.2M facts/sec - Incremental O(Δfacts) fact processing lifecycle  
 - **Rule Independence**: 285K-2.1M facts/sec - Performance scales independently of non-matching rule count

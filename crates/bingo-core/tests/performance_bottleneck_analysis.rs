@@ -318,10 +318,12 @@ fn analyze_memory_bottlenecks(engine: &BingoEngine) {
     let rule_pool = &pool_stats.rule_execution_result_pool;
     println!(
         "Rule execution result pool: {} hits, {} misses, {:.1}% hit rate",
-        rule_pool.hits, rule_pool.misses, rule_pool.hit_rate
+        rule_pool.hits,
+        rule_pool.misses,
+        rule_pool.hit_rate()
     );
 
-    if rule_pool.hit_rate < 80.0 {
+    if rule_pool.hit_rate() < 80.0 {
         println!("🚨 BOTTLENECK: Rule execution result pool hit rate below 80%");
     }
 
@@ -329,10 +331,12 @@ fn analyze_memory_bottlenecks(engine: &BingoEngine) {
     let rule_id_pool = &pool_stats.rule_id_vec_pool;
     println!(
         "Rule ID vec pool: {} hits, {} misses, {:.1}% hit rate",
-        rule_id_pool.hits, rule_id_pool.misses, rule_id_pool.hit_rate
+        rule_id_pool.hits,
+        rule_id_pool.misses,
+        rule_id_pool.hit_rate()
     );
 
-    if rule_id_pool.hit_rate < 90.0 {
+    if rule_id_pool.hit_rate() < 90.0 {
         println!("🚨 BOTTLENECK: Rule ID vec pool hit rate below 90%");
     }
 

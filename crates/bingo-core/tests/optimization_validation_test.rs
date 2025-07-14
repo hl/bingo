@@ -83,7 +83,7 @@ fn create_optimization_test_facts(count: usize) -> Vec<Fact> {
 #[ignore] // Performance test - run with --release
 fn test_optimization_effectiveness() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(50_000).unwrap();
+    let engine = BingoEngine::with_capacity(50_000).unwrap();
 
     println!("🧪 Testing optimization effectiveness with 50K facts and 100 rules...");
 
@@ -154,7 +154,7 @@ fn test_optimization_effectiveness() {
 #[ignore] // Performance test - run with --release
 fn test_cache_scaling_effectiveness() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(100_000).unwrap();
+    let engine = BingoEngine::with_capacity(100_000).unwrap();
 
     println!("🧪 Testing cache scaling with 100K facts and 50 rules...");
 

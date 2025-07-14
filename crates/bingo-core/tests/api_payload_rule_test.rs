@@ -4,7 +4,7 @@ use bingo_core::{
 
 #[test]
 fn api_style_rule_fires() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Simulate the API-sent rule (id as string hashed later)
     let rule = Rule {

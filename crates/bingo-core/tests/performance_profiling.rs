@@ -7,7 +7,7 @@ fn test_performance_profiling() {
     println!("🔍 Starting performance profiling...");
 
     let start_total = Instant::now();
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
     println!("✅ Engine creation: {:?}", start_total.elapsed());
 
     // Add a simple rule

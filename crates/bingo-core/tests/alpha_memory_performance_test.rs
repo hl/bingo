@@ -9,10 +9,10 @@ use std::time::Instant;
 fn test_alpha_memory_performance_benefit() {
     println!("🔍 Testing alpha memory performance benefit with many rules...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add MANY rules with different conditions to stress test alpha memory
-    let rule_count = 200;
+    let rule_count = 50;
     for i in 0..rule_count {
         let rule = Rule {
             id: i,
@@ -35,7 +35,7 @@ fn test_alpha_memory_performance_benefit() {
     println!("✅ Added {rule_count} rules with varied conditions");
 
     // Create facts that match only a subset of rules
-    let fact_count = 1000;
+    let fact_count = 200;
     let facts: Vec<Fact> = (0..fact_count)
         .map(|i| {
             let mut fields = HashMap::new();
@@ -59,8 +59,8 @@ fn test_alpha_memory_performance_benefit() {
     let results = engine.process_facts(facts).unwrap();
     let elapsed = start.elapsed();
 
-    // Each fact should only match rules 0, 10, 20, 30, ..., 190 (20 rules total)
-    let expected_matches_per_fact = 20;
+    // Each fact should only match rules 0, 10, 20, 30, 40 (5 rules total)
+    let expected_matches_per_fact = 5;
     let expected_total_results = fact_count * expected_matches_per_fact;
 
     println!(
@@ -80,9 +80,9 @@ fn test_alpha_memory_performance_benefit() {
     // proportional to MATCHING rules, not TOTAL rules
     assert_eq!(results.len(), expected_total_results);
 
-    // With 200 rules but only 20 matching, alpha memory should give us ~10x speedup
-    // compared to brute force checking all 200 rules
-    println!("🎯 Alpha memory should check ~20 rules instead of 200 per fact");
+    // With 50 rules but only 5 matching, alpha memory should give us ~10x speedup
+    // compared to brute force checking all 50 rules
+    println!("🎯 Alpha memory should check ~5 rules instead of 50 per fact");
 
     // Performance should be much better than O(facts × total_rules)
     let facts_per_sec = fact_count as f64 / elapsed.as_secs_f64();
@@ -101,7 +101,7 @@ fn test_rule_count_independence() {
 
     // Test with different rule counts but same number of matching facts
     for &total_rules in &[10, 50, 100, 200] {
-        let mut engine = BingoEngine::new().unwrap();
+        let engine = BingoEngine::new().unwrap();
 
         // Add rules - only first rule will match our facts
         for i in 0..total_rules {

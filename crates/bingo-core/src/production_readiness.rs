@@ -158,7 +158,7 @@ impl Default for ProductionConfig {
                 max_memory_mb: 4096,
                 max_cpu_percent: 200, // 2 cores
                 max_rules: 10000,
-                max_facts: 1000000,
+                max_facts: crate::constants::limits::MAX_FACTS,
                 max_request_size_bytes: 10485760,  // 10MB
                 max_response_size_bytes: 10485760, // 10MB
             },

@@ -760,7 +760,7 @@ impl ReteNetwork {
             terminal_nodes: HashMap::new(),
             rules: HashMap::new(),
             next_node_id: 1,
-            next_fact_id: 1_000_000, // Start fact IDs at 1M to avoid conflicts with input facts
+            next_fact_id: crate::constants::fact_ids::CREATED_FACT_ID_OFFSET, // Start fact IDs at 1M to avoid conflicts with input facts
             created_facts: Vec::new(),
         }
     }
@@ -938,23 +938,23 @@ impl ReteNetwork {
                 }
             }
             Condition::Complex { operator: _, conditions: _ } => {
-                // Complex conditions are not supported in this simplified alpha node implementation
+                // Complex conditions are handled by the beta network
                 Ok(false)
             }
             Condition::And { conditions: _ } => {
-                // And conditions are not supported in this simplified alpha node implementation
+                // And conditions are handled by the beta network
                 Ok(false)
             }
             Condition::Or { conditions: _ } => {
-                // Or conditions are not supported in this simplified alpha node implementation
+                // Or conditions are handled by the beta network
                 Ok(false)
             }
             Condition::Aggregation(_) => {
-                // Aggregation conditions not supported in simplified version
+                // Aggregation conditions are handled by specialized aggregation nodes
                 Ok(false)
             }
             Condition::Stream(_) => {
-                // Stream conditions not supported in simplified version
+                // Stream conditions are handled by specialized stream processing nodes
                 Ok(false)
             }
         }

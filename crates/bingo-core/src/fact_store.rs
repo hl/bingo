@@ -2,7 +2,6 @@ use crate::cache::CacheStats;
 use crate::types::{Fact, FactId, FactValue};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 
 /// Statistics for a specific field index
 #[derive(Debug, Clone)]
@@ -24,24 +23,32 @@ pub struct IndexStats {
 
 pub mod arena_store {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, RwLock};
 
-    /// Arena-based fact store for high-performance allocation and retrieval.
+    /// Arena-based fact store for high-performance allocation and retrieval with thread safety.
     ///
     /// The `ArenaFactStore` provides an optimised in-memory storage solution for facts with
     /// direct vector indexing (fact.id == Vec index) and field-based indexing for fast lookups.
-    /// Designed for high-throughput scenarios with minimal allocation overhead.
+    /// Designed for high-throughput scenarios with minimal allocation overhead and full thread safety.
     ///
     /// # Architecture
-    /// - **Facts Storage**: Direct vector indexing where `fact.id` corresponds to the vector index
-    /// - **Field Indexes**: Hash-based secondary indexes on commonly queried fields
-    /// - **External ID Mapping**: Optional string-based identifiers for external integration
-    /// - **Thread Safety**: Can be wrapped with `Arc<RwLock<>>` for concurrent access
+    /// - **Facts Storage**: Direct vector indexing where `fact.id` corresponds to the vector index (RwLock protected)
+    /// - **Field Indexes**: Hash-based secondary indexes on commonly queried fields (RwLock protected)
+    /// - **External ID Mapping**: Optional string-based identifiers for external integration (RwLock protected)
+    /// - **Thread Safety**: Fully thread-safe with granular locking for optimal concurrency
     ///
     /// # Performance Characteristics
     /// - **Insert**: O(1) amortised for sequential IDs, O(log n) for sparse IDs
-    /// - **Get by ID**: O(1) direct array access
-    /// - **Find by indexed field**: O(1) average case via hash indexes
-    /// - **Find by non-indexed field**: O(n) linear scan (fallback)
+    /// - **Get by ID**: O(1) direct array access with shared read lock
+    /// - **Find by indexed field**: O(1) average case via hash indexes with shared read lock
+    /// - **Find by non-indexed field**: O(n) linear scan (fallback) with shared read lock
+    ///
+    /// # Thread Safety
+    /// - Multiple concurrent readers for all read operations
+    /// - Exclusive write access for modifications
+    /// - Atomic ID generation for lock-free ID assignment
+    /// - Fine-grained locking to minimize contention
     ///
     /// # Indexed Fields
     /// The following fields are automatically indexed for fast lookup:
@@ -58,8 +65,8 @@ pub mod arena_store {
     /// use crate::types::{Fact, FactData, FactValue};
     /// use std::collections::HashMap;
     ///
-    /// // Create a new fact store
-    /// let mut store = ArenaFactStore::new();
+    /// // Create a new fact store (thread-safe by default)
+    /// let store = ArenaFactStore::new();
     ///
     /// // Create and insert a fact
     /// let mut fields = HashMap::new();
@@ -74,25 +81,26 @@ pub mod arena_store {
     ///
     /// let fact_id = store.insert(fact);
     ///
-    /// // Fast lookup by ID
+    /// // Fast lookup by ID (concurrent reads allowed)
     /// if let Some(fact) = store.get_fact(fact_id) {
     ///     println!("Found fact: {:?}", fact);
     /// }
     ///
-    /// // Fast lookup by external ID
+    /// // Fast lookup by external ID (concurrent reads allowed)
     /// if let Some(fact) = store.get_by_external_id("user-12345") {
     ///     println!("Found by external ID: {:?}", fact);
     /// }
     ///
-    /// // Indexed field lookup (fast)
+    /// // Indexed field lookup (fast, concurrent reads allowed)
     /// let active_users = store.find_by_field("status", &FactValue::String("active".to_string()));
     /// ```
-    #[derive(Default, Debug)]
+    #[derive(Debug)]
     pub struct ArenaFactStore {
-        facts: Vec<Option<Fact>>, // Direct indexing: fact.id == Vec index
-        field_indexes: HashMap<String, HashMap<String, Vec<FactId>>>,
-        external_id_map: HashMap<String, FactId>, // For external ID lookups
-        next_id: FactId,
+        facts: RwLock<Vec<Option<Fact>>>, // Direct indexing: fact.id == Vec index (thread-safe)
+        field_indexes: RwLock<HashMap<String, HashMap<String, Vec<FactId>>>>, // Thread-safe indexes
+        external_id_map: RwLock<HashMap<String, FactId>>, // Thread-safe external ID lookups
+        next_id: AtomicU64,               // Atomic ID generation for lock-free assignment
+        fact_count: AtomicU64,            // Atomic fact count for O(1) len() operations
     }
 
     /// Thread-safe wrapper for ArenaFactStore providing concurrent access.
@@ -134,6 +142,12 @@ pub mod arena_store {
     /// ```
     pub type ThreadSafeArenaFactStore = Arc<RwLock<ArenaFactStore>>;
 
+    impl Default for ArenaFactStore {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl ArenaFactStore {
         /// Creates a new empty fact store with default capacity.
         ///
@@ -153,10 +167,11 @@ pub mod arena_store {
         /// ```
         pub fn new() -> Self {
             Self {
-                facts: Vec::new(),
-                field_indexes: HashMap::new(),
-                external_id_map: HashMap::new(),
-                next_id: 0,
+                facts: RwLock::new(Vec::new()),
+                field_indexes: RwLock::new(HashMap::new()),
+                external_id_map: RwLock::new(HashMap::new()),
+                next_id: AtomicU64::new(0),
+                fact_count: AtomicU64::new(0),
             }
         }
 
@@ -183,10 +198,11 @@ pub mod arena_store {
         /// ```
         pub fn with_capacity(capacity: usize) -> Self {
             Self {
-                facts: Vec::with_capacity(capacity),
-                field_indexes: HashMap::with_capacity(6), // Pre-allocate for common indexed fields
-                external_id_map: HashMap::with_capacity(capacity),
-                next_id: 0,
+                facts: RwLock::new(Vec::with_capacity(capacity)),
+                field_indexes: RwLock::new(HashMap::with_capacity(6)), // Pre-allocate for common indexed fields
+                external_id_map: RwLock::new(HashMap::with_capacity(capacity)),
+                next_id: AtomicU64::new(0),
+                fact_count: AtomicU64::new(0),
             }
         }
 
@@ -213,10 +229,11 @@ pub mod arena_store {
         /// ```
         pub fn with_large_capacity(capacity: usize) -> Self {
             Self {
-                facts: Vec::with_capacity(capacity),
-                field_indexes: HashMap::with_capacity(10), // More indexed fields for large datasets
-                external_id_map: HashMap::with_capacity(capacity),
-                next_id: 0,
+                facts: RwLock::new(Vec::with_capacity(capacity)),
+                field_indexes: RwLock::new(HashMap::with_capacity(10)), // More indexed fields for large datasets
+                external_id_map: RwLock::new(HashMap::with_capacity(capacity)),
+                next_id: AtomicU64::new(0),
+                fact_count: AtomicU64::new(0),
             }
         }
 
@@ -307,11 +324,13 @@ pub mod arena_store {
         /// - **Time Complexity**: O(k) where k = number of indexed fields in fact
         /// - **Space Complexity**: O(1) per field value (amortized via pre-allocation)
         /// - **Index Structure**: field_name -> value_string -> [fact_id1, fact_id2, ...]
-        fn update_indexes(&mut self, fact: &Fact) {
+        fn update_indexes(&self, fact: &Fact) {
             // Static set of commonly used fields for fast lookup
             // These fields are selected based on query patterns in business rules
             const INDEXED_FIELDS: &[&str] =
                 &["entity_id", "id", "user_id", "customer_id", "status", "category"];
+
+            let mut field_indexes = self.field_indexes.write().unwrap();
 
             for (field_name, field_value) in &fact.data.fields {
                 // Fast string comparison for indexed fields (O(1) for small constant set)
@@ -321,8 +340,7 @@ pub mod arena_store {
 
                     // Optimized entry pattern with pre-allocated capacity hints
                     // Based on empirical analysis of typical workloads
-                    let field_map = self
-                        .field_indexes
+                    let field_map = field_indexes
                         .entry(field_name.clone())
                         .or_insert_with(|| HashMap::with_capacity(64)); // Expect ~64 unique values per field
 
@@ -379,7 +397,7 @@ pub mod arena_store {
         /// use crate::types::{Fact, FactData, FactValue};
         /// use std::collections::HashMap;
         ///
-        /// let mut store = ArenaFactStore::new();
+        /// let store = ArenaFactStore::new();
         ///
         /// // Create a fact
         /// let mut fields = HashMap::new();
@@ -400,34 +418,34 @@ pub mod arena_store {
         /// assert!(store.get_fact(fact_id).is_some());
         /// assert!(store.get_by_external_id("user-42").is_some());
         /// ```
-        pub fn insert(&mut self, mut fact: Fact) -> FactId {
+        pub fn insert(&self, mut fact: Fact) -> FactId {
             // ID Assignment Algorithm: Balance between preserving external IDs and preventing memory issues
             //
             // Strategy 1: Use existing ID if reasonable (supports test scenarios and external integrations)
             // Strategy 2: Assign sequential ID for edge cases (prevents memory explosion from hash-based IDs)
             //
-            // Threshold of 1,000,000 prevents accidental allocation of gigantic vectors when facts
+            // Threshold prevents accidental allocation of gigantic vectors when facts
             // are created from hashed external identifiers (e.g. 64-bit FNV hashes from API layer)
-            let id = if fact.id == 0 || fact.id > 1_000_000 {
+            let id = if fact.id == 0 || fact.id > crate::constants::fact_ids::MAX_USER_FACT_ID {
                 // Use auto-incrementing sequential ID for new facts or suspicious large IDs
-                self.next_id
+                self.next_id.fetch_add(1, Ordering::SeqCst)
             } else {
                 // Preserve existing ID for test compatibility and reasonable external IDs
+                let current_next = self.next_id.load(Ordering::SeqCst);
+                if fact.id >= current_next {
+                    // Update next_id atomically to stay ahead
+                    self.next_id.store(fact.id + 1, Ordering::SeqCst);
+                }
                 fact.id
             };
-
-            // Ensure the internal counter always stays ahead of the highest observed ID
-            // This prevents ID collisions for subsequently inserted facts without predefined identifiers
-            if id >= self.next_id {
-                self.next_id = id + 1;
-            }
 
             // Update fact with final assigned ID
             fact.id = id;
 
             // Register external ID mapping for string-based lookups
             if let Some(ref external_id) = fact.external_id {
-                self.external_id_map.insert(external_id.clone(), id);
+                let mut external_id_map = self.external_id_map.write().unwrap();
+                external_id_map.insert(external_id.clone(), id);
             }
 
             // Update field indexes for fast lookups on indexed fields
@@ -437,12 +455,16 @@ pub mod arena_store {
             //
             // This implements the arena-style allocation pattern where fact.id equals Vec index
             // Benefits: O(1) lookup, cache-friendly sequential access, minimal memory overhead
-            if self.facts.len() <= id as usize {
+            let mut facts = self.facts.write().unwrap();
+            if facts.len() <= id as usize {
                 // Resize vector to accommodate new fact ID with None padding for sparse gaps
-                self.facts.resize(id as usize + 1, None);
+                facts.resize(id as usize + 1, None);
             }
             // Direct indexing: fact.id becomes the vector index for O(1) access
-            self.facts[id as usize] = Some(fact);
+            facts[id as usize] = Some(fact);
+
+            // Increment fact count for O(1) len() operations
+            self.fact_count.fetch_add(1, Ordering::Relaxed);
 
             id
         }
@@ -474,8 +496,9 @@ pub mod arena_store {
         ///     println!("Found fact with timestamp: {}", fact.timestamp);
         /// }
         /// ```
-        pub fn get_fact(&self, id: FactId) -> Option<&Fact> {
-            self.facts.get(id as usize)?.as_ref()
+        pub fn get_fact(&self, id: FactId) -> Option<Fact> {
+            let facts = self.facts.read().unwrap();
+            facts.get(id as usize)?.as_ref().cloned()
         }
 
         /// Retrieves a fact by its external string ID.
@@ -515,8 +538,10 @@ pub mod arena_store {
         ///     println!("Found order fact");
         /// }
         /// ```
-        pub fn get_by_external_id(&self, external_id: &str) -> Option<&Fact> {
-            let fact_id = *self.external_id_map.get(external_id)?;
+        pub fn get_by_external_id(&self, external_id: &str) -> Option<Fact> {
+            let external_id_map = self.external_id_map.read().unwrap();
+            let fact_id = *external_id_map.get(external_id)?;
+            drop(external_id_map); // Release read lock early
             self.get_fact(fact_id)
         }
 
@@ -576,7 +601,7 @@ pub mod arena_store {
         /// store.extend_from_vec(facts);
         /// assert_eq!(store.len(), 3);
         /// ```
-        pub fn extend_from_vec(&mut self, facts: Vec<Fact>) {
+        pub fn extend_from_vec(&self, facts: Vec<Fact>) {
             self.bulk_insert(facts);
         }
 
@@ -622,35 +647,76 @@ pub mod arena_store {
         /// // All facts are now stored and indexed
         /// assert_eq!(store.len(), 50_000);
         /// ```
-        pub fn bulk_insert(&mut self, mut facts: Vec<Fact>) -> Vec<FactId> {
+        /// Insert facts from a slice without cloning the entire vector
+        pub fn bulk_insert_slice(&self, facts: &[Fact]) -> Vec<FactId> {
             let mut fact_ids = Vec::with_capacity(facts.len());
 
             // Pre-allocate capacity if needed
-            if self.facts.capacity() < self.facts.len() + facts.len() {
-                let new_capacity = (self.facts.len() + facts.len()).next_power_of_two();
-                self.facts.reserve(new_capacity - self.facts.len());
+            {
+                let facts_read = self.facts.read().unwrap();
+                let current_len = facts_read.len();
+                let current_capacity = facts_read.capacity();
+                drop(facts_read);
+
+                if current_capacity < current_len + facts.len() {
+                    let mut facts_write = self.facts.write().unwrap();
+                    let current_write_len = facts_write.len();
+                    let new_capacity = (current_write_len + facts.len()).next_power_of_two();
+                    facts_write.reserve(new_capacity - current_write_len);
+                }
             }
 
-            // Batch process all facts
-            for fact in &mut facts {
-                // Generate ID using same logic as insert
-                let id = if fact.id == 0 || fact.id > 1_000_000 {
-                    self.next_id
-                } else {
-                    fact.id
-                };
+            // Process each fact individually for slice-based insertion
+            for fact in facts {
+                let fact_id = self.insert(fact.clone());
+                fact_ids.push(fact_id);
+            }
 
-                // Update next_id counter
-                if id >= self.next_id {
-                    self.next_id = id + 1;
+            fact_ids
+        }
+
+        pub fn bulk_insert(&self, mut facts: Vec<Fact>) -> Vec<FactId> {
+            let mut fact_ids = Vec::with_capacity(facts.len());
+
+            // Pre-allocate capacity if needed
+            {
+                let facts_read = self.facts.read().unwrap();
+                let current_len = facts_read.len();
+                let current_capacity = facts_read.capacity();
+                drop(facts_read);
+
+                if current_capacity < current_len + facts.len() {
+                    let mut facts_write = self.facts.write().unwrap();
+                    let current_write_len = facts_write.len();
+                    let new_capacity = (current_write_len + facts.len()).next_power_of_two();
+                    facts_write.reserve(new_capacity - current_write_len);
                 }
+            }
 
-                fact.id = id;
-                fact_ids.push(id);
+            // Batch process all facts for ID assignment and external ID mapping
+            {
+                let mut external_id_map = self.external_id_map.write().unwrap();
 
-                // Update external ID mapping if present
-                if let Some(ref external_id) = fact.external_id {
-                    self.external_id_map.insert(external_id.clone(), id);
+                for fact in &mut facts {
+                    // Generate ID using same logic as insert
+                    let id =
+                        if fact.id == 0 || fact.id > crate::constants::fact_ids::MAX_USER_FACT_ID {
+                            self.next_id.fetch_add(1, Ordering::SeqCst)
+                        } else {
+                            let current_next = self.next_id.load(Ordering::SeqCst);
+                            if fact.id >= current_next {
+                                self.next_id.store(fact.id + 1, Ordering::SeqCst);
+                            }
+                            fact.id
+                        };
+
+                    fact.id = id;
+                    fact_ids.push(id);
+
+                    // Update external ID mapping if present
+                    if let Some(ref external_id) = fact.external_id {
+                        external_id_map.insert(external_id.clone(), id);
+                    }
                 }
             }
 
@@ -660,36 +726,42 @@ pub mod arena_store {
             }
 
             // Batch insert all facts into storage
-            for fact in facts {
-                let id = fact.id;
-                // Ensure Vec capacity and insert
-                if self.facts.len() <= id as usize {
-                    self.facts.resize(id as usize + 1, None);
+            {
+                let mut facts_storage = self.facts.write().unwrap();
+                for fact in facts {
+                    let id = fact.id;
+                    // Ensure Vec capacity and insert
+                    if facts_storage.len() <= id as usize {
+                        facts_storage.resize(id as usize + 1, None);
+                    }
+                    facts_storage[id as usize] = Some(fact);
                 }
-                self.facts[id as usize] = Some(fact);
             }
+
+            // Update fact count for all inserted facts
+            self.fact_count.fetch_add(fact_ids.len() as u64, Ordering::Relaxed);
 
             fact_ids
         }
 
         /// Creates an iterator over all stored facts.
         ///
-        /// This method provides a lazy iterator that yields references to all facts
+        /// This method provides an iterator that yields cloned facts from all facts
         /// currently stored in the fact store. The iterator automatically skips
         /// over any deleted fact slots (None values).
         ///
         /// # Returns
-        /// An iterator yielding `&Fact` references.
+        /// A vector of cloned `Fact` instances.
         ///
         /// # Performance
         /// - **Time Complexity**: O(n) to iterate through all facts
-        /// - **Space Complexity**: O(1) - lazy iterator, no additional allocation
+        /// - **Space Complexity**: O(n) - returns cloned facts
         ///
         /// # Example
         /// ```rust
         /// use crate::fact_store::arena_store::ArenaFactStore;
         ///
-        /// let mut store = ArenaFactStore::new();
+        /// let store = ArenaFactStore::new();
         /// // ... insert some facts ...
         ///
         /// // Iterate over all facts
@@ -698,10 +770,11 @@ pub mod arena_store {
         /// }
         ///
         /// // Collect into a vector if needed
-        /// let all_facts: Vec<&Fact> = store.iter().collect();
+        /// let all_facts: Vec<Fact> = store.iter();
         /// ```
-        pub fn iter(&self) -> impl Iterator<Item = &Fact> {
-            self.facts.iter().filter_map(|opt| opt.as_ref())
+        pub fn iter(&self) -> Vec<Fact> {
+            let facts = self.facts.read().unwrap();
+            facts.iter().filter_map(|opt| opt.as_ref().cloned()).collect()
         }
 
         /// Finds facts within a specific time range (inclusive bounds).
@@ -740,8 +813,11 @@ pub mod arena_store {
             &self,
             start: chrono::DateTime<chrono::Utc>,
             end: chrono::DateTime<chrono::Utc>,
-        ) -> Vec<&Fact> {
-            self.iter().filter(|f| f.timestamp >= start && f.timestamp <= end).collect()
+        ) -> Vec<Fact> {
+            self.iter()
+                .into_iter()
+                .filter(|f| f.timestamp >= start && f.timestamp <= end)
+                .collect()
         }
 
         /// Returns the number of facts currently stored.
@@ -768,7 +844,7 @@ pub mod arena_store {
         /// assert_eq!(store.len(), 2);
         /// ```
         pub fn len(&self) -> usize {
-            self.facts.iter().filter(|f| f.is_some()).count()
+            self.fact_count.load(Ordering::Relaxed) as usize
         }
 
         /// Checks if the fact store is empty.
@@ -813,11 +889,21 @@ pub mod arena_store {
         /// assert!(store.is_empty());
         /// assert_eq!(store.len(), 0);
         /// ```
-        pub fn clear(&mut self) {
-            self.facts.clear();
-            self.field_indexes.clear();
-            self.external_id_map.clear();
-            self.next_id = 0;
+        pub fn clear(&self) {
+            let mut facts = self.facts.write().unwrap();
+            facts.clear();
+            drop(facts);
+
+            let mut field_indexes = self.field_indexes.write().unwrap();
+            field_indexes.clear();
+            drop(field_indexes);
+
+            let mut external_id_map = self.external_id_map.write().unwrap();
+            external_id_map.clear();
+            drop(external_id_map);
+
+            self.next_id.store(0, Ordering::SeqCst);
+            self.fact_count.store(0, Ordering::Relaxed);
         }
 
         /// Finds all facts that have a specific field value.
@@ -857,20 +943,25 @@ pub mod arena_store {
         /// // Non-indexed field lookup (slower but still works)
         /// let email_facts = store.find_by_field("email", &FactValue::String("user@example.com".to_string()));
         /// ```
-        pub fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<&Fact> {
+        pub fn find_by_field(&self, field: &str, value: &FactValue) -> Vec<Fact> {
             let value_key = self.fact_value_to_index_key(value);
 
-            if let Some(field_map) = self.field_indexes.get(field) {
-                if let Some(fact_ids) = field_map.get(value_key.as_ref()) {
-                    return fact_ids.iter().filter_map(|&id| self.get_fact(id)).collect();
+            {
+                let field_indexes = self.field_indexes.read().unwrap();
+                if let Some(field_map) = field_indexes.get(field) {
+                    if let Some(fact_ids) = field_map.get(value_key.as_ref()) {
+                        return fact_ids.iter().filter_map(|&id| self.get_fact(id)).collect();
+                    }
                 }
             }
 
             // Fallback to linear search for non-indexed fields
-            self.facts
+            let facts = self.facts.read().unwrap();
+            facts
                 .iter()
                 .filter_map(|opt_fact| opt_fact.as_ref())
                 .filter(|fact| fact.data.fields.get(field) == Some(value))
+                .cloned()
                 .collect()
         }
 
@@ -917,9 +1008,9 @@ pub mod arena_store {
         /// let matching_facts = store.find_by_criteria(&criteria);
         /// // Returns facts that are: user_id=12345 AND status=active AND role=admin
         /// ```
-        pub fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<&Fact> {
+        pub fn find_by_criteria(&self, criteria: &[(String, FactValue)]) -> Vec<Fact> {
             if criteria.is_empty() {
-                return self.iter().collect();
+                return self.iter();
             }
 
             // Optimization: if we have indexed criteria, use them to reduce the search space
@@ -929,23 +1020,26 @@ pub mod arena_store {
             let mut candidate_ids: Option<std::collections::HashSet<FactId>> = None;
 
             // Try to find an indexed criterion to reduce the search space
-            for (field, value) in criteria {
-                if INDEXED_FIELDS.iter().any(|&f| f == field) {
-                    let value_key = self.fact_value_to_index_key(value);
-                    if let Some(field_map) = self.field_indexes.get(field) {
-                        if let Some(fact_ids) = field_map.get(value_key.as_ref()) {
-                            let current_ids: std::collections::HashSet<FactId> =
-                                fact_ids.iter().copied().collect();
+            {
+                let field_indexes = self.field_indexes.read().unwrap();
+                for (field, value) in criteria {
+                    if INDEXED_FIELDS.iter().any(|&f| f == field) {
+                        let value_key = self.fact_value_to_index_key(value);
+                        if let Some(field_map) = field_indexes.get(field) {
+                            if let Some(fact_ids) = field_map.get(value_key.as_ref()) {
+                                let current_ids: std::collections::HashSet<FactId> =
+                                    fact_ids.iter().copied().collect();
 
-                            candidate_ids = Some(match candidate_ids {
-                                None => current_ids,
-                                Some(existing) => {
-                                    existing.intersection(&current_ids).copied().collect()
-                                }
-                            });
-                        } else {
-                            // If any indexed field has no matches, return empty result
-                            return Vec::new();
+                                candidate_ids = Some(match candidate_ids {
+                                    None => current_ids,
+                                    Some(existing) => {
+                                        existing.intersection(&current_ids).copied().collect()
+                                    }
+                                });
+                            } else {
+                                // If any indexed field has no matches, return empty result
+                                return Vec::new();
+                            }
                         }
                     }
                 }
@@ -963,7 +1057,8 @@ pub mod arena_store {
                     .collect()
             } else {
                 // Fall back to linear search if no indexed criteria were found
-                self.facts
+                let facts = self.facts.read().unwrap();
+                facts
                     .iter()
                     .filter_map(|opt_fact| opt_fact.as_ref())
                     .filter(|fact| {
@@ -971,6 +1066,7 @@ pub mod arena_store {
                             .iter()
                             .all(|(field, value)| fact.data.fields.get(field) == Some(value))
                     })
+                    .cloned()
                     .collect()
             }
         }
@@ -1008,7 +1104,7 @@ pub mod arena_store {
         /// let mut store = ArenaFactStore::new();
         /// store.clear_cache(); // Does nothing but won't error
         /// ```
-        pub fn clear_cache(&mut self) {
+        pub fn clear_cache(&self) {
             // Default implementation does nothing
         }
 
@@ -1051,37 +1147,40 @@ pub mod arena_store {
             let mut total_unique_values = 0;
             let mut field_stats = std::collections::HashMap::new();
 
-            for (field_name, field_map) in &self.field_indexes {
-                let unique_values = field_map.len();
-                let indexed_facts: usize = field_map.values().map(|v| v.len()).sum();
+            {
+                let field_indexes = self.field_indexes.read().unwrap();
+                for (field_name, field_map) in field_indexes.iter() {
+                    let unique_values = field_map.len();
+                    let indexed_facts: usize = field_map.values().map(|v| v.len()).sum();
 
-                total_unique_values += unique_values;
-                total_indexed_facts += indexed_facts;
+                    total_unique_values += unique_values;
+                    total_indexed_facts += indexed_facts;
 
-                field_stats.insert(
-                    field_name.clone(),
-                    FieldIndexStats {
-                        unique_values,
-                        indexed_facts,
-                        average_facts_per_value: if unique_values > 0 {
-                            indexed_facts as f64 / unique_values as f64
-                        } else {
-                            0.0
+                    field_stats.insert(
+                        field_name.clone(),
+                        FieldIndexStats {
+                            unique_values,
+                            indexed_facts,
+                            average_facts_per_value: if unique_values > 0 {
+                                indexed_facts as f64 / unique_values as f64
+                            } else {
+                                0.0
+                            },
                         },
-                    },
-                );
-            }
+                    );
+                }
 
-            IndexStats {
-                total_indexed_fields: self.field_indexes.len(),
-                total_unique_values,
-                total_indexed_facts,
-                field_stats,
-                index_efficiency: if !self.is_empty() {
-                    total_indexed_facts as f64 / self.len() as f64
-                } else {
-                    0.0
-                },
+                IndexStats {
+                    total_indexed_fields: field_indexes.len(),
+                    total_unique_values,
+                    total_indexed_facts,
+                    field_stats,
+                    index_efficiency: if !self.is_empty() {
+                        total_indexed_facts as f64 / self.len() as f64
+                    } else {
+                        0.0
+                    },
+                }
             }
         }
 
@@ -1124,14 +1223,15 @@ pub mod arena_store {
         /// let stats_after = store.index_stats();
         /// println!("Index efficiency after: {:.2}%", stats_after.index_efficiency * 100.0);
         /// ```
-        pub fn compact_indexes(&mut self) {
-            self.field_indexes.retain(|_, field_map| {
+        pub fn compact_indexes(&self) {
+            let mut field_indexes = self.field_indexes.write().unwrap();
+            field_indexes.retain(|_, field_map| {
                 field_map.retain(|_, fact_ids| !fact_ids.is_empty());
                 !field_map.is_empty()
             });
 
             // Shrink capacity for field maps that are significantly under-utilized
-            for field_map in self.field_indexes.values_mut() {
+            for field_map in field_indexes.values_mut() {
                 if field_map.capacity() > field_map.len() * 4 {
                     field_map.shrink_to_fit();
                 }
@@ -1189,12 +1289,9 @@ pub mod arena_store {
         /// assert_eq!(updated_fact.data.fields.get("status"),
         ///            Some(&FactValue::String("inactive".to_string())));
         /// ```
-        pub fn update_fact(
-            &mut self,
-            fact_id: FactId,
-            updates: HashMap<String, FactValue>,
-        ) -> bool {
-            if let Some(fact_option) = self.facts.get_mut(fact_id as usize) {
+        pub fn update_fact(&self, fact_id: FactId, updates: HashMap<String, FactValue>) -> bool {
+            let mut facts = self.facts.write().unwrap();
+            if let Some(fact_option) = facts.get_mut(fact_id as usize) {
                 if let Some(fact) = fact_option.as_mut() {
                     // Apply updates to the fact's fields
                     for (field, value) in updates {
@@ -1203,7 +1300,7 @@ pub mod arena_store {
 
                     // Clone the fact for re-indexing to avoid borrow checker issues
                     let fact_clone = fact.clone();
-                    let _ = fact; // Explicitly drop the mutable reference
+                    drop(facts); // Drop the write lock before calling update_indexes
                     self.update_indexes(&fact_clone);
                     return true;
                 }
@@ -1251,16 +1348,24 @@ pub mod arena_store {
         /// // Verify fact is gone
         /// assert!(store.get_fact(fact_id).is_none());
         /// ```
-        pub fn delete_fact(&mut self, fact_id: FactId) -> bool {
-            if let Some(fact_option) = self.facts.get_mut(fact_id as usize) {
+        pub fn delete_fact(&self, fact_id: FactId) -> bool {
+            let mut facts = self.facts.write().unwrap();
+            if let Some(fact_option) = facts.get_mut(fact_id as usize) {
                 if let Some(fact) = fact_option.take() {
+                    drop(facts); // Release facts lock early
+
                     // Remove from external ID mapping if present
                     if let Some(ref external_id) = fact.external_id {
-                        self.external_id_map.remove(external_id);
+                        let mut external_id_map = self.external_id_map.write().unwrap();
+                        external_id_map.remove(external_id);
                     }
 
                     // Remove from field indexes
                     self.remove_from_indexes(&fact);
+
+                    // Decrement fact count
+                    self.fact_count.fetch_sub(1, Ordering::Relaxed);
+
                     return true;
                 }
             }
@@ -1268,15 +1373,17 @@ pub mod arena_store {
         }
 
         /// Remove a fact from all field indexes
-        fn remove_from_indexes(&mut self, fact: &Fact) {
+        fn remove_from_indexes(&self, fact: &Fact) {
             const INDEXED_FIELDS: &[&str] =
                 &["entity_id", "id", "user_id", "customer_id", "status", "category"];
+
+            let mut field_indexes = self.field_indexes.write().unwrap();
 
             for (field_name, field_value) in &fact.data.fields {
                 if INDEXED_FIELDS.iter().any(|&f| f == field_name) {
                     let value_key = self.fact_value_to_index_key_owned(field_value);
 
-                    if let Some(field_map) = self.field_indexes.get_mut(field_name) {
+                    if let Some(field_map) = field_indexes.get_mut(field_name) {
                         if let Some(fact_ids) = field_map.get_mut(&value_key) {
                             fact_ids.retain(|&id| id != fact.id);
                             // Remove the entry if no facts remain
@@ -1289,6 +1396,10 @@ pub mod arena_store {
             }
         }
     }
+
+    // ArenaFactStore is thread-safe: all fields are protected by RwLock or AtomicU64
+    unsafe impl Send for ArenaFactStore {}
+    unsafe impl Sync for ArenaFactStore {}
 }
 
 #[cfg(test)]
@@ -1366,7 +1477,7 @@ mod tests {
 
     #[test]
     fn test_basic_insert_and_get() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let fact = create_test_fact(42);
         let fact_id = store.insert(fact.clone());
@@ -1382,7 +1493,7 @@ mod tests {
 
     #[test]
     fn test_external_id_mapping() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let fact = create_test_fact_with_external_id(1, "external_123");
         store.insert(fact.clone());
@@ -1390,11 +1501,9 @@ mod tests {
         // Test lookup by external ID
         let retrieved_fact = store.get_by_external_id("external_123");
         assert!(retrieved_fact.is_some());
-        assert_eq!(retrieved_fact.unwrap().id, 1);
-        assert_eq!(
-            retrieved_fact.unwrap().external_id,
-            Some("external_123".to_string())
-        );
+        let fact = retrieved_fact.unwrap();
+        assert_eq!(fact.id, 1);
+        assert_eq!(fact.external_id, Some("external_123".to_string()));
 
         // Test non-existent external ID
         let non_existent = store.get_by_external_id("non_existent");
@@ -1403,7 +1512,7 @@ mod tests {
 
     #[test]
     fn test_field_indexing_and_search() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Create facts with indexed fields
         let mut fact1 = create_test_fact(1);
@@ -1465,7 +1574,7 @@ mod tests {
 
     #[test]
     fn test_find_by_criteria() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let mut fact1 = create_test_fact(1);
         fact1
@@ -1531,7 +1640,7 @@ mod tests {
 
     #[test]
     fn test_time_range_queries() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let base_time = Utc::now();
 
@@ -1572,7 +1681,7 @@ mod tests {
 
     #[test]
     fn test_fact_updates() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let fact = create_test_fact_with_external_id(1, "update_test");
         store.insert(fact);
@@ -1613,7 +1722,7 @@ mod tests {
 
     #[test]
     fn test_fact_deletion() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let fact = create_test_fact_with_external_id(1, "delete_test");
         store.insert(fact);
@@ -1639,7 +1748,7 @@ mod tests {
 
     #[test]
     fn test_clear_functionality() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Add some facts
         for i in 1..=5 {
@@ -1664,7 +1773,7 @@ mod tests {
 
     #[test]
     fn test_extend_from_vec() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let facts = vec![create_test_fact(1), create_test_fact(2), create_test_fact(3)];
 
@@ -1678,7 +1787,7 @@ mod tests {
 
     #[test]
     fn test_iteration() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let facts = vec![create_test_fact(1), create_test_fact(2), create_test_fact(3)];
 
@@ -1686,7 +1795,7 @@ mod tests {
             store.insert(fact);
         }
 
-        let collected_facts: Vec<_> = store.iter().collect();
+        let collected_facts = store.iter();
         assert_eq!(collected_facts.len(), 3);
 
         let fact_ids: Vec<_> = collected_facts.iter().map(|f| f.id).collect();
@@ -1697,7 +1806,7 @@ mod tests {
 
     #[test]
     fn test_different_fact_value_types() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let mut fields = HashMap::new();
         fields.insert(
@@ -1737,7 +1846,7 @@ mod tests {
 
     #[test]
     fn test_id_generation_and_collision_handling() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Test auto-generated IDs
         let fact_auto = create_test_fact(0); // ID 0 should trigger auto-generation
@@ -1762,7 +1871,7 @@ mod tests {
 
     #[test]
     fn test_cache_functionality() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Test cache stats (should return None for basic implementation)
         let stats = store.cache_stats();
@@ -1774,7 +1883,7 @@ mod tests {
 
     #[test]
     fn test_get_field_by_id() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         let mut fact1 = create_test_fact(1);
         fact1.external_id = Some("fact1_ext_id".to_string());
@@ -1818,7 +1927,7 @@ mod tests {
             for i in 1..=10 {
                 let fact = create_test_fact_with_external_id(i, &format!("thread_fact_{i}"));
                 {
-                    let mut store = store_clone.write().unwrap();
+                    let store = store_clone.write().unwrap();
                     store.insert(fact);
                 }
 
@@ -1834,7 +1943,7 @@ mod tests {
         for i in 11..=20 {
             let fact = create_test_fact_with_external_id(i, &format!("main_fact_{i}"));
             {
-                let mut store = shared_store.write().unwrap();
+                let store = shared_store.write().unwrap();
                 store.insert(fact);
             }
         }
@@ -1854,7 +1963,7 @@ mod tests {
 
     #[test]
     fn test_large_dataset_performance() {
-        let mut store = ArenaFactStore::with_large_capacity(1000);
+        let store = ArenaFactStore::with_large_capacity(1000);
 
         // Insert a moderately large number of facts
         for i in 1..=1000 {
@@ -1877,7 +1986,7 @@ mod tests {
         assert_eq!(entity_facts.len(), 10); // Should find 10 facts with entity_50
 
         // Test iteration performance
-        let all_facts: Vec<_> = store.iter().collect();
+        let all_facts = store.iter();
         assert_eq!(all_facts.len(), 1000);
 
         // Test time range query
@@ -1890,7 +1999,7 @@ mod tests {
 
     #[test]
     fn test_edge_cases() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Test empty fact
         let empty_fact = Fact {
@@ -1924,7 +2033,7 @@ mod tests {
 
     #[test]
     fn test_bulk_insert_optimization() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Create a batch of facts for bulk insert
         let mut facts = Vec::new();
@@ -1958,7 +2067,7 @@ mod tests {
 
     #[test]
     fn test_optimized_find_by_criteria() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Create facts with indexed fields
         for i in 1..=20 {
@@ -2010,7 +2119,7 @@ mod tests {
 
     #[test]
     fn test_index_statistics() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Add facts with indexed fields
         for i in 1..=10 {
@@ -2053,7 +2162,7 @@ mod tests {
 
     #[test]
     fn test_index_compaction() {
-        let mut store = ArenaFactStore::new();
+        let store = ArenaFactStore::new();
 
         // Add facts with indexed fields
         for i in 1..=10 {

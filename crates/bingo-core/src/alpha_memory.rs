@@ -530,6 +530,44 @@ impl AlphaMemoryManager {
         }
     }
 
+    /// Get candidate rules for a fact using optimized indexing
+    /// This is the core RETE optimization: O(1) hash lookups instead of O(n) iteration
+    pub fn get_candidate_rules_for_fact(&self, fact: &Fact) -> Vec<RuleId> {
+        let mut candidate_rules = HashSet::new();
+
+        for (field_name, field_value) in &fact.data.fields {
+            // Check equality patterns using equality index (O(1) lookup)
+            if let Some(value_map) = self.equality_index.get(field_name) {
+                if let Some(pattern_keys) = value_map.get(field_value) {
+                    for pattern_key in pattern_keys {
+                        if let Some(alpha_memory) = self.alpha_memories.get(pattern_key) {
+                            candidate_rules.extend(alpha_memory.dependent_rules.iter().copied());
+                        }
+                    }
+                }
+            }
+
+            // Check range patterns using range index for numeric values
+            if let Some(threshold_list) = self.range_index.get(field_name) {
+                if let Some(_numeric_value) = field_value.to_comparable() {
+                    for (_threshold, pattern_keys) in threshold_list {
+                        for pattern_key in pattern_keys {
+                            if let Some(alpha_memory) = self.alpha_memories.get(pattern_key) {
+                                // Only check pattern match for range patterns (more expensive but necessary)
+                                if alpha_memory.pattern.matches_fact(fact) {
+                                    candidate_rules
+                                        .extend(alpha_memory.dependent_rules.iter().copied());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        candidate_rules.into_iter().collect()
+    }
+
     /// Get pattern access frequency statistics (most frequently accessed patterns)
     pub fn get_pattern_frequency_stats(&self) -> Vec<(String, u64)> {
         let mut frequencies: Vec<_> = self

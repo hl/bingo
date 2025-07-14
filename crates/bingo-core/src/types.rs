@@ -782,6 +782,67 @@ pub struct EngineStats {
     pub node_count: usize,
     /// Approximate memory usage in bytes
     pub memory_usage_bytes: usize,
+    /// Number of aggregations created (for lazy aggregation stats)
+    pub aggregations_created: usize,
+    /// Number of aggregations reused (for lazy aggregation stats)
+    pub aggregations_reused: usize,
+    /// Number of cache invalidations performed
+    pub cache_invalidations: usize,
+    /// Rule execution result pool information
+    pub rule_execution_result_pool: PoolStats,
+    /// Rule ID vector pool information
+    pub rule_id_vec_pool: PoolStats,
+    /// Cache hits for serialization
+    pub cache_hits: usize,
+    /// Cache misses for serialization
+    pub cache_misses: usize,
+    /// Total facts processed by alpha memory
+    pub total_facts_processed: usize,
+    /// Total matches found by alpha memory
+    pub total_matches_found: usize,
+    /// Buffer hits for serialization
+    pub buffer_hits: usize,
+    /// Buffer misses for serialization
+    pub buffer_misses: usize,
+    /// Cache size
+    pub cache_size: usize,
+    /// Buffer pool size
+    pub buffer_pool_size: usize,
+    /// Total full computations for lazy aggregation
+    pub total_full_computations: usize,
+    /// Total early terminations for lazy aggregation
+    pub total_early_terminations: usize,
+    /// Fact ID vector pool information
+    pub fact_id_vec_pool: PoolStats,
+    /// Fact field map pool information
+    pub fact_field_map_pool: PoolStats,
+    /// Numeric vector pool information
+    pub numeric_vec_pool: PoolStats,
+}
+
+/// Pool statistics for object pools
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolStats {
+    /// Pool hits
+    pub hits: usize,
+    /// Pool misses
+    pub misses: usize,
+    /// Pool size
+    pub pool_size: usize,
+    /// Objects currently allocated
+    pub allocated: usize,
+}
+
+impl PoolStats {
+    /// Calculate hit rate as percentage
+    pub fn hit_rate(&self) -> f64 {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            0.0
+        } else {
+            (self.hits as f64 / total as f64) * 100.0
+        }
+    }
 }
 
 // ============================================================================

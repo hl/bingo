@@ -40,7 +40,7 @@ fn create_user_fact(id: u64, name: &str, balance: f64, score: i64) -> Fact {
 
 #[test]
 fn test_update_fact_action() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing UpdateFact Action");
 
@@ -112,7 +112,7 @@ fn test_update_fact_action() {
 
 #[test]
 fn test_delete_fact_action() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing DeleteFact Action");
 
@@ -169,7 +169,7 @@ fn test_delete_fact_action() {
 
 #[test]
 fn test_increment_field_action() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing IncrementField Action");
 
@@ -287,7 +287,7 @@ fn test_increment_field_action() {
 
 #[test]
 fn test_append_to_array_action() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing AppendToArray Action");
 
@@ -359,7 +359,7 @@ fn test_append_to_array_action() {
 
 #[test]
 fn test_send_notification_action() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing SendNotification Action");
 
@@ -443,7 +443,7 @@ fn test_send_notification_action() {
 
 #[test]
 fn test_error_handling_for_action_types() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Error Handling for New Action Types");
 

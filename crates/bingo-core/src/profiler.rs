@@ -317,9 +317,9 @@ impl EngineProfiler {
             if metric.avg_duration_us > 100_000 {
                 // 100ms in microseconds
                 let severity = match metric.avg_duration_us {
-                    100_001..=500_000 => 3,   // 100-500ms
-                    500_001..=1_000_000 => 6, // 500ms-1s
-                    _ => 9,                   // >1s
+                    100_001..=500_000 => 3,                                       // 100-500ms
+                    500_001..=crate::constants::profiler::TIME_BUCKET_1S_US => 6, // 500ms-1s
+                    _ => 9,                                                       // >1s
                 };
 
                 bottlenecks.push(BottleneckAnalysis {
@@ -558,13 +558,8 @@ mod tests {
         let profiler = EngineProfiler::new();
 
         let result = profiler.time_operation("test_op", || {
-            // Simulate work with computation instead of sleep
-            let mut work_result = 0;
-            for i in 0..500 {
-                work_result += i * i;
-            }
-            // Use work_result to prevent optimization
-            assert!(work_result > 0);
+            // Ensure measurable duration with thread sleep
+            std::thread::sleep(std::time::Duration::from_millis(1));
             42
         });
 

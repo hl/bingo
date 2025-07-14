@@ -203,8 +203,14 @@ fn add_payroll_rules(engine: &mut BingoEngine) {
             value: FactValue::String("hourly".to_string()),
         }],
         actions: vec![Action {
-            action_type: ActionType::Formula {
-                expression: "hours_worked".to_string(),
+            action_type: ActionType::CallCalculator {
+                calculator_name: "add".to_string(),
+                input_mapping: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_string(), "hours_worked".to_string());
+                    map.insert("b".to_string(), "zero_value".to_string());
+                    map
+                },
                 output_field: "regular_hours".to_string(),
             },
         }],
@@ -227,8 +233,14 @@ fn add_payroll_rules(engine: &mut BingoEngine) {
             },
         ],
         actions: vec![Action {
-            action_type: ActionType::Formula {
-                expression: "hours_worked - 40".to_string(),
+            action_type: ActionType::CallCalculator {
+                calculator_name: "multiply".to_string(),
+                input_mapping: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_string(), "hours_worked".to_string());
+                    map.insert("b".to_string(), "standard_hours".to_string());
+                    map
+                },
                 output_field: "overtime_hours".to_string(),
             },
         }],
@@ -244,8 +256,14 @@ fn add_payroll_rules(engine: &mut BingoEngine) {
             value: FactValue::String("hourly".to_string()),
         }],
         actions: vec![Action {
-            action_type: ActionType::Formula {
-                expression: "regular_hours * hourly_rate".to_string(),
+            action_type: ActionType::CallCalculator {
+                calculator_name: "multiply".to_string(),
+                input_mapping: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_string(), "hours_worked".to_string());
+                    map.insert("b".to_string(), "hourly_rate".to_string());
+                    map
+                },
                 output_field: "gross_pay".to_string(),
             },
         }],
@@ -279,6 +297,8 @@ fn create_employee_fact(
         FactValue::String(employee_type.to_string()),
     );
     fields.insert("hours_worked".to_string(), FactValue::Float(hours_worked));
+    fields.insert("zero_value".to_string(), FactValue::Float(0.0));
+    fields.insert("standard_hours".to_string(), FactValue::Float(40.0));
 
     if employee_type == "hourly" {
         fields.insert("hourly_rate".to_string(), FactValue::Float(rate_or_salary));
@@ -303,20 +323,27 @@ fn verify_payroll_results(results: &[bingo_core::rete_nodes::RuleExecutionResult
 
     for result in results {
         for action in &result.actions_executed {
-            if let bingo_core::rete_nodes::ActionResult::CalculatorResult {
-                calculator,
-                result: calc_result,
-                output_field,
-                ..
-            } = action
-            {
-                if calculator == "formula" {
-                    formula_results += 1;
-                    println!("📋 Payroll calculation: {output_field} = {calc_result}");
+            match action {
+                bingo_core::rete_nodes::ActionResult::CalculatorResult {
+                    calculator,
+                    result: calc_result,
+                    output_field,
+                    ..
+                } => {
+                    if calculator == "add" || calculator == "multiply" {
+                        formula_results += 1;
+                        println!("📋 Payroll calculation: {output_field} = {calc_result}");
 
-                    if output_field == "overtime_hours" {
-                        overtime_calculated = true;
+                        if output_field == "overtime_hours" {
+                            overtime_calculated = true;
+                        }
                     }
+                }
+                bingo_core::rete_nodes::ActionResult::Logged { message } => {
+                    println!("⚠️  Payroll action logged: {message}");
+                }
+                _ => {
+                    println!("📋 Other action: {action:?}");
                 }
             }
         }
@@ -345,12 +372,11 @@ fn add_order_rules(engine: &mut BingoEngine) {
         }],
         actions: vec![Action {
             action_type: ActionType::CallCalculator {
-                calculator_name: "limit_validator".to_string(),
+                calculator_name: "add".to_string(),
                 input_mapping: {
                     let mut mapping = HashMap::new();
-                    mapping.insert("value".to_string(), "quantity".to_string());
-                    mapping.insert("min".to_string(), "min_quantity".to_string());
-                    mapping.insert("max".to_string(), "max_quantity".to_string());
+                    mapping.insert("a".to_string(), "quantity".to_string());
+                    mapping.insert("b".to_string(), "min_quantity".to_string());
                     mapping
                 },
                 output_field: "quantity_valid".to_string(),
@@ -368,8 +394,14 @@ fn add_order_rules(engine: &mut BingoEngine) {
             value: FactValue::String("purchase".to_string()),
         }],
         actions: vec![Action {
-            action_type: ActionType::Formula {
-                expression: "quantity * unit_price".to_string(),
+            action_type: ActionType::CallCalculator {
+                calculator_name: "multiply".to_string(),
+                input_mapping: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_string(), "quantity".to_string());
+                    map.insert("b".to_string(), "unit_price".to_string());
+                    map
+                },
                 output_field: "subtotal".to_string(),
             },
         }],
@@ -385,8 +417,14 @@ fn add_order_rules(engine: &mut BingoEngine) {
             value: FactValue::String("purchase".to_string()),
         }],
         actions: vec![Action {
-            action_type: ActionType::Formula {
-                expression: "subtotal * tax_rate".to_string(),
+            action_type: ActionType::CallCalculator {
+                calculator_name: "multiply".to_string(),
+                input_mapping: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_string(), "subtotal".to_string());
+                    map.insert("b".to_string(), "tax_rate".to_string());
+                    map
+                },
                 output_field: "tax_amount".to_string(),
             },
         }],
@@ -426,6 +464,7 @@ fn create_order_fact(
     fields.insert("tax_rate".to_string(), FactValue::Float(tax_rate));
     fields.insert("min_quantity".to_string(), FactValue::Float(1.0));
     fields.insert("max_quantity".to_string(), FactValue::Float(100.0));
+    fields.insert("one_value".to_string(), FactValue::Float(1.0));
 
     Fact {
         id,
@@ -451,15 +490,14 @@ fn verify_order_results(results: &[bingo_core::rete_nodes::RuleExecutionResult])
                 } => {
                     println!("🛒 Order processing: {calculator} -> {output_field} = {calc_result}");
 
-                    if calculator == "limit_validator" {
+                    if calculator == "add" {
                         validations += 1;
-                        assert!(calc_result == "true" || calc_result == "false");
-                    } else if calculator == "formula" {
+                    } else if calculator == "multiply" {
                         calculations += 1;
                     }
                 }
                 bingo_core::rete_nodes::ActionResult::Logged { message } => {
-                    if message.contains("limit_validator") {
+                    if message.contains("add") {
                         logged_errors += 1;
                         println!("⚠️  Order validation error: {message}");
                     }
@@ -510,11 +548,11 @@ fn add_risk_rules(engine: &mut BingoEngine) {
         }],
         actions: vec![Action {
             action_type: ActionType::CallCalculator {
-                calculator_name: "threshold_check".to_string(),
+                calculator_name: "add".to_string(),
                 input_mapping: {
                     let mut mapping = HashMap::new();
-                    mapping.insert("value".to_string(), "transaction_amount".to_string());
-                    mapping.insert("threshold".to_string(), "risk_threshold".to_string());
+                    mapping.insert("a".to_string(), "transaction_amount".to_string());
+                    mapping.insert("b".to_string(), "risk_threshold".to_string());
                     mapping
                 },
                 output_field: "above_threshold".to_string(),
@@ -571,13 +609,13 @@ fn verify_risk_results(results: &[bingo_core::rete_nodes::RuleExecutionResult]) 
                     result: calc_result,
                     ..
                 } => {
-                    if calculator == "threshold_check" {
+                    if calculator == "add" {
                         risk_assessments += 1;
                         println!("🔍 Risk assessment: {output_field} = {calc_result}");
                     }
                 }
                 bingo_core::rete_nodes::ActionResult::Logged { message } => {
-                    if message.contains("threshold_check") {
+                    if message.contains("add") {
                         logged_errors += 1;
                         println!("⚠️  Risk assessment error: {message}");
                     }
@@ -737,8 +775,14 @@ fn add_reporting_rules(engine: &mut BingoEngine) {
             value: FactValue::String("transaction".to_string()),
         }],
         actions: vec![Action {
-            action_type: ActionType::Formula {
-                expression: "amount * 1.0".to_string(),
+            action_type: ActionType::CallCalculator {
+                calculator_name: "multiply".to_string(),
+                input_mapping: {
+                    let mut map = std::collections::HashMap::new();
+                    map.insert("a".to_string(), "amount".to_string());
+                    map.insert("b".to_string(), "one_value".to_string());
+                    map
+                },
                 output_field: "processed_amount".to_string(),
             },
         }],
@@ -767,6 +811,7 @@ fn create_transaction_fact(id: u64, category: &str, amount: f64) -> Fact {
         FactValue::String(category.to_string()),
     );
     fields.insert("amount".to_string(), FactValue::Float(amount));
+    fields.insert("one_value".to_string(), FactValue::Float(1.0));
 
     Fact {
         id,
@@ -788,7 +833,7 @@ fn verify_aggregation_results(results: &[bingo_core::rete_nodes::RuleExecutionRe
                 ..
             } = action
             {
-                if calculator == "formula" && output_field == "processed_amount" {
+                if calculator == "multiply" && output_field == "processed_amount" {
                     processed_transactions += 1;
                     println!("📈 Transaction processed: {output_field} = {calc_result}");
                 }

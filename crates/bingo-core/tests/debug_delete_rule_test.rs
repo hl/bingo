@@ -14,7 +14,7 @@ fn create_fact(id: u64, name: &str) -> Fact {
 
 #[test]
 fn delete_fact_rule_test() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     let rule = Rule {
         id: 1,

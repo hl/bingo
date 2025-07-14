@@ -25,7 +25,7 @@ The engine is optimized for practical enterprise workloads. The following benchm
 #### RETE Algorithm Performance
 | Test Scenario | Throughput | Memory Usage | Notes |
 |---|---|---|---|
-| **Alpha Memory Optimization** | 462K facts/sec | <5MB | Single-condition rules with proper alpha testing |
+| **Alpha Memory Optimization** | 634K facts/sec | <5MB | Single-condition rules with hash-indexed O(1) lookups and redundant check elimination |
 | **Beta Network Processing** | 407K facts/sec | <3MB | Multi-condition rules with token propagation |
 | **Working Memory Incremental** | 1.2M facts/sec | <2MB | Incremental fact processing |
 | **Rule Count Independence** | 285K-2.1M facts/sec | <2MB | Performance independent of non-matching rules |
@@ -70,7 +70,7 @@ The engine is optimized for practical enterprise workloads. The following benchm
 ### 🚀 Enterprise Performance
 - **High Throughput**: Up to 560K facts/sec for basic operations, 1.9M facts/sec for optimized workloads
 - **Scalable Architecture**: Supports datasets up to 2M+ facts with linear memory scaling (~1.6GB per 1M facts)
-- **Alpha Memory Optimization**: 462K facts/sec with hash-based single-condition indexing
+- **Alpha Memory Optimization**: 634K facts/sec with hash-indexed O(1) lookups and redundant check elimination
 - **Beta Network Processing**: 407K facts/sec with multi-condition token propagation
 - **Incremental Updates**: 1.2M facts/sec for working memory updates
 

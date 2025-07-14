@@ -271,26 +271,77 @@ impl ParallelWorker {
         fact_ids: &[FactId],
         local_stats: &mut ParallelReteStats,
     ) -> BingoResult<()> {
-        if !self.config.enable_parallel_alpha {
-            return Ok(());
-        }
-
         debug!(
             worker_id = self.worker_id,
             fact_count = facts.len(),
             "Processing alpha memory work"
         );
+        debug!(
+            worker_id = self.worker_id,
+            fact_count = facts.len(),
+            "Starting parallel alpha work processing"
+        );
 
-        // Process facts through alpha memories
-        let mut alpha_memory = self.alpha_memory.write().map_err(|e| {
-            BingoError::rete_network(
-                "alpha_memory",
-                format!("Failed to acquire alpha memory write lock: {e}"),
-            )
-        })?;
-
+        // Process each fact through alpha memories (read-only pattern matching)
         for (fact, &fact_id) in facts.iter().zip(fact_ids.iter()) {
-            let _matching_patterns = alpha_memory.process_fact_addition(fact_id, fact);
+            // Use a temporary write lock to check patterns and find rules
+            let mut alpha_memory = self.alpha_memory.write().map_err(|e| {
+                BingoError::rete_network(
+                    "alpha_memory",
+                    format!("Failed to write alpha memory: {e}"),
+                )
+            })?;
+
+            // Check all patterns directly and collect rule matches
+            let mut matching_patterns = Vec::new();
+            let mut rule_matches = HashSet::new();
+
+            let stats = alpha_memory.get_statistics();
+            for memory_stat in &stats.memory_stats {
+                // Check if this fact matches the pattern
+                if memory_stat.pattern.matches_fact(fact) {
+                    let pattern_key = memory_stat.pattern.to_key();
+                    matching_patterns.push(pattern_key.clone());
+
+                    // Get dependent rules for this pattern
+                    if let Some(alpha_mem) = alpha_memory.get_alpha_memory_by_key(&pattern_key) {
+                        for &rule_id in &alpha_mem.dependent_rules {
+                            rule_matches.insert(rule_id);
+                        }
+                    }
+                }
+            }
+
+            // Release the write lock before continuing
+            drop(alpha_memory);
+
+            debug!(
+                worker_id = self.worker_id,
+                fact_id = fact_id,
+                pattern_count = matching_patterns.len(),
+                "Processed fact through alpha memory"
+            );
+            // Generate RuleExecutionResult for each matching rule
+            for rule_id in rule_matches {
+                let execution_result =
+                    RuleExecutionResult { rule_id, fact_id, actions_executed: vec![] };
+
+                let mut results = self.results.lock().map_err(|e| {
+                    BingoError::rete_network(
+                        "results",
+                        format!("Failed to acquire results lock: {e}"),
+                    )
+                })?;
+                results.push(execution_result);
+
+                debug!(
+                    worker_id = self.worker_id,
+                    rule_id = rule_id,
+                    fact_id = fact_id,
+                    "Added rule execution result"
+                );
+            }
+
             local_stats.facts_processed += 1;
         }
 
@@ -635,11 +686,6 @@ impl ParallelReteProcessor {
     ) -> BingoResult<Vec<RuleExecutionResult>> {
         // Check if parallel processing is worthwhile
         if facts.len() < self.config.parallel_threshold {
-            info!(
-                fact_count = facts.len(),
-                threshold = self.config.parallel_threshold,
-                "Using sequential processing for small fact set"
-            );
             return self.process_facts_sequential_threaded(facts, fact_store, calculator);
         }
 
@@ -914,7 +960,7 @@ impl ParallelReteProcessor {
             // Store fact in thread-safe fact store
             let fact_id = fact.id;
             {
-                let mut store = fact_store.write().map_err(|_| {
+                let store = fact_store.write().map_err(|_| {
                     BingoError::internal("Failed to acquire write lock on fact store")
                 })?;
                 store.insert(fact.clone());
@@ -958,6 +1004,7 @@ impl ParallelReteProcessor {
             })?;
             stats.facts_processed += fact_count;
             stats.rules_executed += results.len();
+            stats.worker_count = 1; // Sequential processing uses 1 worker
         }
 
         Ok(results)

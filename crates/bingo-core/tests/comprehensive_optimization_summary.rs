@@ -277,7 +277,7 @@ fn create_comprehensive_test_facts(count: usize) -> Vec<Fact> {
 #[ignore] // Performance test - run with --release
 fn test_comprehensive_optimization_showcase() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(75_000).unwrap();
+    let engine = BingoEngine::with_capacity(75_000).unwrap();
 
     println!("🚀 COMPREHENSIVE OPTIMIZATION SHOWCASE");
     println!("Testing 75K facts with 150 diverse rules...");

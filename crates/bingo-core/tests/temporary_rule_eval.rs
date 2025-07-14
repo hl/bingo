@@ -4,7 +4,7 @@ use bingo_core::{
 
 #[test]
 fn test_rule() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
     let rule = Rule {
         id: 1,
         name: "test".to_string(),

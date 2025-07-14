@@ -399,7 +399,7 @@ impl ReteNetwork {
         new_fact: &Fact,
         rule: &Rule,
         fact_store: &ArenaFactStore,
-        _calculator: &Calculator,
+        calculator: &Calculator,
     ) -> Result<Vec<RuleExecutionResult>> {
         let mut results = Vec::new();
 
@@ -413,7 +413,8 @@ impl ReteNetwork {
         if rule.conditions.len() == 1 {
             // Single condition rule - direct alpha network processing
             if self.fact_matches_all_conditions(new_fact, &rule.conditions, fact_store)? {
-                let executed_actions = self.execute_rule_actions(rule, new_fact, fact_store)?;
+                let executed_actions =
+                    self.execute_rule_actions(rule, new_fact, fact_store, calculator)?;
                 results.push(RuleExecutionResult {
                     rule_id,
                     fact_id: new_fact.id,
@@ -450,7 +451,8 @@ impl ReteNetwork {
                         "🔥 FIRING RULE {} - Complete token with facts: {:?}",
                         rule_id, token.facts
                     );
-                    let executed_actions = self.execute_rule_actions(rule, new_fact, fact_store)?;
+                    let executed_actions =
+                        self.execute_rule_actions(rule, new_fact, fact_store, calculator)?;
                     results.push(RuleExecutionResult {
                         rule_id,
                         fact_id: new_fact.id,
@@ -493,18 +495,31 @@ impl ReteNetwork {
         // Check which conditions this fact matches
         let mut matching_condition_indices = Vec::new();
         for (index, condition) in rule.conditions.iter().enumerate() {
-            if let Some(pattern) = FactPattern::from_condition(condition) {
-                if pattern.matches_fact(new_fact) {
+            match condition {
+                Condition::Aggregation(_) => {
+                    // Aggregation conditions are always considered "matched" by any fact
+                    // because they operate on the entire fact store, not individual facts
                     matching_condition_indices.push(index);
                     debug!(
-                        "✅ Fact {} matches condition {} for rule {}: {:?}",
-                        new_fact.id, index, rule_id, condition
+                        "Fact {} triggers aggregation condition {} for rule {}",
+                        new_fact.id, index, rule_id
                     );
-                } else {
-                    debug!(
-                        "❌ Fact {} does NOT match condition {} for rule {}: {:?}",
-                        new_fact.id, index, rule_id, condition
-                    );
+                }
+                _ => {
+                    if let Some(pattern) = FactPattern::from_condition(condition) {
+                        if pattern.matches_fact(new_fact) {
+                            matching_condition_indices.push(index);
+                            debug!(
+                                "✅ Fact {} matches condition {} for rule {}: {:?}",
+                                new_fact.id, index, rule_id, condition
+                            );
+                        } else {
+                            debug!(
+                                "❌ Fact {} does NOT match condition {} for rule {}: {:?}",
+                                new_fact.id, index, rule_id, condition
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -727,7 +742,7 @@ impl ReteNetwork {
         &mut self,
         fact: &Fact,
         fact_store: &ArenaFactStore,
-        _calculator: &Calculator,
+        calculator: &Calculator,
     ) -> Result<Vec<RuleExecutionResult>> {
         let mut results = Vec::new();
 
@@ -739,20 +754,32 @@ impl ReteNetwork {
             if let Some(rule) = self.rules.get(&rule_id) {
                 let conditions = rule.conditions.clone(); // Clone to avoid borrow checker issues
 
+                debug!(
+                    "Processing rule {} with {} conditions",
+                    rule_id,
+                    conditions.len()
+                );
+
                 // Use proper RETE beta network processing for multi-condition rules
                 if conditions.len() == 1 {
-                    // Single condition rule - direct alpha node processing
+                    // Single condition rule - NEED TO VERIFY MATCH
+                    // Alpha memory optimization does NOT apply to aggregation conditions
+                    // We must explicitly test the condition for correctness
+
                     if self.fact_matches_all_conditions(fact, &conditions, fact_store)? {
+                        debug!("Rule {} matches - executing actions", rule_id);
                         // Clone the rule to avoid borrow checker issues
                         let rule_clone = rule.clone();
                         // Execute the rule actions properly
                         let executed_actions =
-                            self.execute_rule_actions(&rule_clone, fact, fact_store)?;
+                            self.execute_rule_actions(&rule_clone, fact, fact_store, calculator)?;
                         results.push(RuleExecutionResult {
                             rule_id,
                             fact_id: fact.id,
                             actions_executed: executed_actions,
                         });
+                    } else {
+                        debug!("Rule {} does NOT match - skipping", rule_id);
                     }
                 } else {
                     // Multi-condition rule - use beta network with token propagation
@@ -761,6 +788,7 @@ impl ReteNetwork {
                         fact,
                         &conditions,
                         fact_store,
+                        calculator,
                     )?;
                     results.extend(rule_results);
                 }
@@ -837,12 +865,12 @@ impl ReteNetwork {
     ///     // Process results immediately
     /// }
     /// ```
-    #[instrument(skip(self, fact_store, _calculator))]
+    #[instrument(skip(self, fact_store, calculator))]
     pub fn process_facts(
         &mut self,
         facts: &[Fact],
         fact_store: &ArenaFactStore,
-        _calculator: &Calculator,
+        calculator: &Calculator,
     ) -> Result<Vec<RuleExecutionResult>> {
         info!(
             fact_count = facts.len(),
@@ -851,14 +879,20 @@ impl ReteNetwork {
         );
         let mut results = Vec::new();
 
-        // Clear beta network at the start of each batch to ensure clean state
-        // Note: True incremental RETE would maintain state between batches
-        self.beta_network_manager.clear_all_tokens();
+        // OPTIMIZATION: Only clear beta network if we have multi-condition rules
+        // For single-condition rules (most common case), beta network isn't used
+        // This can provide significant performance improvement for simple rule sets
+        let has_multi_condition_rules = self.rules.values().any(|rule| rule.conditions.len() > 1);
+        if has_multi_condition_rules {
+            // Clear beta network at the start of each batch to ensure clean state
+            // Note: True incremental RETE would maintain state between batches
+            self.beta_network_manager.clear_all_tokens();
+        }
 
         // PROPER RETE IMPLEMENTATION: Use alpha memory + beta network
         for fact in facts {
             // Process each fact through the complete RETE network
-            let fact_results = self.process_single_fact(fact, fact_store, _calculator)?;
+            let fact_results = self.process_single_fact(fact, fact_store, calculator)?;
             results.extend(fact_results);
         }
 
@@ -866,15 +900,18 @@ impl ReteNetwork {
     }
 
     /// Test if a fact matches all conditions in a rule
+    /// OPTIMIZED: Early termination on first failed condition (short-circuit evaluation)
     fn fact_matches_all_conditions(
         &self,
         fact: &Fact,
         conditions: &[Condition],
         fact_store: &ArenaFactStore,
     ) -> Result<bool> {
+        // Early termination optimization: return false immediately on first non-match
+        // This prevents unnecessary condition evaluations and can provide significant speedup
         for condition in conditions {
             if !self.test_condition(fact, condition, fact_store)? {
-                return Ok(false);
+                return Ok(false); // Short-circuit: no need to check remaining conditions
             }
         }
         Ok(true)
@@ -928,6 +965,10 @@ impl ReteNetwork {
                     }
                     LogicalOperator::Not => {
                         // NOT operation: true if all conditions are false
+                        // Empty NOT conditions should return false (nothing to negate)
+                        if conditions.is_empty() {
+                            return Ok(false);
+                        }
                         for cond in conditions {
                             if self.test_condition(fact, cond, fact_store)? {
                                 return Ok(false);
@@ -937,10 +978,9 @@ impl ReteNetwork {
                     }
                 }
             }
-            Condition::Aggregation(_) => {
-                // Aggregation conditions require multiple facts and are not supported
-                // in single-fact evaluation context
-                Ok(false)
+            Condition::Aggregation(agg_condition) => {
+                // Use lazy aggregation manager to evaluate aggregation conditions
+                self.evaluate_aggregation_condition(fact, agg_condition, fact_store)
             }
             Condition::Stream(_) => {
                 // Stream conditions require temporal context and are not supported
@@ -959,41 +999,28 @@ impl ReteNetwork {
         expected_value: &FactValue,
         _fact_store: &ArenaFactStore,
     ) -> Result<bool> {
-        let actual_value = fact.data.fields.get(field);
+        // OPTIMIZATION: Early return for missing fields (common case)
+        let actual_value = match fact.data.fields.get(field) {
+            Some(value) => value,
+            None => {
+                // Field doesn't exist - only NotEqual can be true
+                return Ok(*operator == Operator::NotEqual);
+            }
+        };
 
         match operator {
-            Operator::Equal => Ok(actual_value == Some(expected_value)),
-            Operator::NotEqual => Ok(actual_value != Some(expected_value)),
-            Operator::GreaterThan => {
-                if let Some(actual) = actual_value {
-                    Ok(self.compare_values(actual, expected_value)? > 0)
-                } else {
-                    Ok(false)
-                }
-            }
-            Operator::LessThan => {
-                if let Some(actual) = actual_value {
-                    Ok(self.compare_values(actual, expected_value)? < 0)
-                } else {
-                    Ok(false)
-                }
-            }
+            Operator::Equal => Ok(actual_value == expected_value),
+            Operator::NotEqual => Ok(actual_value != expected_value),
+            Operator::GreaterThan => Ok(self.compare_values(actual_value, expected_value)? > 0),
+            Operator::LessThan => Ok(self.compare_values(actual_value, expected_value)? < 0),
             Operator::GreaterThanOrEqual => {
-                if let Some(actual) = actual_value {
-                    Ok(self.compare_values(actual, expected_value)? >= 0)
-                } else {
-                    Ok(false)
-                }
+                Ok(self.compare_values(actual_value, expected_value)? >= 0)
             }
             Operator::LessThanOrEqual => {
-                if let Some(actual) = actual_value {
-                    Ok(self.compare_values(actual, expected_value)? <= 0)
-                } else {
-                    Ok(false)
-                }
+                Ok(self.compare_values(actual_value, expected_value)? <= 0)
             }
             Operator::Contains => {
-                if let (Some(FactValue::String(actual)), FactValue::String(expected)) =
+                if let (FactValue::String(actual), FactValue::String(expected)) =
                     (actual_value, expected_value)
                 {
                     Ok(actual.contains(expected))
@@ -1002,7 +1029,7 @@ impl ReteNetwork {
                 }
             }
             Operator::StartsWith => {
-                if let (Some(FactValue::String(actual)), FactValue::String(expected)) =
+                if let (FactValue::String(actual), FactValue::String(expected)) =
                     (actual_value, expected_value)
                 {
                     Ok(actual.starts_with(expected))
@@ -1011,7 +1038,7 @@ impl ReteNetwork {
                 }
             }
             Operator::EndsWith => {
-                if let (Some(FactValue::String(actual)), FactValue::String(expected)) =
+                if let (FactValue::String(actual), FactValue::String(expected)) =
                     (actual_value, expected_value)
                 {
                     Ok(actual.ends_with(expected))
@@ -1072,27 +1099,30 @@ impl ReteNetwork {
     /// Get candidate rules from alpha memory based on fact field values
     /// This is the core RETE optimization: O(1) lookup instead of O(rules)
     fn get_candidate_rules_from_alpha_memory(&mut self, fact: &Fact) -> Vec<RuleId> {
-        let mut candidate_rules = Vec::new();
+        // OPTIMIZED RETE: Use alpha memory manager's optimized method
+        // This will leverage the equality_index and range_index for O(1) lookups
+        let mut candidate_rules = self.alpha_memory_manager.get_candidate_rules_for_fact(fact);
 
-        // OPTIMIZED RETE: Use alpha memory manager to get candidate rules efficiently
-        // This is much faster than testing each alpha node individually
+        // NON-INDEXABLE RULES: Also include rules with conditions that can't be indexed in alpha memory
+        // This includes aggregation and complex conditions that operate differently
+        for (rule_id, rule) in &self.rules {
+            let has_non_indexable_conditions = rule.conditions.iter().any(|condition| {
+                matches!(
+                    condition,
+                    crate::types::Condition::Aggregation(_)
+                        | crate::types::Condition::Complex { .. }
+                )
+            });
 
-        // For each field in the fact, check relevant alpha memories
-        for (field, _value) in fact.data.fields.iter() {
-            let alpha_memories = self.alpha_memory_manager.get_alpha_memories_for_field(field);
-
-            for alpha_memory in alpha_memories {
-                // Check if this fact matches the alpha memory's pattern
-                if alpha_memory.pattern.matches_fact(fact) {
-                    // Add all dependent rules from this alpha memory
-                    candidate_rules.extend(alpha_memory.dependent_rules.iter().copied());
-                }
+            if has_non_indexable_conditions && !candidate_rules.contains(rule_id) {
+                candidate_rules.push(*rule_id);
+                debug!(
+                    "Added non-indexable rule {} as candidate for fact {}",
+                    rule_id, fact.id
+                );
             }
         }
 
-        // Remove duplicates and return
-        candidate_rules.sort_unstable();
-        candidate_rules.dedup();
         candidate_rules
     }
 
@@ -1125,6 +1155,7 @@ impl ReteNetwork {
         fact: &Fact,
         conditions: &[Condition],
         fact_store: &ArenaFactStore,
+        calculator: &Calculator,
     ) -> Result<Vec<RuleExecutionResult>> {
         let mut results = Vec::new();
 
@@ -1174,7 +1205,7 @@ impl ReteNetwork {
                 if let Some(rule) = self.rules.get(&rule_id) {
                     let rule_clone = rule.clone();
                     let executed_actions =
-                        self.execute_rule_actions(&rule_clone, fact, fact_store)?;
+                        self.execute_rule_actions(&rule_clone, fact, fact_store, calculator)?;
                     results.push(RuleExecutionResult {
                         rule_id,
                         fact_id: fact.id,
@@ -1195,7 +1226,7 @@ impl ReteNetwork {
                     if let Some(rule) = self.rules.get(&rule_id) {
                         let rule_clone = rule.clone();
                         let executed_actions =
-                            self.execute_rule_actions(&rule_clone, fact, fact_store)?;
+                            self.execute_rule_actions(&rule_clone, fact, fact_store, calculator)?;
                         results.push(RuleExecutionResult {
                             rule_id,
                             fact_id: fact.id,
@@ -1221,6 +1252,7 @@ impl ReteNetwork {
         rule: &Rule,
         fact: &Fact,
         _fact_store: &ArenaFactStore,
+        calculator: &Calculator,
     ) -> Result<Vec<crate::rete_nodes::ActionResult>> {
         use crate::types::ActionType;
 
@@ -1234,7 +1266,7 @@ impl ReteNetwork {
                     create_fact_actions.push(data.clone());
                 }
                 _ => {
-                    let result = self.execute_single_action(action, fact, rule.id);
+                    let result = self.execute_single_action(action, fact, rule.id, calculator);
                     action_results.push(result);
                 }
             }
@@ -1255,6 +1287,7 @@ impl ReteNetwork {
         action: &crate::types::Action,
         fact: &Fact,
         rule_id: RuleId,
+        calculator: &Calculator,
     ) -> crate::rete_nodes::ActionResult {
         use crate::rete_nodes::ActionResult;
         use crate::types::ActionType;
@@ -1414,6 +1447,7 @@ impl ReteNetwork {
                     output_field,
                     fact,
                     rule_id,
+                    calculator,
                 ),
             _ => ActionResult::Logged {
                 message: format!("Action type not yet implemented: {:?}", action.action_type),
@@ -1478,9 +1512,12 @@ impl ReteNetwork {
         output_field: &str,
         fact: &Fact,
         rule_id: RuleId,
+        calculator: &Calculator,
     ) -> crate::rete_nodes::ActionResult {
         use crate::rete_nodes::ActionResult;
-        use tracing::info;
+        use tracing::{info, warn};
+
+        // The calculator will handle non-existent calculators and return an error
 
         // Create cache key from calculator name and input values
         let cache_key = self.generate_calculator_cache_key(calculator_name, input_mapping, fact);
@@ -1502,10 +1539,29 @@ impl ReteNetwork {
         }
 
         // Cache miss - need to execute calculator
-        // For now, we'll simulate calculator execution since we don't have the actual calculator instance
-        // In a real implementation, this would call the calculator with the mapped inputs
-        let calculator_result =
-            self.simulate_calculator_execution(calculator_name, input_mapping, fact);
+        // Prepare inputs for calculator by mapping fact fields to calculator parameters
+        let mut calculator_inputs = std::collections::HashMap::new();
+        for (calc_param, fact_field) in input_mapping {
+            if let Some(field_value) = fact.data.fields.get(fact_field) {
+                calculator_inputs.insert(calc_param.clone(), field_value);
+            }
+        }
+
+        // Call the real calculator
+        let calculator_result = match calculator.calculate(calculator_name, &calculator_inputs) {
+            Ok(result) => result,
+            Err(error_msg) => {
+                warn!(
+                    rule_id = rule_id,
+                    calculator_name = calculator_name,
+                    error = error_msg,
+                    "Calculator execution failed"
+                );
+                return ActionResult::Logged {
+                    message: format!("Calculator '{calculator_name}' failed: {error_msg}"),
+                };
+            }
+        };
 
         // Store result in cache
         self.calculator_cache.insert(cache_key, calculator_result.clone());
@@ -1553,104 +1609,6 @@ impl ReteNetwork {
         }
 
         key_parts.join("|")
-    }
-
-    /// Simulate calculator execution for development purposes
-    /// In production, this would be replaced with actual calculator calls
-    fn simulate_calculator_execution(
-        &self,
-        calculator_name: &str,
-        input_mapping: &std::collections::HashMap<String, String>,
-        fact: &Fact,
-    ) -> crate::types::FactValue {
-        use crate::types::FactValue;
-
-        // Simple simulation based on calculator name
-        match calculator_name {
-            "risk_score" => {
-                // Simulate risk calculation
-                if let Some(amount_field) = input_mapping.get("amount") {
-                    if let Some(FactValue::Float(amount)) = fact.data.fields.get(amount_field) {
-                        let risk_score = (amount / 1000.0).clamp(0.0, 100.0);
-                        return FactValue::Float(risk_score);
-                    }
-                }
-                FactValue::Float(50.0) // Default risk score
-            }
-            "total_value" => {
-                // Simulate sum calculation
-                let mut total = 0.0;
-                for fact_field in input_mapping.values() {
-                    if let Some(FactValue::Float(value)) = fact.data.fields.get(fact_field) {
-                        total += value;
-                    } else if let Some(FactValue::Integer(value)) = fact.data.fields.get(fact_field)
-                    {
-                        total += *value as f64;
-                    }
-                }
-                FactValue::Float(total)
-            }
-            "compliance_check" => {
-                // Simulate boolean result
-                FactValue::Boolean(true)
-            }
-            "threshold_check" => {
-                // Simulate threshold check: compare value against threshold
-                if let (Some(value_field), Some(threshold_field)) =
-                    (input_mapping.get("value"), input_mapping.get("threshold"))
-                {
-                    let value = match fact.data.fields.get(value_field) {
-                        Some(FactValue::Float(v)) => *v,
-                        Some(FactValue::Integer(v)) => *v as f64,
-                        _ => return FactValue::Boolean(false),
-                    };
-
-                    let threshold = match fact.data.fields.get(threshold_field) {
-                        Some(FactValue::Float(t)) => *t,
-                        Some(FactValue::Integer(t)) => *t as f64,
-                        _ => return FactValue::Boolean(false),
-                    };
-
-                    FactValue::Boolean(value > threshold)
-                } else {
-                    FactValue::Boolean(false)
-                }
-            }
-            "limit_validator" => {
-                // Simulate limit validation: check if value is within min/max bounds
-                if let (Some(value_field), Some(min_field), Some(max_field)) = (
-                    input_mapping.get("value"),
-                    input_mapping.get("min"),
-                    input_mapping.get("max"),
-                ) {
-                    let value = match fact.data.fields.get(value_field) {
-                        Some(FactValue::Float(v)) => *v,
-                        Some(FactValue::Integer(v)) => *v as f64,
-                        _ => return FactValue::Boolean(false),
-                    };
-
-                    let min_val = match fact.data.fields.get(min_field) {
-                        Some(FactValue::Float(m)) => *m,
-                        Some(FactValue::Integer(m)) => *m as f64,
-                        _ => return FactValue::Boolean(false),
-                    };
-
-                    let max_val = match fact.data.fields.get(max_field) {
-                        Some(FactValue::Float(m)) => *m,
-                        Some(FactValue::Integer(m)) => *m as f64,
-                        _ => return FactValue::Boolean(false),
-                    };
-
-                    FactValue::Boolean(value >= min_val && value <= max_val)
-                } else {
-                    FactValue::Boolean(false)
-                }
-            }
-            _ => {
-                // Default calculation result
-                FactValue::String(format!("result_from_{calculator_name}"))
-            }
-        }
     }
 
     /// Clear the calculator cache (useful for testing or when inputs change significantly)
@@ -1797,10 +1755,16 @@ impl ReteNetwork {
 
     /// Get statistics about the network
     pub fn get_stats(&self) -> NetworkStats {
+        // Calculate approximate memory usage
+        let node_memory =
+            (self.alpha_nodes.len() + self.beta_nodes.len() + self.terminal_nodes.len()) * 64; // ~64 bytes per node
+        let rule_memory = self.rules.len() * 256; // ~256 bytes per rule
+        let base_memory = 1024; // Base RETE network overhead
+
         NetworkStats {
             node_count: (self.alpha_nodes.len() + self.beta_nodes.len() + self.terminal_nodes.len())
                 as u64,
-            memory_usage_bytes: 1024, // Simplified estimate
+            memory_usage_bytes: (base_memory + node_memory + rule_memory) as u64,
         }
     }
 
@@ -1861,6 +1825,188 @@ impl ReteNetwork {
     /// Clean up inactive lazy aggregations to free memory
     pub fn cleanup_lazy_aggregations(&self) {
         self.lazy_aggregation_manager.cleanup_inactive_aggregations();
+    }
+
+    /// Evaluate an aggregation condition
+    ///
+    /// For now, implements basic aggregation evaluation without lazy optimization.
+    /// This will be enhanced with full lazy aggregation support in a future iteration.
+    fn evaluate_aggregation_condition(
+        &self,
+        trigger_fact: &Fact,
+        agg_condition: &crate::types::AggregationCondition,
+        fact_store: &ArenaFactStore,
+    ) -> Result<bool> {
+        // Get all facts for aggregation
+        let all_facts = fact_store.iter();
+
+        // EDGE CASE: Empty fact store should return false for aggregations
+        if all_facts.is_empty() {
+            debug!(
+                "Aggregation condition on empty fact store: trigger_fact={}, source_field={} -> returning false",
+                trigger_fact.id, agg_condition.source_field
+            );
+            return Ok(false);
+        }
+
+        debug!(
+            "Evaluating aggregation condition: trigger_fact={}, source_field={}, fact_store_size={}",
+            trigger_fact.id,
+            agg_condition.source_field,
+            all_facts.len()
+        );
+
+        // Filter facts by group criteria
+        let matching_facts: Vec<_> = all_facts
+            .into_iter()
+            .filter(|fact| {
+                // Check if this fact matches the group criteria
+                if agg_condition.group_by.is_empty() {
+                    // Global aggregation: include all facts
+                    true
+                } else {
+                    // Group-based aggregation: match group fields
+                    agg_condition.group_by.iter().all(|group_field| {
+                        let trigger_value = trigger_fact.data.fields.get(group_field);
+                        let candidate_value = fact.data.fields.get(group_field);
+                        trigger_value == candidate_value
+                    })
+                }
+            })
+            .collect();
+
+        // Calculate aggregation value
+        use crate::types::AggregationType;
+        let aggregated_value = match agg_condition.aggregation_type {
+            AggregationType::Count => {
+                let count = matching_facts
+                    .iter()
+                    .filter(|fact| fact.data.fields.contains_key(&agg_condition.source_field))
+                    .count();
+                crate::types::FactValue::Integer(count as i64)
+            }
+            AggregationType::Sum => {
+                let sum: f64 = matching_facts
+                    .iter()
+                    .filter_map(|fact| fact.data.fields.get(&agg_condition.source_field))
+                    .filter_map(|value| value.as_f64())
+                    .sum();
+                crate::types::FactValue::Float(sum)
+            }
+            AggregationType::Average => {
+                let values: Vec<f64> = matching_facts
+                    .iter()
+                    .filter_map(|fact| fact.data.fields.get(&agg_condition.source_field))
+                    .filter_map(|value| value.as_f64())
+                    .collect();
+                if values.is_empty() {
+                    crate::types::FactValue::Float(0.0)
+                } else {
+                    let avg = values.iter().sum::<f64>() / values.len() as f64;
+                    crate::types::FactValue::Float(avg)
+                }
+            }
+            AggregationType::Min => {
+                let min_value = matching_facts
+                    .iter()
+                    .filter_map(|fact| fact.data.fields.get(&agg_condition.source_field))
+                    .filter_map(|value| value.as_f64())
+                    .fold(f64::INFINITY, f64::min);
+                crate::types::FactValue::Float(min_value)
+            }
+            AggregationType::Max => {
+                let max_value = matching_facts
+                    .iter()
+                    .filter_map(|fact| fact.data.fields.get(&agg_condition.source_field))
+                    .filter_map(|value| value.as_f64())
+                    .fold(f64::NEG_INFINITY, f64::max);
+                crate::types::FactValue::Float(max_value)
+            }
+            AggregationType::StandardDeviation => {
+                let values: Vec<f64> = matching_facts
+                    .iter()
+                    .filter_map(|fact| fact.data.fields.get(&agg_condition.source_field))
+                    .filter_map(|value| value.as_f64())
+                    .collect();
+                if values.len() < 2 {
+                    crate::types::FactValue::Float(0.0)
+                } else {
+                    let mean = values.iter().sum::<f64>() / values.len() as f64;
+                    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>()
+                        / values.len() as f64;
+                    crate::types::FactValue::Float(variance.sqrt())
+                }
+            }
+            AggregationType::Percentile(p) => {
+                let mut values: Vec<f64> = matching_facts
+                    .iter()
+                    .filter_map(|fact| fact.data.fields.get(&agg_condition.source_field))
+                    .filter_map(|value| value.as_f64())
+                    .collect();
+                if values.is_empty() {
+                    crate::types::FactValue::Float(0.0)
+                } else {
+                    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    let rank_f = (p / 100.0) * (values.len() as f64 - 1.0);
+                    let lower = rank_f.floor() as usize;
+                    let upper = rank_f.ceil() as usize;
+                    let interp = if upper == lower {
+                        values[lower]
+                    } else {
+                        let w = rank_f - lower as f64;
+                        values[lower] * (1.0 - w) + values[upper] * w
+                    };
+                    crate::types::FactValue::Float(interp)
+                }
+            }
+        };
+
+        // Evaluate the having clause if present
+        if let Some(having_condition) = &agg_condition.having {
+            // Create a synthetic fact with the aggregated value
+            let mut synthetic_fields = std::collections::HashMap::new();
+            synthetic_fields.insert(agg_condition.alias.clone(), aggregated_value);
+
+            let synthetic_fact = crate::types::Fact {
+                id: 0,
+                external_id: None,
+                timestamp: chrono::Utc::now(),
+                data: crate::types::FactData { fields: synthetic_fields },
+            };
+
+            // Evaluate the having condition against the synthetic fact
+            let result = self.test_condition(&synthetic_fact, having_condition, fact_store)?;
+            Ok(result)
+        } else {
+            // If no having clause, check if aggregation has meaningful data
+            // For Count, we need facts that contain the source field
+            // For other aggregations, we need non-empty result sets
+            match agg_condition.aggregation_type {
+                AggregationType::Count => {
+                    // Count aggregation succeeds if any facts contain the source field
+                    let has_source_field_facts = matching_facts
+                        .iter()
+                        .any(|fact| fact.data.fields.contains_key(&agg_condition.source_field));
+                    debug!(
+                        "Count aggregation: matching_facts={}, has_source_field_facts={}",
+                        matching_facts.len(),
+                        has_source_field_facts
+                    );
+                    Ok(has_source_field_facts)
+                }
+                _ => {
+                    // Other aggregations require non-empty matching facts with the source field
+                    let has_values = matching_facts.iter().any(|fact| {
+                        fact.data
+                            .fields
+                            .get(&agg_condition.source_field)
+                            .and_then(|v| v.as_f64())
+                            .is_some()
+                    });
+                    Ok(has_values)
+                }
+            }
+        }
     }
 }
 

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_formula_action_basic_arithmetic() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Formula Action Basic Arithmetic");
 
@@ -119,7 +119,7 @@ fn test_formula_action_basic_arithmetic() {
 
 #[test]
 fn test_formula_action_field_reference() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Formula Action Field Reference");
 

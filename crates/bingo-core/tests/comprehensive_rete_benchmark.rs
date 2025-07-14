@@ -79,7 +79,7 @@ fn run_benchmark(
     // Batch processing
     let batch_time = {
         let start = Instant::now();
-        let mut engine = BingoEngine::new().expect("Failed to create engine");
+        let engine = BingoEngine::new().expect("Failed to create engine");
 
         for rule in &rules {
             let _ = engine.add_rule(rule.clone());
@@ -94,7 +94,7 @@ fn run_benchmark(
 
     // Incremental processing
     let incremental_time = {
-        let mut engine = BingoEngine::new().expect("Failed to create engine");
+        let engine = BingoEngine::new().expect("Failed to create engine");
 
         for rule in &rules {
             let _ = engine.add_rule(rule.clone());

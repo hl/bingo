@@ -5,7 +5,7 @@ use std::collections::HashMap;
 fn test_debug_rule_matching() {
     println!("Testing rule matching with small dataset...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add a simple rule
     let rule = Rule {

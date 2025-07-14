@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_cross_fact_pattern_matching() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a multi-condition rule that should match across different facts
     let rule = Rule {
@@ -68,7 +68,7 @@ fn test_cross_fact_pattern_matching() {
 
 #[test]
 fn test_beta_network_partial_matches() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a rule with multiple conditions
     let rule = Rule {
@@ -129,7 +129,7 @@ fn test_beta_network_partial_matches() {
 
 #[test]
 fn test_beta_network_structure_creation() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a rule with multiple conditions to trigger beta network creation
     let rule = Rule {
@@ -187,7 +187,7 @@ fn test_beta_network_structure_creation() {
 
 #[test]
 fn test_alpha_beta_integration() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create both single and multi-condition rules to test integration
     let single_rule = Rule {

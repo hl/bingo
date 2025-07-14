@@ -1,0 +1,70 @@
+Test Timing Analysis Results - Mon Jul 14 18:46:32 CEST 2025
+=======================================
+
+
+✅ built_in_calculators_test: 1.00s
+✅ action_type_handlers_test: 0s
+✅ simple_rule_eval_test: 1.00s
+✅ debug_performance_analysis: 0s
+✅ debug_action_execution: 1.00s
+✅ fact_mutation_test: 0s
+✅ debug_10k_scaling: 1.00s
+✅ debug_1k_scaling: 0s
+✅ debug_beta_test: 1.00s
+❌ simple_profiling_report: FAILED (0s)
+❌ enhanced_test_coverage: FAILED (0s)
+✅ serialization_performance_test: 1.00s
+✅ working_memory_test: 0s
+❌ performance_bottleneck_analysis: FAILED (1.00s)
+❌ fact_lookup_test: FAILED (0s)
+✅ scaled_performance_test: 0s
+❌ session_window_integration_test: FAILED (1.00s)
+✅ alpha_memory_performance_test: 0s
+✅ comprehensive_rete_benchmark: 4.00s
+❌ lazy_aggregation_integration_test: FAILED (0s)
+✅ thread_safety_test: 2.00s
+✅ fact_store_profiling: 0s
+✅ isolated_performance_test: 1.00s
+✅ rete_direct_test: 0s
+❌ rete_network_edge_cases_test: FAILED (1.00s)
+✅ performance_profiling_test: 0s
+✅ simple_rete_performance_test: 1.00s
+✅ api_payload_rule_test: 0s
+✅ minimal_performance_test: 1.00s
+✅ cross_fact_matching_test: 0s
+✅ beta_memory_integration_test: 0s
+✅ complex_rule_performance_test: 1.00s
+✅ debug_rule_matching: 0s
+✅ rete_network_performance_benchmarks: 1.00s
+❌ scaling_validation_test: FAILED (26.00s)
+❌ rule_optimization_test: FAILED (0s)
+❌ true_rete_architecture_validation: FAILED (1.00s)
+✅ rete_algorithm_validation: 0s
+❌ quick_performance_analysis: FAILED (1.00s)
+✅ debug_pattern_matching: 0s
+✅ debug_delete_rule_test: 1.00s
+❌ optimization_validation_test: FAILED (0s)
+✅ calculator_integration_test: 0s
+✅ temporary_rule_eval: 1.00s
+✅ beta_network_test: 0s
+✅ concurrent_engine_test: 1.00s
+❌ comprehensive_optimization_summary: FAILED (0s)
+❌ comprehensive_component_profiling: FAILED (0s)
+❌ end_to_end_integration_test: FAILED (1.00s)
+❌ incremental_processing_test: FAILED (0s)
+❌ simplified_api_test: FAILED (0s)
+✅ formula_action_test: 0s
+✅ performance_profiling: 1.00s
+✅ grpc_compliance_tests: 3.00s
+✅ grpc_tronc_tests: 0s
+✅ grpc_wage_cost_tests: 0s
+✅ grpc_payroll_tests: 1.00s
+
+SUMMARY
+=======
+Total tests analyzed: 57
+Fast tests (<10s): 40
+Moderate tests (10-60s): 0
+Slow tests (>60s): 0
+Timeout tests (>120s): 0
+Failed tests: 17

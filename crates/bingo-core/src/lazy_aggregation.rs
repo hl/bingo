@@ -14,25 +14,24 @@ use crate::types::{
     AggregationCondition, AggregationType, AggregationWindow, Condition, Fact, FactValue,
 };
 use anyhow::Result;
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
-/// Lazy aggregation result that defers computation until needed
+/// Lazy aggregation result that defers computation until needed (thread-safe)
 #[derive(Debug)]
 pub struct LazyAggregationResult {
     /// The aggregation specification
     spec: AggregationCondition,
     /// Trigger fact that initiated this aggregation
     trigger_fact: Fact,
-    /// Cached result if already computed
-    cached_result: RefCell<Option<FactValue>>,
+    /// Cached result if already computed (thread-safe)
+    cached_result: RwLock<Option<FactValue>>,
     /// Fact store reference for lazy evaluation
     fact_store: Arc<ArenaFactStore>,
     /// Memory pools for efficient allocation
     memory_pools: Arc<MemoryPoolManager>,
-    /// Statistics for performance monitoring
-    stats: RefCell<LazyAggregationStats>,
+    /// Statistics for performance monitoring (thread-safe)
+    stats: Mutex<LazyAggregationStats>,
 }
 
 /// Statistics for lazy aggregation performance monitoring
@@ -57,28 +56,34 @@ impl LazyAggregationResult {
         Self {
             spec,
             trigger_fact,
-            cached_result: RefCell::new(None),
+            cached_result: RwLock::new(None),
             fact_store,
             memory_pools,
-            stats: RefCell::new(LazyAggregationStats::default()),
+            stats: Mutex::new(LazyAggregationStats::default()),
         }
     }
 
     /// Get the aggregation result, computing it lazily if needed
     pub fn get_value(&self) -> Result<FactValue> {
-        // Check cache first
-        if let Some(cached) = self.cached_result.borrow().as_ref() {
-            self.stats.borrow_mut().cache_hits += 1;
-            return Ok(cached.clone());
+        // Check cache first (using read lock for concurrent access)
+        {
+            let cached_result = self.cached_result.read().unwrap();
+            if let Some(cached) = cached_result.as_ref() {
+                self.stats.lock().unwrap().cache_hits += 1;
+                return Ok(cached.clone());
+            }
         }
 
-        self.stats.borrow_mut().cache_misses += 1;
+        self.stats.lock().unwrap().cache_misses += 1;
 
         // Compute the result lazily
         let result = self.compute_aggregation()?;
 
-        // Cache the result
-        *self.cached_result.borrow_mut() = Some(result.clone());
+        // Cache the result (using write lock for exclusive access)
+        {
+            let mut cached_result = self.cached_result.write().unwrap();
+            *cached_result = Some(result.clone());
+        }
 
         Ok(result)
     }
@@ -87,7 +92,7 @@ impl LazyAggregationResult {
     pub fn evaluate_having_lazy(&self, having_condition: &Condition) -> Result<bool> {
         // For simple conditions, we might be able to short-circuit
         if let Some(short_circuit_result) = self.try_short_circuit_having(having_condition)? {
-            self.stats.borrow_mut().early_terminations += 1;
+            self.stats.lock().unwrap().early_terminations += 1;
             return Ok(short_circuit_result);
         }
 
@@ -171,13 +176,14 @@ impl LazyAggregationResult {
     fn has_any_matching_facts(&self) -> Result<bool> {
         let candidates = self.get_candidate_facts()?;
 
-        for candidate in candidates {
+        for candidate in &candidates {
             if self.fact_matches_group(candidate)? {
-                self.stats.borrow_mut().facts_scanned += 1;
-                self.stats.borrow_mut().early_terminations += 1;
+                let mut stats = self.stats.lock().unwrap();
+                stats.facts_scanned += 1;
+                stats.early_terminations += 1;
                 return Ok(true);
             }
-            self.stats.borrow_mut().facts_scanned += 1;
+            self.stats.lock().unwrap().facts_scanned += 1;
         }
 
         Ok(false)
@@ -187,7 +193,7 @@ impl LazyAggregationResult {
     fn has_any_positive_values(&self) -> Result<bool> {
         let candidates = self.get_candidate_facts()?;
 
-        for candidate in candidates {
+        for candidate in &candidates {
             if !self.fact_matches_group(candidate)? {
                 continue;
             }
@@ -195,20 +201,21 @@ impl LazyAggregationResult {
             if let Some(value) = candidate.data.fields.get(&self.spec.source_field) {
                 if let Some(num_val) = value.as_f64() {
                     if num_val > 0.0 {
-                        self.stats.borrow_mut().facts_scanned += 1;
-                        self.stats.borrow_mut().early_terminations += 1;
+                        let mut stats = self.stats.lock().unwrap();
+                        stats.facts_scanned += 1;
+                        stats.early_terminations += 1;
                         return Ok(true);
                     }
                 }
             }
-            self.stats.borrow_mut().facts_scanned += 1;
+            self.stats.lock().unwrap().facts_scanned += 1;
         }
 
         Ok(false)
     }
 
     /// Get candidate facts based on window specification
-    fn get_candidate_facts(&self) -> Result<Vec<&Fact>> {
+    fn get_candidate_facts(&self) -> Result<Vec<Fact>> {
         let candidates = if let Some(window) = &self.spec.window {
             match window {
                 AggregationWindow::Time { duration_ms } => {
@@ -219,34 +226,36 @@ impl LazyAggregationResult {
                 }
                 AggregationWindow::Sliding { size } => {
                     // Get last `size` facts in temporal order
-                    let mut all: Vec<&Fact> = self.fact_store.iter().collect();
-                    all.sort_by_key(|f| f.timestamp);
-                    if *size >= all.len() {
-                        all
+                    let mut all_facts = self.fact_store.iter();
+                    all_facts.sort_by_key(|f| f.timestamp);
+                    if *size >= all_facts.len() {
+                        all_facts
                     } else {
-                        all.split_off(all.len() - size)
+                        all_facts.split_off(all_facts.len() - size)
                     }
                 }
                 AggregationWindow::Tumbling { size } => {
                     // Determine window index based on trigger fact position
-                    let mut all: Vec<&Fact> = self.fact_store.iter().collect();
-                    all.sort_by_key(|f| f.timestamp);
-                    if all.is_empty() {
+                    let mut all_facts = self.fact_store.iter();
+                    all_facts.sort_by_key(|f| f.timestamp);
+                    if all_facts.is_empty() {
                         vec![]
                     } else {
-                        let idx =
-                            all.iter().position(|f| f.id == self.trigger_fact.id).unwrap_or(0);
+                        let idx = all_facts
+                            .iter()
+                            .position(|f| f.id == self.trigger_fact.id)
+                            .unwrap_or(0);
                         let window_start = (idx / size) * size;
-                        all.into_iter().skip(window_start).take(*size).collect()
+                        all_facts.into_iter().skip(window_start).take(*size).collect()
                     }
                 }
                 AggregationWindow::Session { .. } => {
                     // Session windows not fully supported yet
-                    self.fact_store.iter().collect()
+                    self.fact_store.iter()
                 }
             }
         } else {
-            self.fact_store.iter().collect()
+            self.fact_store.iter()
         };
 
         Ok(candidates)
@@ -266,14 +275,14 @@ impl LazyAggregationResult {
 
     /// Compute the full aggregation result
     fn compute_aggregation(&self) -> Result<FactValue> {
-        self.stats.borrow_mut().full_computations += 1;
+        self.stats.lock().unwrap().full_computations += 1;
 
         let candidates = self.get_candidate_facts()?;
         let mut nums = self.memory_pools.numeric_vecs.get();
 
         // Collect numeric values from matching facts
         for candidate in &candidates {
-            self.stats.borrow_mut().facts_scanned += 1;
+            self.stats.lock().unwrap().facts_scanned += 1;
 
             if !self.fact_matches_group(candidate)? {
                 continue;
@@ -282,7 +291,7 @@ impl LazyAggregationResult {
             if let Some(value) = candidate.data.fields.get(&self.spec.source_field) {
                 if let Some(num_val) = value.as_f64() {
                     nums.push(num_val);
-                    self.stats.borrow_mut().facts_processed += 1;
+                    self.stats.lock().unwrap().facts_processed += 1;
                 }
             }
         }
@@ -395,22 +404,22 @@ impl LazyAggregationResult {
 
     /// Get performance statistics
     pub fn get_stats(&self) -> LazyAggregationStats {
-        self.stats.borrow().clone()
+        self.stats.lock().unwrap().clone()
     }
 
     /// Reset the cache (useful when fact store changes)
     pub fn invalidate_cache(&self) {
-        *self.cached_result.borrow_mut() = None;
+        *self.cached_result.write().unwrap() = None;
     }
 
     /// Check if the result is cached
     pub fn is_cached(&self) -> bool {
-        self.cached_result.borrow().is_some()
+        self.cached_result.read().unwrap().is_some()
     }
 
     /// Get cache hit rate as percentage
     pub fn cache_hit_rate(&self) -> f64 {
-        let stats = self.stats.borrow();
+        let stats = self.stats.lock().unwrap();
         let total = stats.cache_hits + stats.cache_misses;
         if total > 0 {
             (stats.cache_hits as f64 / total as f64) * 100.0
@@ -421,7 +430,7 @@ impl LazyAggregationResult {
 
     /// Get early termination rate as percentage
     pub fn early_termination_rate(&self) -> f64 {
-        let stats = self.stats.borrow();
+        let stats = self.stats.lock().unwrap();
         let total = stats.early_terminations + stats.full_computations;
         if total > 0 {
             (stats.early_terminations as f64 / total as f64) * 100.0
@@ -431,13 +440,13 @@ impl LazyAggregationResult {
     }
 }
 
-/// Manager for lazy aggregations with global optimizations
+/// Manager for lazy aggregations with global optimizations (thread-safe)
 #[derive(Debug)]
 pub struct LazyAggregationManager {
-    /// Active lazy aggregations indexed by a key
-    active_aggregations: RefCell<HashMap<String, LazyAggregationResult>>,
-    /// Global statistics
-    global_stats: RefCell<LazyAggregationManagerStats>,
+    /// Active lazy aggregations indexed by a key (thread-safe)
+    active_aggregations: RwLock<HashMap<String, LazyAggregationResult>>,
+    /// Global statistics (thread-safe)
+    global_stats: Mutex<LazyAggregationManagerStats>,
     /// Memory pools reference
     memory_pools: Arc<MemoryPoolManager>,
 }
@@ -456,8 +465,8 @@ impl LazyAggregationManager {
     /// Create a new lazy aggregation manager
     pub fn new(memory_pools: Arc<MemoryPoolManager>) -> Self {
         Self {
-            active_aggregations: RefCell::new(HashMap::new()),
-            global_stats: RefCell::new(LazyAggregationManagerStats::default()),
+            active_aggregations: RwLock::new(HashMap::new()),
+            global_stats: Mutex::new(LazyAggregationManagerStats::default()),
             memory_pools,
         }
     }
@@ -472,20 +481,31 @@ impl LazyAggregationManager {
         // Generate a key for the aggregation (based on spec and group values)
         let key = self.generate_aggregation_key(&spec, &trigger_fact);
 
-        let mut aggregations = self.active_aggregations.borrow_mut();
-        let mut stats = self.global_stats.borrow_mut();
+        // Check if aggregation already exists (using read lock for concurrent access)
+        {
+            let aggregations = self.active_aggregations.read().unwrap();
+            if aggregations.contains_key(&key) {
+                self.global_stats.lock().unwrap().aggregations_reused += 1;
+                return key;
+            }
+        }
 
-        if aggregations.contains_key(&key) {
-            stats.aggregations_reused += 1;
-        } else {
-            let lazy_agg = LazyAggregationResult::new(
-                spec,
-                trigger_fact,
-                fact_store,
-                self.memory_pools.clone(),
-            );
-            aggregations.insert(key.clone(), lazy_agg);
-            stats.aggregations_created += 1;
+        // Create new aggregation (using write lock for exclusive access)
+        {
+            let mut aggregations = self.active_aggregations.write().unwrap();
+            // Double-check in case another thread created it
+            if !aggregations.contains_key(&key) {
+                let lazy_agg = LazyAggregationResult::new(
+                    spec,
+                    trigger_fact,
+                    fact_store,
+                    self.memory_pools.clone(),
+                );
+                aggregations.insert(key.clone(), lazy_agg);
+                self.global_stats.lock().unwrap().aggregations_created += 1;
+            } else {
+                self.global_stats.lock().unwrap().aggregations_reused += 1;
+            }
         }
 
         key
@@ -495,15 +515,15 @@ impl LazyAggregationManager {
     pub fn get_aggregation(&self, key: &str) -> Option<LazyAggregationResult> {
         // Note: This is a simplified implementation. In practice, we'd want to avoid cloning
         // and use references or Arc<> for better performance
-        self.active_aggregations.borrow().get(key).cloned()
+        self.active_aggregations.read().unwrap().get(key).cloned()
     }
 
     /// Invalidate all caches (when fact store changes significantly)
     pub fn invalidate_all_caches(&self) {
-        let mut stats = self.global_stats.borrow_mut();
-        stats.cache_invalidations += 1;
+        self.global_stats.lock().unwrap().cache_invalidations += 1;
 
-        for (_, aggregation) in self.active_aggregations.borrow().iter() {
+        let aggregations = self.active_aggregations.read().unwrap();
+        for (_, aggregation) in aggregations.iter() {
             aggregation.invalidate_cache();
         }
     }
@@ -512,7 +532,7 @@ impl LazyAggregationManager {
     pub fn cleanup_inactive_aggregations(&self) {
         // Simple cleanup strategy: remove aggregations that haven't been accessed recently
         // In a real implementation, we'd track access times
-        self.active_aggregations.borrow_mut().clear();
+        self.active_aggregations.write().unwrap().clear();
     }
 
     /// Generate a unique key for an aggregation
@@ -541,7 +561,7 @@ impl LazyAggregationManager {
 
     /// Get global manager statistics
     pub fn get_stats(&self) -> LazyAggregationManagerStats {
-        self.global_stats.borrow().clone()
+        self.global_stats.lock().unwrap().clone()
     }
 }
 
@@ -550,13 +570,20 @@ impl Clone for LazyAggregationResult {
         Self {
             spec: self.spec.clone(),
             trigger_fact: self.trigger_fact.clone(),
-            cached_result: RefCell::new(self.cached_result.borrow().clone()),
+            cached_result: RwLock::new(self.cached_result.read().unwrap().clone()),
             fact_store: self.fact_store.clone(),
             memory_pools: self.memory_pools.clone(),
-            stats: RefCell::new(self.stats.borrow().clone()),
+            stats: Mutex::new(self.stats.lock().unwrap().clone()),
         }
     }
 }
+
+// Thread safety implementations
+unsafe impl Send for LazyAggregationResult {}
+unsafe impl Sync for LazyAggregationResult {}
+
+unsafe impl Send for LazyAggregationManager {}
+unsafe impl Sync for LazyAggregationManager {}
 
 #[cfg(test)]
 mod tests {
@@ -647,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_early_termination_count() {
-        let mut fact_store = ArenaFactStore::new();
+        let fact_store = ArenaFactStore::new();
         fact_store.insert(create_test_fact(1, 10.0, "A"));
         fact_store.insert(create_test_fact(2, 20.0, "A"));
 

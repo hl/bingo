@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_incremental_fact_addition() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a rule that requires high score and active status
     let rule = Rule {
@@ -99,7 +99,7 @@ fn test_incremental_fact_addition() {
 
 #[test]
 fn test_fact_retraction() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a simple rule
     let rule = Rule {
@@ -143,7 +143,10 @@ fn test_fact_retraction() {
         1,
         "One rule should be affected by retraction"
     );
-    assert_eq!(affected_rules[0], 2, "Correct rule should be affected");
+    assert_eq!(
+        affected_rules[0].rule_id, 2,
+        "Correct rule should be affected"
+    );
 
     // Verify fact is removed from working memory
     let (fact_count_after, _) = engine.get_working_memory_stats();
@@ -158,8 +161,8 @@ fn test_fact_retraction() {
 
 #[test]
 fn test_incremental_vs_batch_processing() {
-    let mut incremental_engine = BingoEngine::new().expect("Engine creation failed");
-    let mut batch_engine = BingoEngine::new().expect("Engine creation failed");
+    let incremental_engine = BingoEngine::new().expect("Engine creation failed");
+    let batch_engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create identical rules in both engines
     let rule = Rule {
@@ -238,7 +241,7 @@ fn test_incremental_vs_batch_processing() {
 
 #[test]
 fn test_working_memory_lifecycle() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a rule
     let rule = Rule {
@@ -302,7 +305,7 @@ fn test_working_memory_lifecycle() {
 
 #[test]
 fn test_alpha_memory_integration() {
-    let mut engine = BingoEngine::new().expect("Engine creation failed");
+    let engine = BingoEngine::new().expect("Engine creation failed");
 
     // Create a rule to track alpha memory integration
     let rule = Rule {

@@ -10,7 +10,7 @@ use std::time::Instant;
 fn test_beta_network_multi_condition_rule() {
     println!("🔍 Testing beta network with multi-condition rules...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add a multi-condition rule: age > 18 AND status == "active"
     let rule = Rule {
@@ -152,7 +152,7 @@ fn test_beta_network_multi_condition_rule() {
 fn test_beta_network_incremental_token_propagation() {
     println!("🔍 Testing beta network incremental token propagation...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add a 3-condition rule: department == "eng" AND level > 3 AND status == "active"
     let rule = Rule {
@@ -305,7 +305,7 @@ fn test_beta_network_incremental_token_propagation() {
 fn test_beta_network_performance_scaling() {
     println!("🔍 Testing beta network performance with complex multi-condition rules...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add multiple complex rules to stress test the beta network
     let rule_count = 10;

@@ -10,7 +10,7 @@ use std::time::Instant;
 fn test_current_algorithm_scaling_problem() {
     println!("🔍 Testing current algorithm scaling with multiple rules...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add multiple rules to expose O(rules × facts) problem
     let rule_count = 50;
@@ -97,7 +97,7 @@ fn test_current_algorithm_scaling_problem() {
 fn test_alpha_memory_requirement() {
     println!("🔍 Testing alpha memory requirement for proper RETE...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add rules with identical conditions (should share alpha nodes in proper RETE)
     for i in 0..10 {
@@ -158,7 +158,7 @@ fn test_working_memory_requirement() {
     println!("🔍 Testing working memory requirement...");
 
     // This test shows why working memory is essential for incremental processing
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     let rule = Rule {
         id: 1,

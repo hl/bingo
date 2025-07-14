@@ -51,14 +51,15 @@ impl RulesEngineService for RulesEngineServiceImpl {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| Status::invalid_argument(format!("Invalid rule: {e}")))?;
 
-        // Create and configure engine for validation only
-        let mut engine = BingoEngine::new()
-            .map_err(|e| Status::internal(format!("Failed to create engine: {e}")))?;
+        // Get or create engine for this session
+        let engine = self.app_state.get_or_create_engine(&session_id);
 
-        // Validate rules by adding them to the engine
-        engine
-            .add_rules(core_rules.clone())
-            .map_err(|e| Status::invalid_argument(format!("Rule compilation failed: {e}")))?;
+        // Add rules to the engine
+        for rule in core_rules.iter() {
+            engine
+                .add_rule(rule.clone())
+                .map_err(|e| Status::invalid_argument(format!("Rule compilation failed: {e}")))?;
+        }
 
         let compilation_time = start_time.elapsed();
         let stats = engine.get_stats();
@@ -206,27 +207,22 @@ impl RulesEngineService for RulesEngineServiceImpl {
                 }
             };
 
-            // For compilation validation, spawn blocking task
+            // For compilation validation, use BingoEngine
             let rules_count = core_rules.len();
-            let compilation_result = tokio::task::spawn_blocking(move || -> Result<(usize, std::time::Duration), String> {
-                let mut engine = BingoEngine::new().map_err(|e| e.to_string())?;
-                let start = std::time::Instant::now();
-                engine.add_rules(core_rules).map_err(|e| e.to_string())?;
-                let stats = engine.get_stats();
-                Ok((stats.node_count, start.elapsed()))
-            }).await;
+            let engine = BingoEngine::new().map_err(|e| Status::internal(format!("Failed to create engine: {e}")))?;
+            let start = std::time::Instant::now();
 
-            let (node_count, compilation_time) = match compilation_result {
-                Ok(Ok((nodes, time))) => (nodes, time),
-                Ok(Err(e)) => {
+            // Add rules to the engine
+            for rule in core_rules.iter() {
+                if let Err(e) = engine.add_rule(rule.clone()) {
                     yield Err(Status::invalid_argument(format!("Rule compilation failed: {e}")));
                     return;
                 }
-                Err(e) => {
-                    yield Err(Status::internal(format!("Task join error: {e}")));
-                    return;
-                }
-            };
+            }
+
+            let stats = engine.get_stats();
+            let compilation_time = start.elapsed();
+            let node_count = stats.node_count;
 
             // Yield compilation result first
             yield Ok(ProcessingResponse {
@@ -260,30 +256,58 @@ impl RulesEngineService for RulesEngineServiceImpl {
                 }
             };
 
-            // For now, just simulate processing without actual engine execution
+            // Process facts through the engine
             let total_facts = core_facts.len();
+            let mut total_results = 0;
 
-            yield Ok(ProcessingResponse {
-                response: Some(processing_response::Response::StatusUpdate(
-                    ProcessingStatus {
-                        request_id: request_id.clone(),
-                        facts_processed: total_facts as i32,
-                        rules_executed: rules_count as i32,
-                        results_generated: 0, // No actual results for now
-                        processing_time_ms: start_time.elapsed().as_millis() as i64,
-                        completed: false,
-                        error_message: String::new(),
+            // Process facts in the engine
+            if !validate_only {
+                match engine.process_facts(core_facts) {
+                    Ok(results) => {
+                        total_results = results.len();
+
+                        yield Ok(ProcessingResponse {
+                            response: Some(processing_response::Response::StatusUpdate(
+                                ProcessingStatus {
+                                    request_id: request_id.clone(),
+                                    facts_processed: total_facts as i32,
+                                    rules_executed: rules_count as i32,
+                                    results_generated: total_results as i32,
+                                    processing_time_ms: start_time.elapsed().as_millis() as i64,
+                                    completed: false,
+                                    error_message: String::new(),
+                                }
+                            ))
+                        });
                     }
-                ))
-            });
+                    Err(e) => {
+                        yield Err(Status::internal(format!("Fact processing failed: {e}")));
+                        return;
+                    }
+                }
+            } else {
+                yield Ok(ProcessingResponse {
+                    response: Some(processing_response::Response::StatusUpdate(
+                        ProcessingStatus {
+                            request_id: request_id.clone(),
+                            facts_processed: 0, // Validation only
+                            rules_executed: rules_count as i32,
+                            results_generated: 0,
+                            processing_time_ms: start_time.elapsed().as_millis() as i64,
+                            completed: false,
+                            error_message: String::new(),
+                        }
+                    ))
+                });
+            }
 
             // Final completion message
             yield Ok(ProcessingResponse {
                 response: Some(processing_response::Response::Completion(
                     ProcessingComplete {
                         request_id,
-                        total_facts_processed: total_facts as i32,
-                        total_results_generated: 0, // No actual results for now
+                        total_facts_processed: if validate_only { 0 } else { total_facts as i32 },
+                        total_results_generated: total_results as i32,
                         total_processing_time_ms: start_time.elapsed().as_millis() as i64,
                         success: true,
                         error_message: String::new(),

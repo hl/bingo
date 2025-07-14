@@ -47,7 +47,7 @@ fn create_fact(
 
 #[test]
 fn test_threshold_check_calculator() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Threshold Check Calculator");
 
@@ -119,7 +119,7 @@ fn test_threshold_check_calculator() {
 
 #[test]
 fn test_limit_validator_calculator() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Limit Validator Calculator");
 
@@ -189,7 +189,7 @@ fn test_limit_validator_calculator() {
 
 #[test]
 fn test_weighted_average_calculator() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Weighted Average Calculator");
 

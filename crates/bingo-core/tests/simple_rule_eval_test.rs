@@ -4,7 +4,7 @@ use bingo_core::{
 
 #[test]
 fn simple_greater_than_rule_fires() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Create rule
     let rule = Rule {

@@ -50,7 +50,7 @@ fn create_fact(
 
 #[test]
 fn test_lazy_aggregation_basic_functionality() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Basic Lazy Aggregation Functionality");
 
@@ -119,7 +119,7 @@ fn test_lazy_aggregation_basic_functionality() {
 
 #[test]
 fn test_lazy_aggregation_caching() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Lazy Aggregation Caching");
 
@@ -173,7 +173,7 @@ fn test_lazy_aggregation_caching() {
 
 #[test]
 fn test_lazy_aggregation_early_termination() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Lazy Aggregation Early Termination");
 
@@ -221,7 +221,7 @@ fn test_lazy_aggregation_early_termination() {
 
 #[test]
 fn test_lazy_aggregation_cache_invalidation() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Lazy Aggregation Cache Invalidation");
 
@@ -271,7 +271,7 @@ fn test_lazy_aggregation_cache_invalidation() {
 
 #[test]
 fn test_lazy_aggregation_memory_cleanup() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Lazy Aggregation Memory Cleanup");
 
@@ -337,7 +337,7 @@ fn test_lazy_aggregation_performance_comparison() {
         ));
     }
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Create aggregation rule
     let aggregation_condition = AggregationCondition {

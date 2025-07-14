@@ -134,6 +134,8 @@ pub mod beta_network;
 pub mod cache;
 /// Conflict resolution strategies for rule execution ordering
 pub mod conflict_resolution;
+/// System constants and configuration values
+pub mod constants;
 
 /// Debug visualisation and tracing utilities
 pub mod debugging;

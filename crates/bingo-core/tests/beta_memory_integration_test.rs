@@ -154,7 +154,7 @@ fn create_test_facts() -> Vec<Fact> {
 
 #[test]
 fn test_beta_memory_partial_match_creation() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add the multi-condition rule
     let rule = create_multi_condition_rule();
@@ -200,7 +200,7 @@ fn test_beta_memory_partial_match_creation() {
 
 #[test]
 fn test_beta_memory_statistics() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add the multi-condition rule
     let rule = create_multi_condition_rule();
@@ -223,7 +223,7 @@ fn test_beta_memory_statistics() {
 fn test_multi_condition_performance() {
     let config = performance_config::PerformanceConfig::detect_environment();
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(10_000).unwrap();
+    let engine = BingoEngine::with_capacity(10_000).unwrap();
 
     println!("🚀 Testing multi-condition rule performance with 10K facts");
 

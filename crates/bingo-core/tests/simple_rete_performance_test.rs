@@ -68,7 +68,7 @@ fn measure_batch_processing(
     let start_time = Instant::now();
 
     // Simulate batch processing by creating fresh engine and processing all facts together
-    let mut engine = BingoEngine::new().expect("Failed to create BingoEngine");
+    let engine = BingoEngine::new().expect("Failed to create BingoEngine");
 
     // Add rules
     for rule in rules {
@@ -94,7 +94,7 @@ fn measure_incremental_processing(
     initial_facts: &[Fact],
     incremental_facts: &[Fact],
 ) -> Duration {
-    let mut engine = BingoEngine::new().expect("Failed to create BingoEngine");
+    let engine = BingoEngine::new().expect("Failed to create BingoEngine");
 
     // Add rules
     for rule in rules {

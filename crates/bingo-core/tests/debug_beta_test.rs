@@ -5,7 +5,7 @@ use bingo_core::*;
 fn debug_beta_network_issue() {
     println!("🔍 Debug: Testing beta network issue...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Simple 2-condition rule: age > 18 AND status == "active"
     let rule = Rule {
@@ -72,7 +72,7 @@ fn debug_beta_network_issue() {
 fn debug_single_condition_test() {
     println!("🔍 Debug: Testing single conditions separately...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Test first condition only: age > 18
     let rule1 = Rule {

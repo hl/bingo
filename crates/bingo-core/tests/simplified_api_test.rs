@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[test]
 fn test_simplified_api_workflow() {
     // ✅ YOUR API: Create engine
-    let mut engine = BingoEngine::new().expect("Failed to create engine");
+    let engine = BingoEngine::new().expect("Failed to create engine");
 
     // ✅ YOUR API: Define rules with predefined calculators
     let mut rule_fields = HashMap::new();

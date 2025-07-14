@@ -79,7 +79,7 @@ fn create_fact_with_timestamp(
 
 #[test]
 fn test_stream_condition_with_session_windows() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Stream Condition with Session Windows");
 
@@ -149,7 +149,7 @@ fn test_stream_condition_with_session_windows() {
 
 #[test]
 fn test_aggregation_condition_with_session_windows() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Aggregation Condition with Session Windows");
 
@@ -217,7 +217,7 @@ fn test_aggregation_condition_with_session_windows() {
 
 #[test]
 fn test_session_window_gap_timeout_behavior() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Session Window Gap Timeout Behavior");
 
@@ -313,7 +313,7 @@ fn test_session_window_gap_timeout_behavior() {
 
 #[test]
 fn test_session_window_with_filter_condition() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Session Window with Filter Condition");
 
@@ -377,7 +377,7 @@ fn test_session_window_with_filter_condition() {
 
 #[test]
 fn test_multiple_users_session_windows() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🧪 Testing Session Windows with Multiple Users");
 

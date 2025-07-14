@@ -10,7 +10,7 @@ use std::time::Instant;
 fn test_working_memory_incremental_processing() {
     println!("🔍 Testing working memory incremental processing...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add a simple rule
     let rule = Rule {
@@ -106,7 +106,7 @@ fn test_working_memory_lifecycle() {
     // We can't directly access the RETE network, but we can test the lifecycle
     // through the engine's fact store
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add a rule for testing
     let rule = Rule {
@@ -173,7 +173,7 @@ fn test_working_memory_lifecycle() {
 fn test_working_memory_performance_benefit() {
     println!("🔍 Testing working memory performance benefits...");
 
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     // Add multiple rules to create a scenario where incremental processing helps
     let rule_count = 20;

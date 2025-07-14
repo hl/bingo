@@ -330,7 +330,7 @@ fn create_employee_facts(count: usize) -> Vec<Fact> {
 #[ignore] // Performance test - run with --release
 fn test_100k_facts_200_rules_performance() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(100_000).unwrap();
+    let engine = BingoEngine::with_capacity(100_000).unwrap();
 
     println!("🧪 Testing 100K facts with 200 calculation-heavy rules...");
 
@@ -404,7 +404,7 @@ fn test_100k_facts_200_rules_performance() {
 #[ignore] // Performance test - run with --release
 fn test_200k_facts_200_rules_performance() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(200_000).unwrap();
+    let engine = BingoEngine::with_capacity(200_000).unwrap();
 
     println!("🧪 Testing 200K facts with 200 calculation-heavy rules...");
 
@@ -478,7 +478,7 @@ fn test_200k_facts_200_rules_performance() {
 #[ignore] // Performance test - run with --release
 fn test_100k_facts_500_rules_performance() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(100_000).unwrap();
+    let engine = BingoEngine::with_capacity(100_000).unwrap();
 
     println!("🧪 Testing 100K facts with 500 calculation-heavy rules...");
 
@@ -552,7 +552,7 @@ fn test_100k_facts_500_rules_performance() {
 #[ignore] // Performance test - run with --release
 fn test_200k_facts_500_rules_performance() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(200_000).unwrap();
+    let engine = BingoEngine::with_capacity(200_000).unwrap();
 
     println!("🧪 Testing 200K facts with 500 calculation-heavy rules...");
 

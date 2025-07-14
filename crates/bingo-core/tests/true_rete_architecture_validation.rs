@@ -195,7 +195,7 @@ fn create_true_rete_test_facts() -> Vec<Fact> {
 
 #[test]
 fn test_true_rete_architecture_integration() {
-    let mut engine = BingoEngine::with_capacity(1000).unwrap();
+    let engine = BingoEngine::with_capacity(1000).unwrap();
 
     println!("🏗️  Testing True RETE Architecture Integration");
     println!("Alpha Memory + Beta Memory + Calculator Optimizations + ActionResult Pooling");
@@ -262,7 +262,7 @@ fn test_true_rete_architecture_integration() {
 #[ignore] // Performance test - run with --release
 fn test_true_rete_performance_scaling() {
     let memory_tracker = MemoryTracker::start().unwrap();
-    let mut engine = BingoEngine::with_capacity(25_000).unwrap();
+    let engine = BingoEngine::with_capacity(25_000).unwrap();
 
     println!("🚀 TRUE RETE PERFORMANCE SCALING TEST");
     println!("Testing 25K facts with comprehensive rule set...");

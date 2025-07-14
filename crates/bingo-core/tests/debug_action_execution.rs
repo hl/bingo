@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 #[test]
 fn debug_simple_action_execution() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🔍 Debug: Creating simple test rule");
 
@@ -69,7 +69,7 @@ fn debug_simple_action_execution() {
 
 #[test]
 fn debug_increment_field_execution() {
-    let mut engine = BingoEngine::new().unwrap();
+    let engine = BingoEngine::new().unwrap();
 
     println!("🔍 Debug: Creating IncrementField test rule");
 

@@ -319,8 +319,8 @@ mod tests {
         let adjusted_duration = config.adjust_time_threshold(base_duration);
         assert_eq!(adjusted_duration, Duration::from_secs(10));
 
-        let base_memory = 1_000_000;
-        let adjusted_memory = config.adjust_memory_threshold(base_memory);
+        let base_memory = crate::constants::performance::BASE_MEMORY_BYTES;
+        let adjusted_memory = config.adjust_memory_threshold(base_memory as u64);
         assert_eq!(adjusted_memory, 1_500_000);
     }
 

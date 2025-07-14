@@ -19,6 +19,7 @@ on:
         - integration
         - concurrency
         - validation
+        - performance
 
 env:
   CARGO_TERM_COLOR: always
@@ -252,18 +253,53 @@ jobs:
 
     - name: Run validation tests
       run: |
-        cargo test --test true_rete_architecture_validation --release
-        cargo test --test rete_algorithm_validation --release
-        cargo test --test optimization_validation_test --release
+        # Only run fast validation tests (not performance tests)
         cargo test --test enhanced_monitoring_test --release
         cargo test --test enhanced_test_coverage --release
-        cargo test --test comprehensive_optimization_summary --release
         cargo test --test rule_optimization_test --release
         cargo test --test beta_network_test --release
         cargo test --test working_memory_test --release
-      timeout-minutes: 25
+      timeout-minutes: 5
       env:
         BINGO_SKIP_SLOW_TESTS: "1"
+
+  # Performance tests - only run on manual trigger
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.test_category == 'performance' || github.event.inputs.test_category == 'all')
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.88.0"
+
+    - name: Install protoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-performance-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run performance tests
+      run: |
+        # Run performance and benchmark tests
+        cargo test --test true_rete_architecture_validation --release
+        cargo test --test rete_algorithm_validation --release
+        cargo test --test optimization_validation_test --release
+        cargo test --test comprehensive_optimization_summary --release
+        # Run ignored performance tests
+        cargo test --release -- --ignored
+      timeout-minutes: 60
 
 
   # Security audit - only on main branch

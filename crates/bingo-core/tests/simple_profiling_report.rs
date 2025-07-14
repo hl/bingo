@@ -100,7 +100,8 @@ fn analyze_engine_state(engine: &BingoEngine) {
     if total_rule_ops > 0 {
         println!(
             "  Rule execution pool: {:.1}% hit rate ({} ops)",
-            rule_pool.hit_rate, total_rule_ops
+            rule_pool.hit_rate(),
+            total_rule_ops
         );
     }
 
@@ -109,7 +110,8 @@ fn analyze_engine_state(engine: &BingoEngine) {
     if total_id_ops > 0 {
         println!(
             "  Rule ID pool: {:.1}% hit rate ({} ops)",
-            rule_id_pool.hit_rate, total_id_ops
+            rule_id_pool.hit_rate(),
+            total_id_ops
         );
     }
 
@@ -232,10 +234,10 @@ fn analyze_engine_state(engine: &BingoEngine) {
         println!("• Consider rule optimization - high node density: {nodes_per_rule:.1}");
     }
 
-    if total_rule_ops > 0 && rule_pool.hit_rate < 70.0 {
+    if total_rule_ops > 0 && rule_pool.hit_rate() < 70.0 {
         println!(
             "• Rule execution pool hit rate low: {:.1}%",
-            rule_pool.hit_rate
+            rule_pool.hit_rate()
         );
     }
 
