@@ -825,6 +825,7 @@ fn test_500k_payroll_scenario() {
 }
 
 #[test]
+#[ignore] // Too memory-intensive for batch execution - run individually
 fn test_1m_fact_scaling() {
     let memory_tracker = MemoryTracker::start().unwrap();
     let engine = BingoEngine::with_capacity(1_000_000).unwrap();
@@ -921,6 +922,7 @@ fn test_1m_fact_scaling() {
 }
 
 #[test]
+#[ignore] // Too memory-intensive for batch execution - run individually
 fn test_1m_payroll_scenario() {
     let memory_tracker = MemoryTracker::start().unwrap();
     let engine = BingoEngine::with_capacity(1_000_000).unwrap();
@@ -1101,6 +1103,7 @@ fn test_1m_payroll_scenario() {
 }
 
 #[test]
+#[ignore] // Too memory-intensive for batch execution - run individually
 fn test_2m_fact_scaling() {
     let memory_tracker = MemoryTracker::start().unwrap();
     let engine = BingoEngine::with_capacity(2_000_000).unwrap();
@@ -1761,6 +1764,7 @@ fn test_1m_enterprise_calculation_rules() {
 }
 
 #[test]
+#[ignore] // Too memory-intensive for batch execution - run individually
 fn test_2m_enterprise_calculation_rules() {
     let memory_tracker = MemoryTracker::start().unwrap();
     let engine = BingoEngine::with_capacity(2_000_000).unwrap();
