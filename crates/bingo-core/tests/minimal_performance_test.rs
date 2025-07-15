@@ -64,7 +64,7 @@ fn test_minimal_scaling() {
 
         // If it takes more than 1 second for 1000 facts, something is wrong
         if fact_count <= 1000 && elapsed.as_millis() > 1000 {
-            panic!("Performance issue: {} facts took {:?}", fact_count, elapsed);
+            panic!("Performance issue: {fact_count} facts took {elapsed:?}");
         }
     }
 
