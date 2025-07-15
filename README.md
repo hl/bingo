@@ -85,7 +85,7 @@ The engine is optimized for practical enterprise workloads. The following benchm
 - **Thread Safety**: Full `Send + Sync` implementation with proper concurrency controls
 - **Memory Management**: Object pooling, arena allocation, and efficient garbage collection
 - **Security Hardening**: Input validation, rate limiting, and secure processing pipelines
-- **Comprehensive Testing**: 174+ tests covering all components with 100% success rate
+- **Comprehensive Testing**: 361+ tests covering all components with 100% success rate
 
 ### 📊 Observability & Operations
 - **Performance Monitoring**: Detailed metrics for throughput, memory usage, and processing latency
@@ -110,9 +110,9 @@ Bingo's flexible architecture and powerful calculator ecosystem enable sophistic
   - Dynamically create new facts, such as generating overtime records when thresholds are exceeded.
   - Perform complex aggregations to calculate total hours worked before applying overtime rules.
 - **TRONC (Tip & Gratuity) Engine**:
-  - Distribute gratuities using weighted calculations based on employee roles (`weighted_sum_aggregator`).
+  - Distribute gratuities using weighted calculations based on employee roles (`weighted_average`).
   - Allocate funds proportionally based on hours worked or other metrics (`proportional_allocator`).
-  - Apply deductions before distribution using the `deduct_percentage` calculator.
+  - Apply deductions before distribution using the `percentage_deduct` calculator.
 
 ## 🏗️ Architecture
 
@@ -132,6 +132,7 @@ graph TD
 - **`bingo-calculator`**: A plugin-based calculator system with built-in business calculators and extensible architecture.
 - **`bingo-types`**: Shared type definitions and core data structures, eliminating circular dependencies.
 - **`bingo-web`**: Web interface for engine management and monitoring.
+- **`bingo-performance-test`**: Performance testing utilities and benchmarks.
 
 *For a more detailed explanation, see the [Architecture Specification](specs/architecture.md).*
 

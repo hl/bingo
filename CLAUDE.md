@@ -38,6 +38,7 @@ bingo-api/      - gRPC API server with Protocol Buffers and streaming
 bingo-calculator/ - Plugin-based calculator system for business logic
 bingo-types/    - Shared type definitions and FactValue system
 bingo-web/      - Web interface for management and monitoring
+bingo-performance-test/ - Performance testing utilities and benchmarks
 ```
 
 ### Key Architectural Concepts
@@ -97,7 +98,7 @@ bingo-web/      - Web interface for management and monitoring
 - **Formatting**: Use rustfmt with project-specific `.rustfmt.toml`
 - **Linting**: Clippy with custom `clippy.toml` configuration
 - **Documentation**: Comprehensive inline docs required for public APIs
-- **Testing**: 174+ tests with 100% success rate requirement
+- **Testing**: 361+ tests with 100% success rate requirement
 
 ### Performance Considerations
 - **Memory Management**: Prefer arena allocation for frequently allocated objects
@@ -141,10 +142,14 @@ cargo test --test comprehensive_rete_benchmark
 - **TRONC Engine**: Tip and gratuity distribution with weighted calculations
 
 ### Key Calculator Types
-- `weighted_sum_aggregator` - Weighted calculations for roles
+- `weighted_average` - Weighted average calculations for roles
 - `proportional_allocator` - Proportional distribution by metrics
 - `limit_validator` - Multi-tiered threshold validation
-- `deduct_percentage` - Deduction calculations before distribution
+- `percentage_deduct` - Percentage deduction calculations before distribution
+- `add` - Addition operations
+- `multiply` - Multiplication operations
+- `percentage_add` - Percentage addition calculations
+- `time_between_datetime` - Time duration calculations
 
 ## Performance Expectations
 

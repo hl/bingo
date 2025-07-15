@@ -29,6 +29,7 @@ The engine is structured as a Rust workspace with clear separation of concerns:
 -   **`bingo-calculator`**: A plugin-based calculator system with built-in business calculators and extensible architecture for custom calculations.
 -   **`bingo-types`**: Shared type definitions and core data structures, providing `FactValue` and eliminating circular dependencies between crates.
 -   **`bingo-web`**: Web interface for engine management, monitoring, and rule configuration.
+-   **`bingo-performance-test`**: Performance testing utilities and benchmarking infrastructure.
 
 ```mermaid
 graph TD
