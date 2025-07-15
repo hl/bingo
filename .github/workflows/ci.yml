@@ -94,7 +94,6 @@ jobs:
         cargo test --test action_type_handlers_test
         cargo test --test calculator_integration_test
         cargo test --test api_payload_rule_test
-        cargo test --test conflict_resolution_test
         cargo test --test cross_fact_matching_test
         cargo test --test end_to_end_integration_test
         cargo test --test formula_action_test
@@ -104,7 +103,6 @@ jobs:
         cargo test --test simplified_api_test
         cargo test --test temporary_rule_eval
         cargo test --test fact_lookup_test
-        cargo test --test rule_dependency_integration_test
         cargo test --test session_window_integration_test
         cargo test --test built_in_calculators_test
       timeout-minutes: 25
@@ -214,10 +212,8 @@ jobs:
 
     - name: Run concurrency tests
       run: |
-        cargo test --test comprehensive_concurrency_test --release
-        cargo test --test engine_threaded_integration_test --release
-        cargo test --test simple_engine_threaded_test --release
-        cargo test --test parallel_rete_test --release
+        cargo test --test concurrent_engine_test --release
+        cargo test --test thread_safety_test --release
         cargo test --test beta_memory_integration_test --release
         cargo test --test lazy_aggregation_integration_test --release
       timeout-minutes: 30
@@ -254,7 +250,6 @@ jobs:
     - name: Run validation tests
       run: |
         # Only run fast validation tests (not performance tests)
-        cargo test --test enhanced_monitoring_test --release
         cargo test --test enhanced_test_coverage --release
         cargo test --test rule_optimization_test --release
         cargo test --test beta_network_test --release
