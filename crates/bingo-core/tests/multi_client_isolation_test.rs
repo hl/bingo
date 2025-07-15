@@ -89,7 +89,7 @@ fn test_multiple_client_complete_isolation() {
 
                 Fact {
                     id: i as u64,
-                    external_id: Some(format!("client_a_fact_{}", i)),
+                    external_id: Some(format!("client_a_fact_{i}")),
                     timestamp: chrono::Utc::now(),
                     data: FactData { fields },
                 }
@@ -119,7 +119,7 @@ fn test_multiple_client_complete_isolation() {
 
                 Fact {
                     id: i as u64,
-                    external_id: Some(format!("client_b_fact_{}", i)),
+                    external_id: Some(format!("client_b_fact_{i}")),
                     timestamp: chrono::Utc::now(),
                     data: FactData { fields },
                 }
@@ -149,7 +149,7 @@ fn test_multiple_client_complete_isolation() {
 
                 Fact {
                     id: i as u64,
-                    external_id: Some(format!("client_c_fact_{}", i)),
+                    external_id: Some(format!("client_c_fact_{i}")),
                     timestamp: chrono::Utc::now(),
                     data: FactData { fields },
                 }
@@ -233,7 +233,7 @@ fn test_concurrent_client_rule_isolation() {
         for i in 1..=5 {
             let rule = Rule {
                 id: i,
-                name: format!("User Rule {}", i),
+                name: format!("User Rule {i}"),
                 conditions: vec![Condition::Simple {
                     field: "user_type".to_string(),
                     operator: Operator::Equal,
@@ -258,7 +258,7 @@ fn test_concurrent_client_rule_isolation() {
         for i in 1..=3 {
             let rule = Rule {
                 id: i + 100, // Different ID range
-                name: format!("Order Rule {}", i),
+                name: format!("Order Rule {i}"),
                 conditions: vec![Condition::Simple {
                     field: "order_status".to_string(),
                     operator: Operator::Equal,
@@ -359,7 +359,7 @@ fn test_high_concurrency_client_isolation() {
 
                     Fact {
                         id: (client_id * 1000 + fact_id) as u64,
-                        external_id: Some(format!("client_{}_fact_{}", client_id, fact_id)),
+                        external_id: Some(format!("client_{client_id}_fact_{fact_id}")),
                         timestamp: chrono::Utc::now(),
                         data: FactData { fields },
                     }
@@ -371,10 +371,8 @@ fn test_high_concurrency_client_isolation() {
             let stats = engine.get_stats();
 
             println!(
-                "  Client {}: {} results in {:?}",
-                client_id,
-                results.len(),
-                client_time
+                "  Client {client_id}: {} results in {client_time:?}",
+                results.len()
             );
 
             (client_id, stats, results.len(), client_time)
@@ -393,32 +391,26 @@ fn test_high_concurrency_client_isolation() {
 
     // Verify isolation and performance
     println!("🎯 High Concurrency Results:");
-    println!("  Total time: {:?}", total_time);
-    println!("  Clients: {}", client_count);
-    println!("  Facts per client: {}", facts_per_client);
+    println!("  Total time: {total_time:?}");
+    println!("  Clients: {client_count}");
+    println!("  Facts per client: {facts_per_client}");
 
     let mut total_results = 0;
 
     for (client_id, stats, result_count, _client_time) in all_results {
         // Each client should have exactly 1 rule
-        assert_eq!(
-            stats.rule_count, 1,
-            "Client {} should have 1 rule",
-            client_id
-        );
+        assert_eq!(stats.rule_count, 1, "Client {client_id} should have 1 rule");
 
         // Each client should have exactly facts_per_client facts
         assert_eq!(
             stats.fact_count, facts_per_client,
-            "Client {} should have {} facts",
-            client_id, facts_per_client
+            "Client {client_id} should have {facts_per_client} facts"
         );
 
         // Each client should produce exactly facts_per_client results
         assert_eq!(
             result_count, facts_per_client,
-            "Client {} should have {} results",
-            client_id, facts_per_client
+            "Client {client_id} should have {facts_per_client} results"
         );
 
         total_results += result_count;
@@ -438,11 +430,8 @@ fn test_high_concurrency_client_isolation() {
     );
 
     println!("✅ High concurrency isolation verified!");
-    println!(
-        "  - {} clients processed {} facts each",
-        client_count, facts_per_client
-    );
-    println!("  - Total: {} results in {:?}", total_results, total_time);
+    println!("  - {client_count} clients processed {facts_per_client} facts each");
+    println!("  - Total: {total_results} results in {total_time:?}");
     println!(
         "  - Throughput: {:.0} facts/sec",
         (total_results as f64) / total_time.as_secs_f64()
@@ -486,7 +475,7 @@ fn test_session_cleanup_isolation() {
 
                 Fact {
                     id: (i * 100 + j) as u64,
-                    external_id: Some(format!("session_{}_fact_{}", i, j)),
+                    external_id: Some(format!("session_{i}_fact_{j}")),
                     timestamp: chrono::Utc::now(),
                     data: FactData { fields },
                 }
@@ -501,11 +490,11 @@ fn test_session_cleanup_isolation() {
     for (i, engine) in session_engines.iter().enumerate() {
         let stats = engine.get_stats();
         println!(
-            "  Session {}: {} rules, {} facts",
-            i, stats.rule_count, stats.fact_count
+            "  Session {i}: {} rules, {} facts",
+            stats.rule_count, stats.fact_count
         );
-        assert_eq!(stats.rule_count, 1, "Session {} should have 1 rule", i);
-        assert_eq!(stats.fact_count, 10, "Session {} should have 10 facts", i);
+        assert_eq!(stats.rule_count, 1, "Session {i} should have 1 rule");
+        assert_eq!(stats.fact_count, 10, "Session {i} should have 10 facts");
     }
 
     // Clear one session
@@ -517,8 +506,8 @@ fn test_session_cleanup_isolation() {
     for (i, engine) in session_engines.iter().enumerate() {
         let stats = engine.get_stats();
         println!(
-            "  Session {}: {} rules, {} facts",
-            i, stats.rule_count, stats.fact_count
+            "  Session {i}: {} rules, {} facts",
+            stats.rule_count, stats.fact_count
         );
 
         if i == 1 {
@@ -529,13 +518,11 @@ fn test_session_cleanup_isolation() {
             // Other sessions should be unaffected
             assert_eq!(
                 stats.rule_count, 1,
-                "Unaffected session {} should still have 1 rule",
-                i
+                "Unaffected session {i} should still have 1 rule"
             );
             assert_eq!(
                 stats.fact_count, 10,
-                "Unaffected session {} should still have 10 facts",
-                i
+                "Unaffected session {i} should still have 10 facts"
             );
         }
     }
