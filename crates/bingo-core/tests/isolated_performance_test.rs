@@ -9,7 +9,7 @@ fn test_isolated_performance_components() {
 
     // Test fact store operations in isolation
     for fact_count in [1000, 2000, 3000, 4000, 5000] {
-        println!("\n📊 Testing {} facts - Fact Store Only:", fact_count);
+        println!("\n📊 Testing {fact_count} facts - Fact Store Only:");
 
         use bingo_core::fact_store::arena_store::ArenaFactStore;
 
@@ -41,14 +41,11 @@ fn test_isolated_performance_components() {
         let _fact_ids = fact_store.bulk_insert_slice(&facts);
         let fact_store_time = start.elapsed();
 
-        println!("  Fact generation: {:?}", fact_generation_time);
-        println!("  Fact store insert: {:?}", fact_store_time);
+        println!("  Fact generation: {fact_generation_time:?}");
+        println!("  Fact store insert: {fact_store_time:?}");
 
         let facts_per_second = fact_count as f64 / fact_store_time.as_secs_f64();
-        println!(
-            "  Fact store performance: {:.0} facts/sec",
-            facts_per_second
-        );
+        println!("  Fact store performance: {facts_per_second:.0} facts/sec");
 
         // Test fact lookup performance
         let start = Instant::now();
@@ -59,10 +56,7 @@ fn test_isolated_performance_components() {
             }
         }
         let lookup_time = start.elapsed();
-        println!(
-            "  Fact lookup ({} lookups): {:?}",
-            lookup_count, lookup_time
-        );
+        println!("  Fact lookup ({lookup_count} lookups): {lookup_time:?}");
 
         // Test search performance
         let start = Instant::now();

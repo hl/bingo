@@ -57,7 +57,7 @@ fn bench_million_fact_scaling(c: &mut Criterion) {
                         let engine = BingoEngine::with_capacity(size).unwrap();
                         (facts, engine)
                     },
-                    |(facts, mut engine)| black_box(engine.process_facts(facts).unwrap()),
+                    |(facts, engine)| black_box(engine.process_facts(facts).unwrap()),
                     criterion::BatchSize::LargeInput,
                 );
             },
@@ -74,7 +74,7 @@ fn bench_large_fact_indexing(c: &mut Criterion) {
     let fact_count = 1_000_000;
 
     // Pre-populate store with 1M facts
-    let mut store = ArenaFactStore::with_capacity(fact_count);
+    let store = ArenaFactStore::with_capacity(fact_count);
     let facts = generate_large_fact_set(fact_count);
 
     for fact in facts {
@@ -131,7 +131,7 @@ fn bench_memory_efficiency(c: &mut Criterion) {
                     let start = std::time::Instant::now();
 
                     // Create optimized engine and process facts
-                    let mut engine = BingoEngine::with_capacity(*size).unwrap();
+                    let engine = BingoEngine::with_capacity(*size).unwrap();
                     let facts = generate_large_fact_set(*size);
                     let _results = black_box(engine.process_facts(facts).unwrap());
 

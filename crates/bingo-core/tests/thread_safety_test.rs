@@ -39,7 +39,7 @@ fn test_concurrent_rule_addition() {
             for rule_id in 0..rules_per_thread {
                 let rule = create_test_rule(
                     (thread_id * rules_per_thread + rule_id) as u64 + 1,
-                    &format!("ThreadRule_{}_{}", thread_id, rule_id),
+                    &format!("ThreadRule_{thread_id}_{rule_id}"),
                 );
 
                 engine.add_rule(rule).expect("Failed to add rule");
@@ -87,7 +87,7 @@ fn test_concurrent_fact_processing() {
 
                 match engine.add_fact_to_working_memory(fact) {
                     Ok(results) => total_results += results.len(),
-                    Err(e) => panic!("Failed to process fact: {}", e),
+                    Err(e) => panic!("Failed to process fact: {e}"),
                 }
             }
             total_results
@@ -128,7 +128,7 @@ fn test_concurrent_mixed_operations() {
                     // Add rule
                     let rule = create_test_rule(
                         (thread_id * operations_per_thread + op_id) as u64 + 1,
-                        &format!("MixedRule_{}_{}", thread_id, op_id),
+                        &format!("MixedRule_{thread_id}_{op_id}"),
                     );
                     engine.add_rule(rule).expect("Failed to add rule");
                 } else {
@@ -185,7 +185,7 @@ fn test_concurrent_statistics_consistency() {
             for i in 0..25 {
                 let rule = create_test_rule(
                     (thread_id * 25 + i) as u64 + 1,
-                    &format!("StatsRule_{}_{}", thread_id, i),
+                    &format!("StatsRule_{thread_id}_{i}"),
                 );
                 engine.add_rule(rule).expect("Failed to add rule");
 
@@ -238,7 +238,7 @@ fn test_high_contention_scenario() {
                 // Add rule
                 let rule = create_test_rule(
                     global_id as u64 + 1,
-                    &format!("HighContentionRule_{}", global_id),
+                    &format!("HighContentionRule_{global_id}"),
                 );
                 engine.add_rule(rule).expect("Failed to add rule");
 
@@ -282,7 +282,7 @@ fn test_multiple_engines_concurrent() {
                     for op_id in 0..operations_per_thread {
                         let rule = create_test_rule(
                             (thread_id * operations_per_thread + op_id) as u64 + 1,
-                            &format!("Engine{}_Thread{}_Rule{}", engine_id, thread_id, op_id),
+                            &format!("Engine{engine_id}_Thread{thread_id}_Rule{op_id}"),
                         );
                         engine.add_rule(rule).expect("Failed to add rule");
 
@@ -335,7 +335,7 @@ fn test_stress_rapid_operations() {
             while start.elapsed() < duration {
                 let rule = create_test_rule(
                     (thread_id * 10000 + operations) as u64 + 1,
-                    &format!("StressRule_{}_{}", thread_id, operations),
+                    &format!("StressRule_{thread_id}_{operations}"),
                 );
                 engine.add_rule(rule).expect("Failed to add rule");
 
@@ -356,10 +356,7 @@ fn test_stress_rapid_operations() {
         total_operations += handle.join().expect("Thread panicked");
     }
 
-    println!(
-        "Completed {} operations in 500ms across {} threads",
-        total_operations, num_threads
-    );
+    println!("Completed {total_operations} operations in 500ms across {num_threads} threads");
     assert!(total_operations > 0);
 
     let stats = engine.get_stats();
@@ -398,7 +395,7 @@ fn create_test_fact(id: u64, value: f64) -> Fact {
 
     Fact {
         id,
-        external_id: Some(format!("test_fact_{}", id)),
+        external_id: Some(format!("test_fact_{id}")),
         timestamp: chrono::Utc::now(),
         data: FactData { fields },
     }

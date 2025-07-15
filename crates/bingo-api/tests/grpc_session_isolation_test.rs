@@ -65,7 +65,7 @@ async fn test_concurrent_session_creation() {
     // Create 10 concurrent threads trying to create sessions
     for i in 0..10 {
         let app_state_clone = Arc::clone(&app_state);
-        let session_id = format!("concurrent_session_{}", i);
+        let session_id = format!("concurrent_session_{i}");
 
         let handle = tokio::spawn(async move {
             let engine = app_state_clone.get_or_create_engine(&session_id);
@@ -73,7 +73,7 @@ async fn test_concurrent_session_creation() {
             // Add a rule specific to this session
             let rule = bingo_core::Rule {
                 id: (i + 1) as u64,
-                name: format!("Rule for {}", session_id),
+                name: format!("Rule for {session_id}"),
                 conditions: vec![bingo_core::Condition::Simple {
                     field: "session_id".to_string(),
                     operator: bingo_core::Operator::Equal,
@@ -113,13 +113,11 @@ async fn test_concurrent_session_creation() {
     for (session_id, stats) in results {
         assert_eq!(
             stats.rule_count, 1,
-            "Session {} should have 1 rule",
-            session_id
+            "Session {session_id} should have 1 rule"
         );
         assert_eq!(
             stats.fact_count, 0,
-            "Session {} should have 0 facts initially",
-            session_id
+            "Session {session_id} should have 0 facts initially"
         );
     }
 
@@ -234,13 +232,13 @@ async fn test_high_concurrency_session_isolation() {
         let app_state_clone = Arc::clone(&app_state);
 
         let handle = tokio::spawn(async move {
-            let session_id = format!("high_concurrency_session_{}", session_idx);
+            let session_id = format!("high_concurrency_session_{session_idx}");
             let engine = app_state_clone.get_or_create_engine(&session_id);
 
             // Add session-specific rule
             let rule = bingo_core::Rule {
                 id: 1,
-                name: format!("High Concurrency Rule {}", session_idx),
+                name: format!("High Concurrency Rule {session_idx}"),
                 conditions: vec![bingo_core::Condition::Simple {
                     field: "session_index".to_string(),
                     operator: bingo_core::Operator::Equal,
@@ -271,7 +269,7 @@ async fn test_high_concurrency_session_isolation() {
 
                     bingo_core::Fact {
                         id: (session_idx * 1000 + fact_idx) as u64,
-                        external_id: Some(format!("{}_{}", session_id, fact_idx)),
+                        external_id: Some(format!("{session_id}_{fact_idx}")),
                         timestamp: chrono::Utc::now(),
                         data: bingo_core::FactData { fields },
                     }
@@ -296,8 +294,7 @@ async fn test_high_concurrency_session_isolation() {
     assert_eq!(
         app_state.active_sessions(),
         session_count,
-        "Should have {} active sessions",
-        session_count
+        "Should have {session_count} active sessions"
     );
 
     let mut total_facts_processed = 0;
@@ -307,22 +304,19 @@ async fn test_high_concurrency_session_isolation() {
         // Each session should have exactly 1 rule
         assert_eq!(
             stats.rule_count, 1,
-            "Session {} should have 1 rule",
-            session_idx
+            "Session {session_idx} should have 1 rule"
         );
 
         // Each session should have exactly operations_per_session facts
         assert_eq!(
             stats.fact_count, operations_per_session,
-            "Session {} should have {} facts",
-            session_idx, operations_per_session
+            "Session {session_idx} should have {operations_per_session} facts"
         );
 
         // Each session should produce exactly operations_per_session results
         assert_eq!(
             result_count, operations_per_session,
-            "Session {} should have {} results",
-            session_idx, operations_per_session
+            "Session {session_idx} should have {operations_per_session} results"
         );
 
         total_facts_processed += stats.fact_count;
@@ -333,25 +327,17 @@ async fn test_high_concurrency_session_isolation() {
     let expected_total = session_count * operations_per_session;
     assert_eq!(
         total_facts_processed, expected_total,
-        "Total facts should be {}",
-        expected_total
+        "Total facts should be {expected_total}"
     );
     assert_eq!(
         total_results, expected_total,
-        "Total results should be {}",
-        expected_total
+        "Total results should be {expected_total}"
     );
 
     println!("✅ High concurrency session isolation verified!");
-    println!(
-        "  - {} sessions created and operated concurrently",
-        session_count
-    );
-    println!("  - {} facts processed per session", operations_per_session);
-    println!(
-        "  - Total: {} facts processed with perfect isolation",
-        total_facts_processed
-    );
+    println!("  - {session_count} sessions created and operated concurrently");
+    println!("  - {operations_per_session} facts processed per session");
+    println!("  - Total: {total_facts_processed} facts processed with perfect isolation");
 }
 
 #[test]

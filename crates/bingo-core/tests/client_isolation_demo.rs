@@ -301,7 +301,7 @@ fn demonstrate_complete_client_isolation() {
     );
 
     println!("\n⏱️  Performance:");
-    println!("   Total processing time: {:?}", total_time);
+    println!("   Total processing time: {total_time:?}");
     println!(
         "   Concurrent throughput: {:.0} facts/sec",
         6.0 / total_time.as_secs_f64()

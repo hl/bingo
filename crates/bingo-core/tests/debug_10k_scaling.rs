@@ -8,7 +8,7 @@ fn test_10k_fact_scaling() {
     let target_counts = [1000, 2000, 5000];
 
     for &fact_count in &target_counts {
-        println!("🧪 Testing {} fact processing...", fact_count);
+        println!("🧪 Testing {fact_count} fact processing...");
 
         let engine = BingoEngine::new().unwrap();
 
@@ -69,7 +69,7 @@ fn test_10k_fact_scaling() {
         );
 
         let stats = engine.get_stats();
-        println!("Engine stats: {:?}", stats);
+        println!("Engine stats: {stats:?}");
 
         // Performance targets based on fact count (more realistic after investigation)
         let max_time_ms = match fact_count {
@@ -81,10 +81,7 @@ fn test_10k_fact_scaling() {
 
         assert!(
             elapsed.as_millis() < max_time_ms,
-            "Should process {} facts under {}ms (got {:?})",
-            fact_count,
-            max_time_ms,
-            elapsed
+            "Should process {fact_count} facts under {max_time_ms}ms (got {elapsed:?})"
         );
 
         // Expected: facts with IDs 0, 3, 6, 9, etc. should match (~33% of facts)
@@ -92,14 +89,12 @@ fn test_10k_fact_scaling() {
         assert_eq!(
             results.len(),
             expected_count,
-            "Should get exactly {} results for {} facts",
-            expected_count,
-            fact_count
+            "Should get exactly {expected_count} results for {fact_count} facts"
         );
 
         // Calculate performance metrics
         let facts_per_second = fact_count as f64 / elapsed.as_secs_f64();
-        println!("📊 Performance: {:.0} facts/second", facts_per_second);
+        println!("📊 Performance: {facts_per_second:.0} facts/second");
     }
 
     println!("✅ All scaling tests passed");

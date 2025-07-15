@@ -79,10 +79,7 @@ fn debug_performance_scaling() {
 
         // If processing is getting slow, stop here
         if processing_time.as_millis() > 5000 {
-            println!(
-                "⚠️ Processing is getting slow, stopping at {} facts",
-                fact_count
-            );
+            println!("⚠️ Processing is getting slow, stopping at {fact_count} facts");
             return; // Stop the test here
         }
     }

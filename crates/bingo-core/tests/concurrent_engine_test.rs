@@ -96,7 +96,7 @@ fn test_concurrent_fact_processing() {
                 .map(|i| {
                     let mut fields = HashMap::new();
                     fields.insert("thread_id".to_string(), FactValue::Integer(thread_id));
-                    fields.insert("fact_id".to_string(), FactValue::Integer(i as i64));
+                    fields.insert("fact_id".to_string(), FactValue::Integer(i));
                     fields.insert(
                         "status".to_string(),
                         FactValue::String(
@@ -134,17 +134,14 @@ fn test_concurrent_fact_processing() {
     for handle in handles {
         let (thread_id, result_count, thread_time) = handle.join().unwrap();
         total_results += result_count;
-        println!(
-            "✅ Thread {} completed: {} results in {:?}",
-            thread_id, result_count, thread_time
-        );
+        println!("✅ Thread {thread_id} completed: {result_count} results in {thread_time:?}");
     }
 
     let total_elapsed = start_time.elapsed();
 
     println!("🎯 Concurrent Results:");
-    println!("  Total results: {}", total_results);
-    println!("  Total time: {:?}", total_elapsed);
+    println!("  Total results: {total_results}");
+    println!("  Total time: {total_elapsed:?}");
     println!(
         "  Concurrent throughput: {:.0} facts/sec",
         2000.0 / total_elapsed.as_secs_f64()
@@ -226,10 +223,7 @@ fn test_concurrent_rule_access() {
                 thread::sleep(Duration::from_millis(5));
             }
 
-            println!(
-                "  Reader thread {}: Max rules seen: {}",
-                thread_id, max_rules_seen
-            );
+            println!("  Reader thread {thread_id}: Max rules seen: {max_rules_seen}");
             max_rules_seen
         });
 
@@ -288,7 +282,7 @@ fn test_concurrent_performance_comparison() {
     let fact_count = 1000;
 
     // Test 1: Sequential processing
-    println!("🔄 Sequential processing {} facts...", fact_count);
+    println!("🔄 Sequential processing {fact_count} facts...");
     let start_sequential = Instant::now();
 
     let facts: Vec<Fact> = (0..fact_count)
@@ -316,7 +310,7 @@ fn test_concurrent_performance_comparison() {
     engine.clear_facts();
 
     // Test 2: Concurrent processing (2 threads, 500 facts each)
-    println!("⚡ Concurrent processing {} facts...", fact_count);
+    println!("⚡ Concurrent processing {fact_count} facts...");
     let start_concurrent = Instant::now();
 
     let mut handles = vec![];
@@ -377,7 +371,7 @@ fn test_concurrent_performance_comparison() {
     );
 
     let speedup = sequential_time.as_secs_f64() / concurrent_time.as_secs_f64();
-    println!("  Speedup: {:.2}x", speedup);
+    println!("  Speedup: {speedup:.2}x");
 
     // Verify correctness
     assert_eq!(
