@@ -46,7 +46,7 @@ fn create_wage_cost_rules() -> Vec<Rule> {
                         let mut map = HashMap::new();
                         map.insert("start_field".to_string(), "start_datetime".to_string());
                         map.insert("end_field".to_string(), "finish_datetime".to_string());
-                        map.insert("unit".to_string(), "hours".to_string());
+                        map.insert("units".to_string(), "hours".to_string());
                         map
                     },
                     output_field: "calculated_hours".to_string(),

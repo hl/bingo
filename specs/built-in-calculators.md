@@ -100,13 +100,20 @@ This section enumerates the built-in calculators provided by the engine, detaili
 ### Time & Duration Calculators
 
 #### `time_between_datetime`
--   **Purpose**: Calculates the duration in hours between two specified datetime fields.
--   **Use Cases**: Determining shift durations, tracking time spent on tasks, calculating elapsed time for processes.
+-   **Purpose**: Calculates time differences between datetime values with optional workday-aware splitting capabilities.
+-   **Use Cases**: 
+    -   Simple time calculations: shift durations, elapsed time tracking
+    -   Workday calculations: splitting time periods around workday boundaries, payroll calculations with work/non-work time separation
 -   **Inputs**:
-    -   `start_datetime` (string): The beginning datetime, expected in ISO 8601 format.
-    -   `end_datetime` (string): The ending datetime, expected in ISO 8601 format.
-    -   `unit` (string, optional): The unit for the duration. Supported values: `hours`, `minutes`, `seconds`. Defaults to `hours`.
--   **Output**: A floating-point number representing the total hours between the `start_datetime` and `end_datetime`.
+    -   `start_datetime` (string): The beginning datetime in RFC3339/ISO 8601 format
+    -   `finish_datetime` (string): The ending datetime in RFC3339/ISO 8601 format
+    -   `units` (string, optional): Output unit - `hours` (default), `minutes`, or `seconds`
+    -   `workday` (object, optional): Workday boundary time as JSON object with `hours` (0-23) and `minutes` (0-59) fields
+    -   `part` (string, optional): When using workday mode - `time_before` (start to workday boundary) or `time_after` (workday boundary to finish)
+-   **Output**: A floating-point number representing the calculated time duration in the specified units
+-   **Examples**:
+    -   Simple: `{"start_datetime": "2025-01-01T08:00:00Z", "finish_datetime": "2025-01-01T17:00:00Z"}` → 9.0 hours
+    -   Workday: `{"start_datetime": "2025-01-01T18:00:00Z", "finish_datetime": "2025-01-02T02:00:00Z", "workday": {"hours": 0, "minutes": 0}, "part": "time_before"}` → 6.0 hours
 
 ### Threshold & Validation Calculators
 
