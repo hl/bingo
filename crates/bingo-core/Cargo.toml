@@ -29,3 +29,4 @@ sys-info = "0.9"
 [dev-dependencies]
 criterion = { workspace = true }
 bingo-performance-test = { path = "../bingo-performance-test" }
+serial_test = "3.0"
