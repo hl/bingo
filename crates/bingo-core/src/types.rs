@@ -106,6 +106,12 @@ impl Fact {
     /// ## Example
     ///
     /// ```rust
+    /// # use bingo_core::types::{Fact, FactData, FactValue};
+    /// # use std::collections::HashMap;
+    /// # let mut fields = HashMap::new();
+    /// # fields.insert("salary".to_string(), FactValue::Float(75000.0));
+    /// # let fact_data = FactData { fields };
+    /// # let fact = Fact::new(1, fact_data);
     /// if let Some(salary) = fact.get_field("salary") {
     ///     if let FactValue::Float(amount) = salary {
     ///         println!("Employee salary: ${}", amount);
@@ -281,6 +287,7 @@ pub type RuleId = u64;
 ///
 /// ### Simple Condition
 /// ```rust
+/// # use bingo_core::types::{Condition, Operator, FactValue};
 /// let condition = Condition::Simple {
 ///     field: "age".to_string(),
 ///     operator: Operator::GreaterThan,
@@ -290,6 +297,7 @@ pub type RuleId = u64;
 ///
 /// ### Complex Condition
 /// ```rust
+/// # use bingo_core::types::{Condition, Operator, FactValue, LogicalOperator};
 /// let condition = Condition::Complex {
 ///     operator: LogicalOperator::And,
 ///     conditions: vec![
@@ -563,29 +571,33 @@ pub struct Action {
 ///
 /// ### Basic Field Update
 /// ```rust
+/// # use bingo_core::types::{ActionType, FactValue};
 /// ActionType::SetField {
 ///     field: "status".to_string(),
 ///     value: FactValue::String("processed".to_string()),
-/// }
+/// };
 /// ```
 ///
 /// ### Formula Calculation
 /// ```rust
+/// # use bingo_core::types::ActionType;
 /// ActionType::Formula {
 ///     expression: "salary * 1.1".to_string(),
 ///     output_field: "new_salary".to_string(),
-/// }
+/// };
 /// ```
 ///
 /// ### Fact Creation
 /// ```rust
+/// # use bingo_core::types::{ActionType, FactData, FactValue};
+/// # use std::collections::HashMap;
 /// let mut fields = HashMap::new();
 /// fields.insert("type".to_string(), FactValue::String("alert".to_string()));
 /// fields.insert("level".to_string(), FactValue::String("high".to_string()));
 ///
 /// ActionType::CreateFact {
 ///     data: FactData { fields },
-/// }
+/// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ActionType {
@@ -757,6 +769,7 @@ pub enum AggregationWindow {
 /// ## Usage Example
 ///
 /// ```rust
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use bingo_core::BingoEngine;
 ///
 /// let engine = BingoEngine::new()?;
@@ -766,6 +779,8 @@ pub enum AggregationWindow {
 /// println!("Facts stored: {}", stats.fact_count);
 /// println!("Network nodes: {}", stats.node_count);
 /// println!("Memory usage: {} bytes", stats.memory_usage_bytes);
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// ## Monitoring Integration

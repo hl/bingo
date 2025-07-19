@@ -61,8 +61,8 @@ pub mod arena_store {
     ///
     /// # Usage Example
     /// ```rust
-    /// use crate::fact_store::arena_store::ArenaFactStore;
-    /// use crate::types::{Fact, FactData, FactValue};
+    /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+    /// use bingo_core::types::{Fact, FactData, FactValue};
     /// use std::collections::HashMap;
     ///
     /// // Create a new fact store (thread-safe by default)
@@ -115,7 +115,7 @@ pub mod arena_store {
     ///
     /// # Usage Example
     /// ```rust
-    /// use crate::fact_store::arena_store::{ArenaFactStore, ThreadSafeArenaFactStore};
+    /// use bingo_core::fact_store::arena_store::{ArenaFactStore, ThreadSafeArenaFactStore};
     /// use std::sync::Arc;
     /// use std::thread;
     ///
@@ -159,7 +159,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::new();
         /// assert_eq!(store.len(), 0);
@@ -189,7 +189,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// // Pre-allocate for 10,000 facts
         /// let store = ArenaFactStore::with_capacity(10_000);
@@ -221,7 +221,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// // Optimised for 5 million facts
         /// let store = ArenaFactStore::with_large_capacity(5_000_000);
@@ -248,7 +248,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::new_shared();
         ///
@@ -273,7 +273,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::with_capacity_shared(50_000);
         ///
@@ -297,7 +297,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::with_large_capacity_shared(2_000_000);
         ///
@@ -393,8 +393,8 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
-        /// use crate::types::{Fact, FactData, FactValue};
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::types::{Fact, FactData, FactValue};
         /// use std::collections::HashMap;
         ///
         /// let store = ArenaFactStore::new();
@@ -486,10 +486,19 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let mut store = ArenaFactStore::new();
-        /// let fact_id = store.insert(create_test_fact(0));
+        ///
+        /// // Create a test fact
+        /// # use bingo_core::types::{Fact, FactData};
+        /// let fact = Fact {
+        ///     id: 0,
+        ///     external_id: None,
+        ///     timestamp: chrono::Utc::now(),
+        ///     data: FactData { fields: std::collections::HashMap::new() }
+        /// };
+        /// let fact_id = store.insert(fact);
         ///
         /// // Fast O(1) lookup
         /// if let Some(fact) = store.get_fact(fact_id) {
@@ -519,8 +528,8 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
-        /// use crate::types::{Fact, FactData};
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::types::{Fact, FactData};
         ///
         /// let mut store = ArenaFactStore::new();
         ///
@@ -564,8 +573,8 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
-        /// use crate::types::FactValue;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::types::FactValue;
         ///
         /// let mut store = ArenaFactStore::new();
         /// // ... insert fact with external_id "user-123" and field "status" ...
@@ -589,13 +598,14 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// # use bingo_core::types::{Fact, FactData};
         ///
         /// let mut store = ArenaFactStore::new();
         /// let facts = vec![
-        ///     create_test_fact(0),
-        ///     create_test_fact(0),
-        ///     create_test_fact(0),
+        ///     Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } },
+        ///     Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } },
+        ///     Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } },
         /// ];
         ///
         /// store.extend_from_vec(facts);
@@ -630,14 +640,17 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// # use bingo_core::types::{Fact, FactData, FactValue};
         ///
         /// let mut store = ArenaFactStore::with_large_capacity(100_000);
         ///
         /// // Create a large batch of facts
         /// let mut facts = Vec::with_capacity(50_000);
         /// for i in 0..50_000 {
-        ///     facts.push(create_test_fact_with_user_id(i));
+        ///     let mut fields = std::collections::HashMap::new();
+        ///     fields.insert("user_id".to_string(), FactValue::Integer(i as i64));
+        ///     facts.push(Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields } });
         /// }
         ///
         /// // Bulk insert with optimal performance
@@ -759,7 +772,8 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// # use bingo_core::types::Fact;
         ///
         /// let store = ArenaFactStore::new();
         /// // ... insert some facts ...
@@ -796,7 +810,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         /// use chrono::{Utc, Duration};
         ///
         /// let store = ArenaFactStore::new();
@@ -834,13 +848,16 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// # use bingo_core::types::{Fact, FactData};
         ///
         /// let mut store = ArenaFactStore::new();
         /// assert_eq!(store.len(), 0);
         ///
-        /// store.insert(create_test_fact(0));
-        /// store.insert(create_test_fact(0));
+        /// let fact1 = Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } };
+        /// let fact2 = Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } };
+        /// store.insert(fact1);
+        /// store.insert(fact2);
         /// assert_eq!(store.len(), 2);
         /// ```
         pub fn len(&self) -> usize {
@@ -858,7 +875,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::new();
         /// assert!(store.is_empty());
@@ -879,10 +896,14 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// # use bingo_core::types::{Fact, FactData};
         ///
         /// let mut store = ArenaFactStore::new();
-        /// // ... insert many facts ...
+        ///
+        /// // Insert a test fact
+        /// let fact = Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } };
+        /// store.insert(fact);
         /// assert!(!store.is_empty());
         ///
         /// store.clear();
@@ -930,8 +951,8 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
-        /// use crate::types::FactValue;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::types::FactValue;
         ///
         /// let store = ArenaFactStore::new();
         /// // ... insert facts with user_id fields ...
@@ -992,8 +1013,8 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
-        /// use crate::types::FactValue;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::types::FactValue;
         ///
         /// let store = ArenaFactStore::new();
         /// // ... insert facts ...
@@ -1082,7 +1103,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::new();
         /// assert!(store.cache_stats().is_none());
@@ -1099,7 +1120,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let mut store = ArenaFactStore::new();
         /// store.clear_cache(); // Does nothing but won't error
@@ -1128,7 +1149,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let store = ArenaFactStore::new();
         /// // ... insert facts with indexed fields ...
@@ -1207,7 +1228,7 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
         ///
         /// let mut store = ArenaFactStore::new();
         /// // ... insert many facts, then delete many ...
@@ -1268,12 +1289,14 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
-        /// use crate::types::FactValue;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::types::FactValue;
+        /// # use bingo_core::types::{Fact, FactData};
         /// use std::collections::HashMap;
         ///
         /// let mut store = ArenaFactStore::new();
-        /// let fact_id = store.insert(create_test_fact(0));
+        /// let fact = Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } };
+        /// let fact_id = store.insert(fact);
         ///
         /// // Prepare updates
         /// let mut updates = HashMap::new();
@@ -1333,10 +1356,12 @@ pub mod arena_store {
         ///
         /// # Example
         /// ```rust
-        /// use crate::fact_store::arena_store::ArenaFactStore;
+        /// use bingo_core::fact_store::arena_store::ArenaFactStore;
+        /// # use bingo_core::types::{Fact, FactData};
         ///
         /// let mut store = ArenaFactStore::new();
-        /// let fact_id = store.insert(create_test_fact(0));
+        /// let fact = Fact { id: 0, external_id: None, timestamp: chrono::Utc::now(), data: FactData { fields: std::collections::HashMap::new() } };
+        /// let fact_id = store.insert(fact);
         ///
         /// // Verify fact exists
         /// assert!(store.get_fact(fact_id).is_some());

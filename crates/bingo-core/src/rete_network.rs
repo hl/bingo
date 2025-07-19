@@ -254,8 +254,9 @@ impl ReteNetwork {
     ///
     /// let rule = Rule {
     ///     id: 1,
-    ///     conditions: vec![/* conditions */],
-    ///     actions: vec![/* actions */],
+    ///     name: "test_rule".to_string(),
+    ///     conditions: vec![],
+    ///     actions: vec![],
     /// };
     ///
     /// network.add_rule(rule)?;
@@ -320,15 +321,24 @@ impl ReteNetwork {
     /// ## Usage Example
     ///
     /// ```rust
+    /// # use bingo_core::rete_network::ReteNetwork;
+    /// # use bingo_core::types::*;
+    /// # use bingo_core::fact_store::arena_store::ArenaFactStore;
+    /// # use bingo_calculator::calculator::Calculator;
+    /// # use std::collections::HashMap;
     /// let mut network = ReteNetwork::new();
-    /// network.add_rule(some_rule)?;
+    /// let fact_store = ArenaFactStore::new();
+    /// let calculator = Calculator::new();
     ///
     /// // Add facts incrementally
+    /// let fact_data1 = FactData { fields: HashMap::new() };
     /// let fact1 = Fact::new(1, fact_data1);
     /// let results1 = network.add_fact_to_working_memory(fact1, &fact_store, &calculator)?;
     ///
+    /// let fact_data2 = FactData { fields: HashMap::new() };
     /// let fact2 = Fact::new(2, fact_data2);
     /// let results2 = network.add_fact_to_working_memory(fact2, &fact_store, &calculator)?;
+    /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn add_fact_to_working_memory(
         &mut self,
@@ -860,10 +870,20 @@ impl ReteNetwork {
     ///
     /// For new code with large rule sets, prefer:
     /// ```rust
+    /// # use bingo_core::rete_network::ReteNetwork;
+    /// # use bingo_core::types::*;
+    /// # use bingo_core::fact_store::arena_store::ArenaFactStore;
+    /// # use bingo_calculator::calculator::Calculator;
+    /// # use std::collections::HashMap;
+    /// # let mut network = ReteNetwork::new();
+    /// # let fact_store = ArenaFactStore::new();
+    /// # let calculator = Calculator::new();
+    /// # let facts = vec![Fact::new(1, FactData { fields: HashMap::new() })];
     /// for fact in facts {
     ///     let results = network.add_fact_to_working_memory(fact, &fact_store, &calculator)?;
     ///     // Process results immediately
     /// }
+    /// # Ok::<(), anyhow::Error>(())
     /// ```
     #[instrument(skip(self, fact_store, calculator))]
     pub fn process_facts(
